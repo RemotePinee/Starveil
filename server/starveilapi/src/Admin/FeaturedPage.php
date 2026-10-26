@@ -89,9 +89,12 @@ final class FeaturedPage extends BasePage
      */
     private function typeCard(): string
     {
+        // data-plain：这是 GET 筛选表单，切分类要把 type_id 放进 URL。
+        // 不加的话 View 的 AJAX 会把所有 form 当写表单 POST 出去，
+        // $_GET['type_id'] 永远拿不到新值，表现就是"选了分类点保存没反应"。
         return $this->card(
             '配置分类',
-            '<form method="get">'
+            '<form method="get" data-plain>'
             . '<input type="hidden" name="a" value="' . View::e($this->page) . '">'
             . '<div class="sv-grid">'
             . $this->selectField('分类', 'type_id', $this->typeOptions(), (string)$this->typeId)

@@ -39,6 +39,13 @@ import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.Motion
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.VodType
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.platform.LocalDensity
 
 /**
  * 分类行：搜索栏下方那一排胶囊。
@@ -58,8 +65,51 @@ fun CategoryChips(
 ) {
     val entries = remember(types) { listOf(VodType(id = 0, name = "首页")) + types }
     val scrollState = rememberScrollState()
-    // 必须钉死高度：渐隐层用 fillMaxHeight，否则 Box 会被撑到占满剩余屏幕，正文列表高度变 0
-    Box(modifier = modifier.height(CHIP_HEIGHT)) {
+    // 边缘淡出用 BlendMode.DstOut 把内容本身擦成透明，而不是盖一层背景色：
+    // 这一行叠在轮播图上，背景是随图变化的颜色，任何纯色蒙版都会露出一块斑。
+    // 左侧只在能往回滚时才出现，静止时第一个分类是完整的。
+    val edgePx = with(LocalDensity.current) { EDGE_FADE.toPx() }
+    val fadeStart by animateFloatAsState(
+        targetValue = if (scrollState.canScrollBackward) 1f else 0f,
+        animationSpec = tween(Motion.MediumMs),
+        label = "chip-fade-start",
+    )
+    val fadeEnd by animateFloatAsState(
+        targetValue = if (scrollState.canScrollForward) 1f else 0f,
+        animationSpec = tween(Motion.MediumMs),
+        label = "chip-fade-end",
+    )
+    Box(
+        modifier = modifier
+            .height(CHIP_HEIGHT)
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                if (fadeStart > 0f) {
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            listOf(Color.Black.copy(alpha = fadeStart), Color.Transparent),
+                            startX = 0f,
+                            endX = edgePx,
+                        ),
+                        size = Size(edgePx, size.height),
+                        blendMode = BlendMode.DstOut,
+                    )
+                }
+                if (fadeEnd > 0f) {
+                    drawRect(
+                        brush = Brush.horizontalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = fadeEnd)),
+                            startX = size.width - edgePx,
+                            endX = size.width,
+                        ),
+                        topLeft = Offset(size.width - edgePx, 0f),
+                        size = Size(edgePx, size.height),
+                        blendMode = BlendMode.DstOut,
+                    )
+                }
+            },
+    ) {
         // 用普通 Row + horizontalScroll 而不是 LazyRow：LazyRow 的视口必定填满约束，
         // 宽度无法「内容多宽就多宽」，调用方就没法把剩下的宽度让给搜索框。
         // 分类是后台配置的个位数列表，也不需要懒加载。
@@ -78,9 +128,6 @@ fun CategoryChips(
                 )
             }
         }
-        // 分类变多时右侧会溢出：用背景色渐变遮罩提示"还能滑"，滑到两端自动淡出/淡入
-        CategoryEdgeFade(visible = scrollState.canScrollBackward, fromStart = true)
-        CategoryEdgeFade(visible = scrollState.canScrollForward, fromStart = false)
     }
 }
 
@@ -162,3 +209,11 @@ private const val SELECTED_SCALE = 1.16f
 
 /** 渐隐宽度：约一个胶囊的高，够提示又不遮文字。 */
 private val FADE_WIDTH = Spacing.xxl
+
+/**
+ * 分类行两端内容淡出的宽度。
+ *
+ * 这里只决定"擦掉多宽"，不涉及任何颜色：淡出由 BlendMode.DstOut 把已画的内容
+ * 按 alpha 擦成透明，透出来的是底下轮播图本身的颜色，浅色深色都不会冒出白块黑块。
+ */
+private val EDGE_FADE = Spacing.xl
