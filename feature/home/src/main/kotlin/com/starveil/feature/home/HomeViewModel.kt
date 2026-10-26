@@ -227,14 +227,17 @@ class HomeViewModel(
 
             else -> contentOf(list)
         }
-        // 首页已经有内容可画：启动屏的放行条件。切分类重复触发也无害。
-        if (_state.value is HomeUiState.Content) onReady()
+        // 首页已经画出最终画面：Content / Empty 都算放行条件。
+        // 只认 Content 的话，后台把视频清空后首页停在 Empty，启动层永远等不到信号。
+        if (_state.value !is HomeUiState.Loading) onReady()
     }
 
     /** 请求失败：骨架要退掉，否则用户停在骨架上看不到"失败了"。 */
     private fun applyListFailure(typeId: Int, message: String) {
         if (typeId != selectedTypeId) return
         _state.update { it.withItemsFailure(message) }
+        // 失败也是一种最终画面，同样放行启动层
+        if (_state.value !is HomeUiState.Loading) onReady()
     }
 
     /** 用当前配置拼一个 Content：只有列表是变量，其余沿用已加载好的值。 */

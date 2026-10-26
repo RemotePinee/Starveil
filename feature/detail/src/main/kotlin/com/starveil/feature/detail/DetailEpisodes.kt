@@ -45,34 +45,10 @@ internal fun DetailEpisodeRow(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
 ) {
-    // 一批里只要有一条是文本型标题（日期/版本名），整批改两列宽卡：
-    // 六列窄格里塞「2026-10-24」，只会被截成没有区分度的残片。
-    // 单集不走宽卡：weight 会让它撑满半屏，看着比标题还大。
-    val labels = episodes.mapIndexed { _, episode -> episodeText(episode.title, episode.episodeNumber) }
-    if (labels.any { it.wide } && episodes.size > 1) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Spacing.pageHorizontal, vertical = Spacing.xxs),
-            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-        ) {
-            labels.indices.chunked(WIDE_EPISODE_COLUMNS).forEach { pair ->
-                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                    pair.forEach { column ->
-                        val index = startIndex + column
-                        WideEpisodeTile(
-                            label = labels[column],
-                            playing = index == selectedIndex,
-                            onClick = { onSelect(index) },
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    repeat(WIDE_EPISODE_COLUMNS - pair.size) { Spacer(Modifier.weight(1f)) }
-                }
-            }
-        }
-        return
-    }
+    // 所有集数同一尺寸、单行显示：文本型标题超宽就省略，点进播放器看完整名。
+    // 不为个别条目改布局——只要同一批里有一格变宽，其余格子立刻稀疏，
+    // 集号也不再连续可扫（「先导」夹在 1~5 中间时最明显）。
+    val labels = episodes.map { episodeText(it.title, it.episodeNumber) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -94,45 +70,6 @@ internal fun DetailEpisodeRow(
     }
 }
 
-/** 两行宽卡：主行标题、副行集号/日期。文本型标签用它，信息不丢也不挤。 */
-@Composable
-private fun WideEpisodeTile(
-    label: EpisodeText,
-    playing: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val haptics = rememberHaptics()
-    Column(
-        modifier = modifier
-            .height(EpisodeWideHeight)
-            .clip(AppShape.small)
-            .background(if (playing) MaterialTheme.colorScheme.primary else starveilExtraColors.surfaceCard)
-            .clickable {
-                haptics(HapticKind.Confirm)
-                onClick()
-            }
-            .padding(horizontal = Spacing.xs),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text(
-            text = label.primary,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (playing) MaterialTheme.colorScheme.onPrimary else starveilExtraColors.textMuted,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        if (label.secondary.isNotBlank()) {
-            Text(
-                text = label.secondary,
-                style = MaterialTheme.typography.labelSmall,
-                color = if (playing) MaterialTheme.colorScheme.onPrimary else starveilExtraColors.textMuted,
-                maxLines = 1,
-            )
-        }
-    }
-}
 
 /**
  * 数字格：正在播的那一格主色呼吸（强度走 [rememberBreathingAlpha]），其余
@@ -216,8 +153,3 @@ internal const val EPISODE_COLUMNS = 6
 /** 数字格高度 36dp：够手指点，又比常规按钮矮一档，5 行 30 集才不占满首屏。 */
 private val EpisodeChipHeight: Dp = Spacing.xxl + Spacing.xs
 
-/** 文本型标签用两列宽卡（一行两块），放得下「2026-10-24」「国语原声版」这类标题。 */
-private const val WIDE_EPISODE_COLUMNS = 2
-
-/** 宽卡高度 56dp = 两行文字 + 内边距。 */
-private val EpisodeWideHeight: Dp = Spacing.xxl + Spacing.xxl

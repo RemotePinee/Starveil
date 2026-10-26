@@ -219,8 +219,10 @@ private fun EpisodeStrip(
     }
     // 文本型标题（日期/版本名）走宽一点的卡：两行显示，不再截成「2026-10-」残片
     // 单集（电影正片）不走宽卡：一块 96×64 的空格子看着像没渲染完。
+    // 只有多数是文本标题时才整条切换：「先导」混在数字集里就一项宽、其余窄，
+    // 卡片宽窄不一，横向扫过去参差不齐。
     val labels = episodes.map { episodeText(it.title, it.episodeNumber) }
-    val wide = labels.any { it.wide } && episodes.size > 1
+    val wide = labels.count { it.wide } * 2 > episodes.size && episodes.size > 1
     LazyRow(
         state = stripState,
         contentPadding = PaddingValues(horizontal = Spacing.pageHorizontal),

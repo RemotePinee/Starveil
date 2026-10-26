@@ -3,6 +3,7 @@ package com.starveil.app
 import android.graphics.BitmapFactory
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -42,6 +43,9 @@ private const val BREATHE_MS = 1_400
 
 /** 第二屏最短停留：首页来得太快也让动画走完一轮，否则看着像抽搐。 */
 private const val BRAND_MIN_MS = 900L
+
+/** 第二屏最多等多久（含图与首页）：超时就退场，不能把用户永久挡在这里。 */
+private const val BRAND_MAX_MS = 5_000L
 
 /** 第二屏淡出时长。 */
 private const val BRAND_FADE_MS = 320
@@ -120,7 +124,12 @@ internal fun SplashBrandOverlay() {
     var visible by remember { mutableStateOf(!AdSplashGate.homeReady()) }
     LaunchedEffect(Unit) {
         val started = SystemClock.elapsedRealtime()
-        while (!AdSplashGate.homeReady() || !AdSplashGate.splashArtReady()) delay(POLL_MS)
+        // 首页或开屏图就绪，或者等满上限就退场：后台把数据清空时首页会停在 Empty，
+        // 没有这层兜底就一直卡在这里。Empty/Error 也算就绪（见 HomeViewModel）。
+        while (!AdSplashGate.homeReady() || !AdSplashGate.splashArtReady()) {
+            if (SystemClock.elapsedRealtime() - started > BRAND_MAX_MS) break
+            delay(POLL_MS)
+        }
         val remaining = BRAND_MIN_MS - (SystemClock.elapsedRealtime() - started)
         if (remaining > 0) delay(remaining)
         visible = false
@@ -128,7 +137,13 @@ internal fun SplashBrandOverlay() {
         delay(BRAND_FADE_MS.toLong())
         AdSplashGate.markBrandLayerGone()
     }
-    AnimatedVisibility(visible = visible, exit = fadeOut(tween(BRAND_FADE_MS))) {
+    AnimatedVisibility(
+        visible = visible,
+        // enter 必须显式关掉：默认是 fadeIn + expandVertically，内容会从 0 高度往上展开，
+        // BottomCenter 的锚点在动画期间一直在动，过渡里就会看到 logo 位置在跳。
+        enter = EnterTransition.None,
+        exit = fadeOut(tween(BRAND_FADE_MS)),
+    ) {
         SplashBrandLayer()
     }
 }
