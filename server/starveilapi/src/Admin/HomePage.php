@@ -781,7 +781,7 @@ final class HomePage extends BasePage
 
         $tabs = json_decode((string)($post['tabs'] ?? ''), true);
         if (!is_array($tabs)) {
-            return;
+            Guard::fail('tabs', '菜单数据没能提交上来，请刷新页面后重试');
         }
         $clean = [];
         $seen = [];
@@ -857,6 +857,7 @@ final class HomePage extends BasePage
         // 底栏最多 5 个；会员体系开启时会员入口固定占一个，其余最多 4 个
         $clamped = self::clampVisibleTabs($clean, !$memberOff);
         $clean = $clamped['tabs'];
+        Setting::set('bottom_tabs', json_encode($clean, JSON_UNESCAPED_UNICODE));
         if ($clamped['dropped'] !== []) {
             $message = '已保存；底栏最多 ' . self::MAX_VISIBLE_TABS . ' 个按钮'
                 . ($memberOff ? '' : '（会员入口固定占一个）')
