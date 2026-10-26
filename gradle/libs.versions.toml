@@ -13,9 +13,9 @@ retrofit = "2.11.0"
 okhttp = "4.12.0"
 serialization = "1.8.1"
 coroutines = "1.10.2"
-coil = "3.3.0"
+coil = "3.6.3"
 # 二维码编码：纯 Java、无 Android 依赖，只用来把分享链接画成二维码。
-zxing = "3.5.3"
+zxing = "3.5.4"
 junit = "4.13.2"
 mockk = "1.14.11"
 turbine = "1.2.1"
@@ -24,7 +24,7 @@ detekt = "1.23.8"
 # 聚合广告 SDK。TopOn 的样式包（rewardedvideo/interstitial/nativead/banner/splash）
 # TradPlus 主包版本。adapter 的末段必须与它一致（见下面 tradplus-* 几条），
 # 否则 SDK 会报 adapter 不匹配。
-tradplus = "16.9.0.1"
+tradplus = "16.10.0.1"
 
 [libraries]
 # AndroidX 基础
@@ -88,11 +88,11 @@ zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 # 的类已经包含在 core 里，再引 6.5.40 的样式包会撞「Duplicate class」。样式包只给
 # 老版本（core 6.5.40 时代）分开引，本工程不需要。
 tradplus = { module = "com.tradplusad:tradplus", version.ref = "tradplus" }
-tradplus-sigmob = { module = "com.tradplusad:tradplus-sigmob", version = "21.16.9.0.1" }
+tradplus-sigmob = { module = "com.tradplusad:tradplus-sigmob", version = "21.66.4.42.1.1.100" }
 # 厂商联盟：跟随应用商店上架，过审压力最小
-tradplus-mimo = { module = "com.tradplusad:tradplus-mimo", version = "46.16.9.0.1" }
-tradplus-oppo = { module = "com.tradplusad:tradplus-oppo", version = "79.16.9.0.1" }
-tradplus-vivo = { module = "com.tradplusad:tradplus-vivo", version = "78.16.9.0.1" }
+tradplus-mimo = { module = "com.tradplusad:tradplus-mimo", version = "46.16.10.0.1" }
+tradplus-oppo = { module = "com.tradplusad:tradplus-oppo", version = "79.16.10.0.1" }
+tradplus-vivo = { module = "com.tradplusad:tradplus-vivo", version = "78.16.10.0.1" }
 
 # 测试
 junit = { module = "junit:junit", version.ref = "junit" }
