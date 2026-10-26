@@ -1,18 +1,24 @@
 package com.starveil.app
 
 import android.os.Bundle
+import android.view.ViewTreeObserver
+import java.util.concurrent.atomic.AtomicBoolean
 import android.content.res.Configuration
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.splashscreen.SplashScreen
@@ -29,6 +35,7 @@ import com.starveil.core.designsystem.StarveilTheme
 import com.starveil.feature.player.PlayerEngineWarmUp
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
+import coil3.size.Size
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
@@ -45,11 +52,17 @@ private const val PLAYER_WARMUP_DELAY_MS = 800L
 /** 启动屏等首页的上限：接口卡住时不能永远停在品牌图上。 */
 private const val SPLASH_MAX_MS = 3_000L
 
+/** 等 Compose 首帧的兜底：正常情况由 onPreDraw 放行，这里只防它永远不回调。 */
+private const val COMPOSE_FALLBACK_MS = 800L
+
 class MainActivity : ComponentActivity() {
 
     /** 与 Application 同一个容器；`attachActivity` 要用它挂前台 Activity。 */
     private val container by lazy { (application as StarveilApplication).container }
 
+
+    /** Compose 是否已经画出第一帧。系统启动屏以它为放行条件。 */
+    private val composedReady = AtomicBoolean(false)
     override fun onResume() {
         super.onResume()
         container.attachActivity(this)
@@ -65,65 +78,74 @@ class MainActivity : ComponentActivity() {
         val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         applyInitialSystemBars()
-        val container = (application as StarveilApplication).container.also { holdSplashUntilHomeReady(splash) }
-        setContent {
-            // 首帧就要拿对皮肤：初值取上次生效的那一号（同步读 SharedPreferences），
-            // 不能从空串起步——空串等于默认皮肤，网络回来才切成 3，用户看到的就是
-            // "先默认、再变我的"。冷启动第一帧必须已经是上次的样子。
-            val serverCode by produceState(
-                initialValue = SplashSkinStore.read(this@MainActivity),
-                container,
-            ) {
-                value = when (val startup = container.startupRepository.load()) {
-                    is AppResult.Success -> startup.value.skinCode
-                    is AppResult.Failure -> ""
-                }
-            }
-            val localCode by container.themePreference.skinCode
-                .collectAsStateWithLifecycle(initialValue = "")
-            val skinCode = localCode.ifEmpty { serverCode }
-            // 生效的皮肤顺手存一份同步值：下次冷启动的窗口底色靠它对齐
-            LaunchedEffect(skinCode) { SplashSkinStore.write(this@MainActivity, skinCode) }
-            val (appearance, darkTheme) = rememberAppearance(container)
-
-            val scope = rememberCoroutineScope()
-            CompositionLocalProvider(
-                LocalSkinSelection provides SkinSelection(
-                    current = localCode,
-                    effective = skinCode,
-                    select = { code -> scope.launch { container.themePreference.select(code) } },
-                ),
-                LocalAppearanceSelection provides AppearanceSelection(
-                    current = appearance,
-                    select = { mode -> scope.launch { container.themePreference.selectAppearance(mode) } },
-                ),
-            ) {
-                StarveilTheme(skinCode = skinCode, darkTheme = darkTheme) {
-                    StarveilNavHost(container = container)
-                }
-            }
-        }
+        val container = (application as StarveilApplication).container.also { holdSplashUntilComposed(splash) }
+        setContent { MainContent(container) }
         warmUpPlayerEngineLater()
     }
 
-    /**
-     * 系统启动屏停在原地，等首页首个 Content 落地、开屏图也缓存好。
-     *
-     * 只等首页——其余页面自己会转圈。两件事都等，是因为开屏浮层要在启动屏退场的
-     * 同一帧就铺满素材：图没落地就放行，用户会先看到一屏遮罩，倒计时却已经在走。
-     *
-     * 兜底 [SPLASH_MAX_MS]：接口或图床卡住时不能永远停在品牌图上。
-     */
-    private fun holdSplashUntilHomeReady(splash: SplashScreen) {
-        splash.setKeepOnScreenCondition {
-            !AdSplashGate.homeReady() || !AdSplashGate.splashArtReady()
+    /** 主题装配 + 导航宿主 + 第二屏覆盖层。抽出来是为了让 onCreate 保持在行数上限内。 */
+    @Composable
+    private fun MainContent(container: AppContainer) {
+        val context = LocalContext.current
+        // 首帧就要拿对皮肤：初值取上次生效的那一号（同步读 SharedPreferences），
+        // 不能从空串起步——空串等于默认皮肤，网络回来才切成 3，用户看到的就是
+        // "先默认、再变我的"。冷启动第一帧必须已经是上次的样子。
+        val serverCode by produceState(initialValue = SplashSkinStore.read(context), container) {
+            value = when (val startup = container.startupRepository.load()) {
+                is AppResult.Success -> startup.value.skinCode
+                is AppResult.Failure -> ""
+            }
         }
+        val localCode by container.themePreference.skinCode
+            .collectAsStateWithLifecycle(initialValue = "")
+        val skinCode = localCode.ifEmpty { serverCode }
+        // 生效的皮肤顺手存一份同步值：下次冷启动的窗口底色靠它对齐
+        LaunchedEffect(skinCode) { SplashSkinStore.write(context, skinCode) }
+        val (appearance, darkTheme) = rememberAppearance(container)
+
+        val scope = rememberCoroutineScope()
+        CompositionLocalProvider(
+            LocalSkinSelection provides SkinSelection(
+                current = localCode,
+                effective = skinCode,
+                select = { code -> scope.launch { container.themePreference.select(code) } },
+            ),
+            LocalAppearanceSelection provides AppearanceSelection(
+                current = appearance,
+                select = { mode -> scope.launch { container.themePreference.selectAppearance(mode) } },
+            ),
+        ) {
+            StarveilTheme(skinCode = skinCode, darkTheme = darkTheme) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    StarveilNavHost(container = container)
+                    SplashBrandOverlay()
+                }
+            }
+        }
+    }
+
+    /**
+     * 系统启动屏只等 Compose 画出第一帧，随后交给第二屏（[SplashBrandOverlay]）。
+     *
+     * 品牌图是静态的，停久了只会显得卡住；第二屏有加载环和呼吸动画，
+     * 同样的等待体感短得多。开屏图在这段时间后台预热。
+     */
+    private fun holdSplashUntilComposed(splash: SplashScreen) {
+        splash.setKeepOnScreenCondition { !composedReady.get() }
         lifecycleScope.launch { prefetchSplashArt() }
         lifecycleScope.launch {
-            delay(SPLASH_MAX_MS)
-            AdSplashGate.markHomeReady()
-            AdSplashGate.markSplashArtReady()
+            delay(COMPOSE_FALLBACK_MS)
+            composedReady.set(true)
         }
+        window.decorView.viewTreeObserver.addOnPreDrawListener(
+            object : ViewTreeObserver.OnPreDrawListener {
+                override fun onPreDraw(): Boolean {
+                    window.decorView.viewTreeObserver.removeOnPreDrawListener(this)
+                    composedReady.set(true)
+                    return true
+                }
+            },
+        )
     }
 
     /** 把开屏图预热进 Coil 缓存。没有素材的站直接放行，不为一张不存在的图等待。 */
@@ -131,7 +153,12 @@ class MainActivity : ComponentActivity() {
         val url = AdSplashGate.splash(this)?.imageUrl.orEmpty()
         if (url.isNotBlank()) {
             withTimeoutOrNull(SPLASH_MAX_MS) {
-                val request = ImageRequest.Builder(this@MainActivity).data(url).build()
+                // size 必须和开屏浮层的 AsyncImage 一致，否则缓存 key 不同，
+                // 这次预热不会被复用，用户看到的仍是当场下载。
+                val request = ImageRequest.Builder(this@MainActivity)
+                    .data(url)
+                    .size(Size.ORIGINAL)
+                    .build()
                 SingletonImageLoader.get(this@MainActivity).execute(request)
             }
         }

@@ -1,21 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  窗口背景兜底：启动画面收起后、Compose 首帧之前，窗口画的就是这一层。
+  窗口背景：只铺底色，不放 logo。
 
-  底色引用 @color/splash_background（浅色在 values/colors.xml，深色在
-  values-night/colors.xml），logo 固定贴底、居中、离底 32dp。
-  这样首帧慢的时候用户看到的是品牌图，而不是一块空底色。
-
-  logo 是 drawable*-nodpi 下的位图，按原始像素尺寸绘制：1080px 宽的机型上
-  正好铺满宽度，720px 宽的机型上左右各裁掉一点点透明边，不影响识别。
+  品牌元素（logo 与开屏动画）全部由 Compose 的第二屏（SplashBrandLayer）画，
+  这里再画一遍会有两条渲染路径：layer-list 的 <bitmap> 和 Compose 的 BitmapPainter
+  对 nodpi 位图的 density 处理不同，位置与尺寸永远对不齐。只留底色就没有对齐问题——
+  系统启动屏退场、第二屏接上的那一刻，画面里唯一的变量是 logo 淡入。
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <color android:color="@color/splash_background" />
-    </item>
-    <item android:bottom="32dp">
-        <bitmap
-            android:gravity="bottom|center_horizontal"
-            android:src="@drawable/ic_splash_lockup" />
     </item>
 </layer-list>

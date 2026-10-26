@@ -3,6 +3,7 @@ agp = "8.13.2"
 kotlin = "2.1.0"
 coreKtx = "1.16.0"
 splashscreen = "1.0.1"
+lottie = "6.6.6"
 activityCompose = "1.10.1"
 lifecycle = "2.9.4"
 navigationCompose = "2.9.4"
@@ -72,6 +73,7 @@ kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-t
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
+lottie-compose = { module = "com.airbnb.android:lottie-compose", version.ref = "lottie" }
 
 # 聚合广告（只在 :app 引用）。
 #

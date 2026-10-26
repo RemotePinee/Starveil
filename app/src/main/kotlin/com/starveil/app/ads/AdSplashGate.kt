@@ -98,6 +98,13 @@ internal object AdSplashGate {
     /** 没有开屏素材时视为就绪：这种站不需要为一张不存在的图等待。 */
     fun splashArtReady(): Boolean = splashArtReady.get()
 
+
+    /** 第二屏是否已经淡出。开屏倒计时等它，否则广告被盖着时秒数就在走。 */
+    private val brandLayerGone = AtomicBoolean(false)
+
+    fun markBrandLayerGone() = brandLayerGone.set(true)
+
+    fun brandLayerGone(): Boolean = brandLayerGone.get()
     private fun preferences(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }

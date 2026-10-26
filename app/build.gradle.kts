@@ -147,6 +147,11 @@ dependencies {
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.core.splashscreen)
+    implementation(libs.lottie.compose)
+    // 开屏浮层画在 :app 里，网络 fetcher 必须在这个模块的 classpath 上。
+    // feature 模块各自 implementation 进来的那份不会传递到 :app。
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     implementation(libs.androidx.datastore.preferences)
 

@@ -1,18 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  深色（系统夜间模式）的窗口背景兜底，结构与 drawable/splash_window.xml 一致。
+  深色（系统夜间模式）的窗口背景，结构与 drawable/splash_window.xml 完全一致。
 
-  单独留一份是为了让"深色下用哪张 lockup"这件事有明确落点：这里的
-  @drawable/ic_splash_lockup 在夜间模式下解析到 drawable-night-nodpi，
-  底色解析到 values-night/colors.xml 的 splash_background。
+  与浅色那份一样只铺底色：这里留着 logo 的话，深色下的第二屏和首屏会各画一遍，
+  位置随 density 漂移。深色的 logo 由 SplashBrandLayer 按同一套 dp 画，
+  @drawable/ic_splash_lockup 在夜间模式下自然解析到 drawable-night-nodpi。
 -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
     <item>
         <color android:color="@color/splash_background" />
-    </item>
-    <item android:bottom="32dp">
-        <bitmap
-            android:gravity="bottom|center_horizontal"
-            android:src="@drawable/ic_splash_lockup" />
     </item>
 </layer-list>

@@ -187,9 +187,11 @@ private fun RewardImageOverlay(
 ) {
     val total = creative.rewardSeconds
     var remain by remember(creative.imageUrl) { mutableIntStateOf(total) }
+    // 图没落地不扣秒：和开屏同理，加载时间不该从观看时长里扣
+    var artworkReady by remember(creative.imageUrl) { mutableStateOf(false) }
     val openLanding = LocalAdClick.current
-    LaunchedEffect(remain) {
-        if (remain <= 0) return@LaunchedEffect
+    LaunchedEffect(artworkReady, remain) {
+        if (!artworkReady || remain <= 0) return@LaunchedEffect
         delay(1_000)
         remain -= 1
     }
@@ -202,6 +204,7 @@ private fun RewardImageOverlay(
             model = creative.imageUrl,
             contentDescription = creative.title.ifBlank { "激励视频" },
             contentScale = ContentScale.Crop,
+            onSuccess = { artworkReady = true },
             modifier = Modifier
                 .fillMaxSize()
                 .clickable { if (creative.clickUrl.isNotBlank()) openLanding(creative.clickUrl) },

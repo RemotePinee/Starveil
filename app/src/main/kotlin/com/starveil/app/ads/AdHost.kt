@@ -27,6 +27,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import coil3.compose.AsyncImage
+import coil3.request.ImageRequest
+import coil3.size.Size
+import androidx.compose.ui.platform.LocalContext
 import com.starveil.core.common.ad.AdPlacement
 import com.starveil.core.common.ad.AdPlacements
 import com.starveil.core.common.ad.AdSlot
@@ -43,6 +46,9 @@ private const val SPLASH_SECONDS = 5
 
 /** 跳过按钮的深色底透明度：压在图上也看得清，又不至于盖住画面。 */
 private const val SKIP_BG_ALPHA = 0.55f
+
+/** 等品牌层退场的轮询间隔。 */
+private const val SPLASH_POLL_MS = 40L
 
 /**
  * 广告宿主：把五个广告位的配置、落地页打开方式、激励入口一次性提供下去。
@@ -114,6 +120,18 @@ private fun SplashGate(ads: AdPlacements, shown: Boolean, onShown: () -> Unit) {
     )
 }
 
+/** 开屏素材请求：remember 住，避免每次重组都造一个新对象惊动 Coil 重新加载。 */
+@Composable
+private fun splashArtworkRequest(imageUrl: String): ImageRequest {
+    val context = LocalContext.current
+    return remember(context, imageUrl) {
+        ImageRequest.Builder(context)
+            .data(imageUrl)
+            .size(Size.ORIGINAL)
+            .build()
+    }
+}
+
 @Composable
 private fun AdSplashOverlay(
     creative: AdPlacement,
@@ -126,13 +144,16 @@ private fun AdSplashOverlay(
     // 图没落地就不开始扣秒：等待时间不能吃掉设置好的时长，用户看到的第一帧必须是素材本身，
     // 而不是先一屏遮罩、再等图、最后只剩一两秒。
     var artworkReady by remember(creative.imageUrl) { mutableStateOf(false) }
-    // 倒计时到 0 关闭；不足 1 秒也让它自然结束，不额外调度
-    LaunchedEffect(artworkReady, remain) {
+    // 两个栅栏都过了才开始扣秒：图已落地、且压在上面的品牌层已经淡出。
+    // 少了后一个，广告被盖着的时候秒数就在走，露脸时只剩两三秒。
+    LaunchedEffect(creative.imageUrl, artworkReady) {
         if (!artworkReady) return@LaunchedEffect
-        if (remain <= 0) onClose() else {
+        while (!AdSplashGate.brandLayerGone()) delay(SPLASH_POLL_MS)
+        while (remain > 0) {
             delay(1_000)
             remain -= 1
         }
+        onClose()
     }
     Box(
         modifier = Modifier
@@ -141,7 +162,9 @@ private fun AdSplashOverlay(
             .clickable(onClick = onClick),
     ) {
         AsyncImage(
-            model = creative.imageUrl,
+            // 与 AdSplashGate 的预热请求保持同一份 size，否则缓存 key 不同，
+            // 预热等于白做：用户看到的仍然是当场下载。
+            model = splashArtworkRequest(creative.imageUrl),
             contentDescription = creative.title.ifBlank { "开屏广告" },
             contentScale = ContentScale.Crop,
             onSuccess = { artworkReady = true },
