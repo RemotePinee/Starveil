@@ -28,7 +28,7 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
 
       # AGENTS.md 第 0 节：./gradlew check 是唯一闸门
       # check 不联网，站点地址用占位符即可；要在这里出正式包时再配 STARVEIL_API_HOST
