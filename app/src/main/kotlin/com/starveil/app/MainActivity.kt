@@ -14,7 +14,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.splashscreen.SplashScreen
+import androidx.lifecycle.lifecycleScope
 import com.starveil.app.navigation.StarveilNavHost
+import com.starveil.app.ads.AdSplashGate
 import com.starveil.core.common.AppResult
 import com.starveil.core.common.AppearanceMode
 import com.starveil.core.designsystem.LocalSkinSelection
@@ -23,7 +27,11 @@ import com.starveil.core.designsystem.LocalAppearanceSelection
 import com.starveil.core.designsystem.SkinSelection
 import com.starveil.core.designsystem.StarveilTheme
 import com.starveil.feature.player.PlayerEngineWarmUp
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 单 Activity 架构。所有页面由 Compose Navigation 承载。
@@ -33,6 +41,9 @@ import kotlinx.coroutines.launch
  */
 /** 冷启动后多久预热播放引擎：等首帧与启动配置落定，别和它们抢主线程。 */
 private const val PLAYER_WARMUP_DELAY_MS = 800L
+
+/** 启动屏等首页的上限：接口卡住时不能永远停在品牌图上。 */
+private const val SPLASH_MAX_MS = 3_000L
 
 class MainActivity : ComponentActivity() {
 
@@ -51,11 +62,10 @@ class MainActivity : ComponentActivity() {
         super.onPause()
     }
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splash = installSplashScreen()
         super.onCreate(savedInstanceState)
         applyInitialSystemBars()
-
-        val container = (application as StarveilApplication).container
-
+        val container = (application as StarveilApplication).container.also { holdSplashUntilHomeReady(splash) }
         setContent {
             // 首帧就要拿对皮肤：初值取上次生效的那一号（同步读 SharedPreferences），
             // 不能从空串起步——空串等于默认皮肤，网络回来才切成 3，用户看到的就是
@@ -74,7 +84,6 @@ class MainActivity : ComponentActivity() {
             val skinCode = localCode.ifEmpty { serverCode }
             // 生效的皮肤顺手存一份同步值：下次冷启动的窗口底色靠它对齐
             LaunchedEffect(skinCode) { SplashSkinStore.write(this@MainActivity, skinCode) }
-
             val (appearance, darkTheme) = rememberAppearance(container)
 
             val scope = rememberCoroutineScope()
@@ -95,6 +104,38 @@ class MainActivity : ComponentActivity() {
             }
         }
         warmUpPlayerEngineLater()
+    }
+
+    /**
+     * 系统启动屏停在原地，等首页首个 Content 落地、开屏图也缓存好。
+     *
+     * 只等首页——其余页面自己会转圈。两件事都等，是因为开屏浮层要在启动屏退场的
+     * 同一帧就铺满素材：图没落地就放行，用户会先看到一屏遮罩，倒计时却已经在走。
+     *
+     * 兜底 [SPLASH_MAX_MS]：接口或图床卡住时不能永远停在品牌图上。
+     */
+    private fun holdSplashUntilHomeReady(splash: SplashScreen) {
+        splash.setKeepOnScreenCondition {
+            !AdSplashGate.homeReady() || !AdSplashGate.splashArtReady()
+        }
+        lifecycleScope.launch { prefetchSplashArt() }
+        lifecycleScope.launch {
+            delay(SPLASH_MAX_MS)
+            AdSplashGate.markHomeReady()
+            AdSplashGate.markSplashArtReady()
+        }
+    }
+
+    /** 把开屏图预热进 Coil 缓存。没有素材的站直接放行，不为一张不存在的图等待。 */
+    private suspend fun prefetchSplashArt() {
+        val url = AdSplashGate.splash(this)?.imageUrl.orEmpty()
+        if (url.isNotBlank()) {
+            withTimeoutOrNull(SPLASH_MAX_MS) {
+                val request = ImageRequest.Builder(this@MainActivity).data(url).build()
+                SingletonImageLoader.get(this@MainActivity).execute(request)
+            }
+        }
+        AdSplashGate.markSplashArtReady()
     }
 
     /**

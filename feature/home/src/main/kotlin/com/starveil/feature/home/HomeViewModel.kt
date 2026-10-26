@@ -56,6 +56,8 @@ class HomeViewModel(
      * 有它就在构造期同步铺出 Content，冷启动不再先转圈。
      */
     private val snapshot: HomeSnapshotStore? = repository.homeSnapshot(),
+    /** 首页第一个 Content 落地时回调：系统启动屏靠它放行，只表示首页。 */
+    private val onReady: () -> Unit = {},
 ) : ViewModel() {
 
     // 启动配置已预取过：首帧骨架直接用缓存的模块顺序，避免进来后重排（快捷入口、热度榜"晚一步出现"）
@@ -225,6 +227,8 @@ class HomeViewModel(
 
             else -> contentOf(list)
         }
+        // 首页已经有内容可画：启动屏的放行条件。切分类重复触发也无害。
+        if (_state.value is HomeUiState.Content) onReady()
     }
 
     /** 请求失败：骨架要退掉，否则用户停在骨架上看不到"失败了"。 */
@@ -301,6 +305,8 @@ class HomeViewModel(
             continueWatchingRepository: ContinueWatchingRepository,
             topicRepository: TopicRepository = EmptyTopicRepository,
             liveRepository: LiveRepository = EmptyLiveRepository,
+            /** 首页首个 Content 落地时回调：启动屏靠它放行。 */
+            onReady: () -> Unit = {},
         ): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 HomeViewModel(
@@ -309,6 +315,7 @@ class HomeViewModel(
                     continueWatchingRepository = continueWatchingRepository,
                     topicRepository = topicRepository,
                     liveRepository = liveRepository,
+                    onReady = onReady,
                 )
             }
         }

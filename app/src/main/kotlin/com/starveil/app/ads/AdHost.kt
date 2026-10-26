@@ -123,8 +123,12 @@ private fun AdSplashOverlay(
     // 时长由后台「开屏时长」下发（1-10 秒）；为 0 或缺失时回落到默认 5 秒
     val total = creative.seconds.takeIf { it > 0 } ?: SPLASH_SECONDS
     var remain by remember(creative.imageUrl, total) { mutableStateOf(total) }
+    // 图没落地就不开始扣秒：等待时间不能吃掉设置好的时长，用户看到的第一帧必须是素材本身，
+    // 而不是先一屏遮罩、再等图、最后只剩一两秒。
+    var artworkReady by remember(creative.imageUrl) { mutableStateOf(false) }
     // 倒计时到 0 关闭；不足 1 秒也让它自然结束，不额外调度
-    LaunchedEffect(remain) {
+    LaunchedEffect(artworkReady, remain) {
+        if (!artworkReady) return@LaunchedEffect
         if (remain <= 0) onClose() else {
             delay(1_000)
             remain -= 1
@@ -140,6 +144,7 @@ private fun AdSplashOverlay(
             model = creative.imageUrl,
             contentDescription = creative.title.ifBlank { "开屏广告" },
             contentScale = ContentScale.Crop,
+            onSuccess = { artworkReady = true },
             modifier = Modifier.fillMaxSize(),
         )
         AdBadge(modifier = Modifier.align(Alignment.TopStart).statusBarsPadding().padding(Spacing.lg))

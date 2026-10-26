@@ -47,6 +47,7 @@
             android:name=".MainActivity"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
             android:exported="false"
+            android:theme="@style/Theme.Starveil.Splash"
             android:windowSoftInputMode="adjustResize" />
 
         <!-- 分享海报：只暴露 cache/share 目录，不给整个应用私有目录授权 -->

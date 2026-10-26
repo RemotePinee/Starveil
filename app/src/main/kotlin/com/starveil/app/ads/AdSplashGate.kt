@@ -3,6 +3,7 @@ package com.starveil.app.ads
 import android.content.Context
 import com.starveil.core.common.ad.AdPlacement
 import com.starveil.core.common.ad.AdPlacements
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * 「这次冷启动要不要为 SDK 开屏停一下」的本地标记。
@@ -81,6 +82,21 @@ internal object AdSplashGate {
      * 先露一帧首页再被广告盖住。
      */
     fun known(context: Context): Boolean = preferences(context).getBoolean(KEY_KNOWN, false)
+
+    /** 首页首个 Content 是否已画出。系统启动屏等它，只表示首页，别的页面不参与。 */
+    private val homeReady = AtomicBoolean(false)
+
+    fun markHomeReady() = homeReady.set(true)
+
+    fun homeReady(): Boolean = homeReady.get()
+
+    /** 开屏素材是否已经落地到内存/磁盘缓存。启动屏等它，浮层才能一出现就是画面。 */
+    private val splashArtReady = AtomicBoolean(false)
+
+    fun markSplashArtReady() = splashArtReady.set(true)
+
+    /** 没有开屏素材时视为就绪：这种站不需要为一张不存在的图等待。 */
+    fun splashArtReady(): Boolean = splashArtReady.get()
 
     private fun preferences(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

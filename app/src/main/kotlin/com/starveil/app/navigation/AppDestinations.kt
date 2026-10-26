@@ -19,6 +19,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.composable
 import androidx.navigation.navArgument
 import com.starveil.app.AppContainer
+import com.starveil.app.ads.AdSplashGate
 import com.starveil.app.R
 import com.starveil.core.common.AppResult
 import com.starveil.core.model.Skins
@@ -145,6 +146,7 @@ private fun homeViewModel(container: AppContainer): HomeViewModel = viewModel(
         // 首页的专题/直播区块；不给就退回空实现，这两块整片不渲染
         topicRepository = container.topicRepository,
         liveRepository = container.liveRepository,
+        onReady = AdSplashGate::markHomeReady,
     ),
 )
 
