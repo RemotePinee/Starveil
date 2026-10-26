@@ -263,13 +263,16 @@ fun StarveilNavHost(container: AppContainer) {
                 }
                 // 注册 / 找回密码画在锁屏之上：NavHost 全程不动，所以不存在"切页时露出首页"
                 AuthFormOverlay(form = authForm, container = container, onClose = closeAuthForm)
-                // 广告隐私同意：只在没问过时弹一次，同意后网关立即重建
-                AdConsentGate(
-                    container = container,
-                    context = context,
-                    text = ads.consentText,
-                    privacyUrl = startup?.privacyUrl.orEmpty(),
-                )
+                // 广告隐私同意：只在没问过时弹一次，同意后网关立即重建。
+                // 等启动配置到位才组合，否则文案与隐私政策地址都是空的。
+                if (startup != null) {
+                    AdConsentGate(
+                        container = container,
+                        context = context,
+                        text = ads.consentText,
+                        privacyUrl = startup.privacyUrl.orEmpty(),
+                    )
+                }
         }
     }
 }

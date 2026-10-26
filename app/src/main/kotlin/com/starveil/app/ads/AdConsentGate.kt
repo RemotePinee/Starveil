@@ -32,8 +32,10 @@ internal fun AdConsentGate(
     text: String,
     privacyUrl: String,
 ) {
+    // 开屏还在时先不弹：Dialog 是独立 window，会直接压在开屏图上。
+    val splashActive = LocalSplashActive.current
     var prompt by remember { mutableStateOf(AdConsentStore.needsPrompt(context)) }
-    if (!prompt) return
+    if (!prompt || splashActive) return
     val fallback = stringResource(R.string.ad_consent_body)
     AdConsentDialog(
         body = text.ifBlank { fallback },

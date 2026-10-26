@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -71,36 +72,44 @@ internal fun AdHost(
         listOf(AdSlot.REWARD, AdSlot.PAUSE).forEach(runtime.gateway::preload)
     }
 
+    // 开屏是否还盖着：隐私弹窗要等它退场再弹，否则 Dialog 是独立 window，
+    // 会直接压在开屏图上，用户先看到协议、后看到广告。
+    var splashDone by rememberSaveable { mutableStateOf(false) }
+    val splashActive = !splashDone && ads.splash.drawable
+
     CompositionLocalProvider(
         LocalAdPlacements provides ads,
         LocalAdClick provides openLanding,
         LocalRewardAd provides startReward,
+        LocalSplashActive provides splashActive,
     ) {
         // 全屏层必须在 Provider 内部：开屏与激励都要用同一个落地页打开方式，
         // 放到外面会读到默认的空实现，点击静默失效。
         Box(modifier = Modifier.fillMaxSize()) {
             content()
-            SplashGate(ads = ads)
+            SplashGate(ads = ads, shown = splashDone, onShown = { splashDone = true })
             RewardOverlay(host = reward, creative = ads.reward, repository = runtime.unlock)
         }
     }
 }
 
+/** 开屏还盖在界面上时为 true；隐私弹窗读它来推迟展示。 */
+internal val LocalSplashActive = compositionLocalOf { false }
+
 /**
  * 开屏：只在首次组合时出现一次。
  *
- * 用 `rememberSaveable` 记"已展示"：旋转屏幕不该再看一遍广告；进程重启再看一次，
- * 与历史版本 "onCreate 里弹开屏" 的口径一致。
+ * 用 `rememberSaveable` 记"已展示"：旋转屏幕不该再看一遍广告；进程重启再看一次。
+ * 状态提到 [AdHost]，因为隐私弹窗要等它退场。
  */
 @Composable
-private fun SplashGate(ads: AdPlacements) {
-    var shown by rememberSaveable { mutableStateOf(false) }
+private fun SplashGate(ads: AdPlacements, shown: Boolean, onShown: () -> Unit) {
     val creative = ads.splash
     if (shown || !creative.drawable) return
     val openLanding = LocalAdClick.current
     AdSplashOverlay(
         creative = creative,
-        onClose = { shown = true },
+        onClose = onShown,
         onClick = { if (creative.clickUrl.isNotBlank()) openLanding(creative.clickUrl) },
     )
 }
