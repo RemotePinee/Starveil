@@ -90,7 +90,7 @@ cd starveil-android
 - **站点地址靠 `local.properties` 的 `starveil.apiHost` 注入**（`app/build.gradle.kts` 的 `resValue`）。没配这个键时用占位地址 `https://api.example.com`，构建能过但连不上任何后端——**第一次构建前先填自己的域名**。
 - **`apikey` 未在服务端校验**，见上文特殊性第 2 条。
 - **支付只实测了易支付（Epay）**，微信/支付宝原生参数未接。
-- **只在 PHP 8.1 + MySQL 8.0 下跑过**，MySQL 5.7 未实测；也没有压测与并发下单测试。
+- **数据库只在 MySQL 5.7.40 上跑过**，8.0 未测；也没有压测与并发下单测试。
 - **短剧广告 SSV 接口已就绪，但客户端 `AdGateway` 仍是 Noop**，需要你接入真实广告平台后才能真正解锁。
 
 ## 文档

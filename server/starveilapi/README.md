@@ -258,7 +258,7 @@ sign = md5(trans_id + '|' + vod_id + '|' + episode_number + '|' + timestamp + '|
 
 | 脚本 | 前置条件 |
 |---|---|
-| `tests/smoke.sh` | macCMS V10 + MySQL 8.0 + 插件 Installer 已跑完 + 导入 `seed_demo.sql` |
+| `tests/smoke.sh` | macCMS V10 + MySQL 5.7.40 + 插件 Installer 已跑完 + 导入 `seed_demo.sql` |
 | `tests/admin.sh` | 同上，且后台可通过 HTTP 访问 |
 | `tests/notify.sh` | 同上，且支付通道已配好 |
 
@@ -375,7 +375,7 @@ SET @p = 'mac_';  -- 换成真实前缀
 
 - 后台「应用市场 → 启用」这条 UI 路径没点过（直接调用了 `Installer::install()`）；`Service::install` 的复制/回滚逻辑仅按源码核对。
 - 支付只实测了 Epay；微信/支付宝原生参数未接。
-- 只跑了 PHP 8.1 + MySQL 8.0；MySQL 5.7 未实测。
+- 数据库只在 MySQL 5.7.40 上跑过，8.0 未测。
 - 未压测、未做并发下单/重复回调竞争测试。
 
 

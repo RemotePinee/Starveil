@@ -106,9 +106,11 @@ private fun MemberCardTexts(
             overflow = TextOverflow.Ellipsis,
         )
         // 权益文案并进左列：原来它单独占卡片底部一行，
-        // 右上的按钮只对前两行居中，相对整张卡就偏上了
+        // 右上的按钮只对前两行居中，相对整张卡就偏上了。
+        // 会员关闭时也照常显示权益列表：已开通的人这些权益还在，没开通的人
+        // 需要知道买的是什么。「开通已关闭」那句已经由副标题说了，这里再说一遍就是重复。
         Text(
-            text = if (enabled) BENEFIT_SUMMARY else CLOSED_BENEFIT,
+            text = BENEFIT_SUMMARY,
             style = MaterialTheme.typography.labelSmall,
             color = starveilExtraColors.textFaint,
             maxLines = 1,
@@ -153,7 +155,6 @@ private const val MEMBER_TITLE = "Starveil 会员"
 private const val BENEFIT_SUMMARY = "会员专区免费看 · 高清无广告 · 新片抢先看"
 /** 会员卡按钮上抛的入口文案；`:app` 用它路由到会员页，会员关闭时不会再触发。 */
 const val MEMBER_ENTRY_LABEL = "开通会员"
-private const val CLOSED_BENEFIT = "会员开通已关闭，已开通的权益保留至到期"
 private const val CLOSED_HINT = "会员开通暂未开放，已开通的权益保留至到期"
 private const val ACTION_SUBSCRIBE = "开通"
 private const val ACTION_RENEW = "续费"
