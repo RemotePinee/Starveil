@@ -23,14 +23,14 @@
 - 全站 HTTPS。Release 构建**禁止明文流量**：
   `android:usesCleartextTraffic="false"`，`network_security_config` 不得写
   `cleartextTrafficPermitted="true"`。
-- 后端当前只有 HTTP（引导配置走明文下发，没有签名）。
-  **这是阻塞项**：上 HTTPS 需要先在服务端部署证书。在服务端就绪前，
-  允许在 `debug` 构建的 `network_security_config` 里按域名白名单放行，
-  Release 构建必须阻断。
+- 部署方必须自备证书并全站 HTTPS。`local.properties` 里的 `starveil.apiHost`
+  只能写 `https://`：HTTP 地址会被系统直接拒绝（`cleartextTrafficPermitted="false"`），
+  站点侧也应把 80 端口 301 到 443。
+  debug 变体保留信任用户 CA，便于本地抓包；Release 不放行。
 - 引导域名（bootstrap）：
   - 必须 HTTPS。
   - 响应必须带签名（Ed25519 或 RSA-PSS），客户端内只存**公钥**。
-    旧方案用 RC4 对称加密，密钥在 APK 里，等于没有保护。
+    用 RC4 对称加密、密钥放在 APK 里，等于没有保护。
   - 下发内容至少包含：`apiurl`、`keyVersion`、`expiresAt`、`signature`。
   - 校验失败 → 使用编译期内置的默认域名并上报，不静默接受。
 - 证书异常（`onReceivedSslError`、`TrustManager`）**一律不得 proceed**。

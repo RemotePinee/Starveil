@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/hero.png" alt="Starveil">
+  <img src="docs/images/hero.webp" alt="Starveil">
 </p>
 
 <h1><b>星幕 Starveil</b></h1>
@@ -88,7 +88,6 @@ cd starveil-android
 这些是真实的未完成项，不要以为克隆下来就能上线：
 
 - **站点地址靠 `local.properties` 的 `starveil.apiHost` 注入**（`app/build.gradle.kts` 的 `resValue`）。没配这个键时用占位地址 `https://api.example.com`，构建能过但连不上任何后端——**第一次构建前先填自己的域名**。
-- **后端只支持 HTTP，全站 HTTPS 尚未就绪**（`docs/security.md` §1）。Release 构建强制阻断明文流量，所以在站点上 HTTPS 之前 Release 包连不上自己的后端。
 - **`apikey` 未在服务端校验**，见上文特殊性第 2 条。
 - **支付只实测了易支付（Epay）**，微信/支付宝原生参数未接。
 - **只在 PHP 8.1 + MySQL 8.0 下跑过**，MySQL 5.7 未实测；也没有压测与并发下单测试。
