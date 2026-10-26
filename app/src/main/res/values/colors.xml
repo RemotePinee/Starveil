@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      冷启动窗口底色（浅色 = Palette.Paper50，深色那份在 values-night/colors.xml）。
+
+      AGENTS.md 第 3 节只允许 colors.xml 保留"启动主题必需项"，下面两条都是：
+      系统在 Compose 首帧之前会先画启动画面/launcher 图标底，颜色只能来自静态资源。
+      真正的皮肤色在 SplashAdActivity.onCreate 里按上次的 skinCode + 明暗再覆盖一次。
+    -->
+    <color name="splash_background">#FFFFFF</color>
+    <!-- launcher 自适应图标底层色（ic_launcher_background.xml 引用），只在这一处定义。 -->
+    <color name="ic_launcher_background">#101236</color>
+</resources>

@@ -1,0 +1,11 @@
+{
+  "code": 200,
+  "msg": "兑换成功",
+  "data": {
+    "msg": "兑换成功",
+    "card_type": "vip",
+    "card_value": 30,
+    "group_id": 3,
+    "membership_end": 1799999999
+  }
+}

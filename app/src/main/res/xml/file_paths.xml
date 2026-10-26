@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 分享海报用：只把 cache/share 授权出去，其余私有目录不暴露 -->
+<paths>
+    <cache-path
+        name="share"
+        path="share/" />
+</paths>

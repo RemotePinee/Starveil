@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 权限白名单见 docs/security.md 第 6 节，超出范围会被 verifySecurityBaseline 拦截 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 聚合广告 SDK 用它判断网络类型与信号强度，决定请求超时与出价分级；
+         TopOn core-taku 的 manifest 也会合并同一项，这里显式声明是为了让
+         "我们申请了什么"和闸门白名单一一对应。 -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- 后台播放的通知与前台服务权限暂不声明：全仓没有 Service 子类、
+         NotificationChannel 与 startForeground，播放只在前台，声明了也是空壳。
+         真做后台播放时，连同 docs/security.md 第 6 节的白名单一起加回来。 -->
+    <!-- Google 广告 ID：境外广告源必需，缺了会直接关掉个性化出价。
+         它与 android.permission.* 不同命名空间，verifySecurityBaseline 的正则
+         匹配不到（见 docs/security.md 第 6 节），因此不进白名单。 -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
+
+    <application
+        android:name=".StarveilApplication"
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Starveil"
+        android:networkSecurityConfig="@xml/network_security_config"
+        tools:replace="android:networkSecurityConfig">
+
+        <!-- 冷启动入口。开屏由聚合 SDK 往这个 Activity 的容器里塞自己的 View，
+             展示结束会 removeAllViews()；单独一个空壳 Activity 才能承受这次清场
+             （接管 MainActivity 的 contentView 会把 Compose 根节点一起清掉）。 -->
+        <activity
+            android:name=".ads.SplashAdActivity"
+            android:exported="true"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.Starveil.Splash">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 主界面只由 SplashAdActivity 在应用内拉起，不再对外导出。 -->
+        <activity
+            android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!-- 分享海报：只暴露 cache/share 目录，不给整个应用私有目录授权 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+</manifest>

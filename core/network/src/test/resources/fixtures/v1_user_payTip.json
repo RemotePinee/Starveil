@@ -1,0 +1,7 @@
+{
+  "code": 200,
+  "msg": "充值后自动到账，请勿重复支付",
+  "data": {
+    "url": "https://example.com/user/recharge"
+  }
+}

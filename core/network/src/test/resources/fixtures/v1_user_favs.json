@@ -1,0 +1,44 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "total": 2,
+    "page": 1,
+    "limit": 10,
+    "list": [
+      {
+        "ulog_id": 27,
+        "user_id": 2,
+        "ulog_mid": 1,
+        "ulog_type": 2,
+        "ulog_rid": 101,
+        "ulog_sid": 0,
+        "ulog_nid": 0,
+        "ulog_points": 0,
+        "ulog_time": 1560877169,
+        "user_name": "demo",
+        "data": {
+          "id": 101,
+          "name": "示例影片 A",
+          "vod_content": "简介文本",
+          "pic": "https://img.example.com/a.jpg",
+          "pic_thumb": "https://img.example.com/a_thumb.jpg",
+          "link": "/index.php/vod/detail/id/101.html",
+          "type": {
+            "type_id": 3,
+            "type_name": "综艺",
+            "link": "/index.php/vod/type/id/3.html"
+          }
+        }
+      },
+      {
+        "ulog_id": 28,
+        "ulog_mid": 1,
+        "ulog_type": 2,
+        "ulog_rid": 102,
+        "ulog_time": 1560878000,
+        "unknown_field_from_newer_backend": "ignored"
+      }
+    ]
+  }
+}

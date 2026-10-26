@@ -1,0 +1,16 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "order_id": 12,
+    "user_id": 64,
+    "order_status": 1,
+    "order_code": "PAY20191120011606512230",
+    "order_price": "30.00",
+    "order_time": 1574183766,
+    "order_points": 300,
+    "order_pay_type": "alipay",
+    "order_pay_time": 1574183899,
+    "order_remarks": ""
+  }
+}

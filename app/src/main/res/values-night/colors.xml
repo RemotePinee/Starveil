@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      深色（系统夜间模式）：启动窗口底色 = Palette.Ink950。
+
+      与 values/colors.xml 同名覆盖，Android 按系统 uiMode 自动选择；
+      用户在设置里强制浅/深时，Compose 首帧之后由 SplashAdActivity 再覆盖一次窗口底色。
+    -->
+    <color name="splash_background">#0B0C0F</color>
+</resources>

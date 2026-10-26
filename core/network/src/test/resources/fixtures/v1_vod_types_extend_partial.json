@@ -1,0 +1,27 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "list": [
+      {
+        "type_id": 3,
+        "type_name": "动漫",
+        "type_pid": 0
+      },
+      {
+        "type_id": 4,
+        "type_name": "综艺",
+        "type_pid": 0,
+        "extend": {
+          "area": ["大陆", "", " 大陆 "]
+        }
+      },
+      {
+        "type_id": 5,
+        "type_name": "纪录片",
+        "type_pid": 0,
+        "extend": null
+      }
+    ]
+  }
+}

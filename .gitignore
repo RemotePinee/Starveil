@@ -1,0 +1,39 @@
+# ---- Gradle / Android ----
+.gradle/
+build/
+**/build/
+.kotlin/
+local.properties
+captures/
+*.apk
+*.aab
+*.ap_
+*.dex
+*.jks
+*.keystore
+
+# ---- IDE ----
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# ---- 系统 ----
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 日志与临时产物 ----
+*.log
+*.hprof
+
+# ---- 本地抓包/调试样本（不入库）----
+d.json
+j.json
+shot.png
+
+# ---- 插件打包产物 ----
+server/*.zip
+
+# 架构决策记录只留本地，不随仓库发布
+docs/architecture.md

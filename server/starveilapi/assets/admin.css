@@ -1,0 +1,263 @@
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html{overflow-y:auto;scrollbar-gutter:stable}
+body{margin:0;background:#f6f7f9;color:#1f2329;
+ font:13px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}
+.sv-shell{max-width:1120px;margin:0 auto;padding:0 20px 56px}
+.sv-header{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;
+ flex-wrap:wrap;padding:22px 4px 16px}
+.sv-brand{font-size:18px;font-weight:600;letter-spacing:-.2px;display:flex;align-items:center;gap:8px}
+.sv-version{font-size:11px;font-weight:500;color:#18a058;background:#e8f5ee;
+ border-radius:10px;padding:1px 8px}
+.sv-tabs{display:flex;gap:2px;background:#fff;border:1px solid #e5e6eb;border-radius:10px;
+ padding:3px 6px 0;flex-wrap:wrap}
+.sv-tabs[data-has-sub="1"]{border-radius:10px 10px 0 0;border-bottom-color:#e5e6eb}
+.sv-tabs a{position:relative;text-decoration:none;color:#4e5969;padding:10px 15px 11px;
+ font-size:13px;border-bottom:2px solid transparent;transition:.15s;white-space:nowrap;
+ cursor:pointer;outline-offset:-2px}
+.sv-tabs a:focus-visible,.sv-sub-list a:focus-visible{outline:2px solid #18a058;
+ outline-offset:-2px;border-radius:6px}
+.sv-tabs a:hover{color:#1f2329}
+.sv-tabs a.is-active{color:#18a058;font-weight:600;border-bottom-color:#18a058}
+.sv-sub{background:#fff;border:1px solid #e5e6eb;border-top:0;border-radius:0 0 10px 10px;
+ padding:10px 12px}
+.sv-sub-list{display:flex;gap:4px;flex-wrap:wrap}
+.sv-sub-list a{text-decoration:none;color:#4e5969;padding:5px 12px;border-radius:7px;
+ font-size:12.5px;transition:.15s;white-space:nowrap;cursor:pointer}
+.sv-sub-list a:hover{background:#f2f3f5;color:#1f2329}
+.sv-sub-list a.is-active{background:#e8f5ee;color:#18a058;font-weight:600}
+.sv-content{min-height:320px;margin-top:18px}
+.sv-card{--sv-pad-x:22px;--sv-pad-y:20px;background:#fff;border:1px solid #e5e6eb;
+ border-radius:10px;padding:var(--sv-pad-y) var(--sv-pad-x);margin-bottom:18px}
+.sv-card>:first-child{margin-top:0}
+.sv-section-title{font-size:13px;font-weight:600;color:#1f2329;margin:0 0 14px;
+ padding-left:9px;border-left:3px solid #18a058;line-height:1.2}
+.sv-desc{font-size:12px;color:#86909c;margin:-2px 0 16px;line-height:1.6}
+/* 说明文字并进按钮行时必须去掉段落间距：.sv-desc 默认有 -2px/16px 的上下 margin，
+   直接塞进 flex 行会让文字比按钮低一截，看起来像没对齐。 */
+.sv-actions .sv-desc,.sv-inline .sv-desc{margin:0}
+/* 长说明折叠：广告组的设计理由有几百字，直接铺在页面顶部会把字段推到屏幕外 */
+.sv-more{margin:-2px 0 16px}
+.sv-more summary{cursor:pointer;font-size:12px;color:#18a058;outline:none}
+.sv-more[open] summary{margin-bottom:8px}
+.sv-more .sv-desc{margin:0}
+/* 分组内的广告位标题：做成一条浅底小标题，比裸粗体更容易和字段分开 */
+.sv-divider{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600;
+ color:#1f2329;margin:26px 0 14px;padding:8px 12px;background:#f7f8fa;
+ border-left:3px solid #18a058;border-radius:6px}
+/* 设置页用固定两列：auto-fill 在宽屏会变成 4 列，URL/文案被挤成一条，
+   这是后台"看起来很乱"的主要原因。窄屏回落到单列。 */
+.sv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px 18px}
+.sv-grid-set{grid-template-columns:repeat(2,minmax(0,1fr))}
+@media (max-width:720px){.sv-grid-set{grid-template-columns:minmax(0,1fr)}}
+.sv-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.sv-field>span{font-size:12px;color:#6b7280}
+.sv-field small{font-size:11px;color:#a0a6b0;line-height:1.5}
+.sv-field input,.sv-field textarea{width:100%;border:1px solid #d9dce1;
+ border-radius:7px;padding:7px 10px;font-size:13px;background:#fff;color:#1f2329;outline:none}
+.sv-field input:focus,.sv-field textarea:focus{border-color:#18a058;
+ box-shadow:0 0 0 3px rgba(24,160,88,.12)}
+.sv-field textarea{min-height:88px;resize:vertical;font-family:ui-monospace,Consolas,monospace}
+/* 表单外的裸输入框（批量工具栏那种）：和 .sv-field input 走同一套描边与聚焦色，
+   否则它在按钮行里就是一个没样式的原生框 */
+.sv-input{border:1px solid #d9dce1;border-radius:7px;padding:7px 10px;font-size:13px;
+ background:#fff;color:#1f2329;outline:none;width:auto}
+.sv-input:focus{border-color:#18a058;box-shadow:0 0 0 3px rgba(24,160,88,.12)}
+.sv-full{grid-column:1/-1}
+.sv-img-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.sv-img-row input:not([type=file]){flex:1 1 280px}
+.sv-img-row input[type=file]{flex:0 0 auto;max-width:240px;padding:5px 8px;
+ font-size:12px;background:#f7f8fa}
+.sv-thumb{flex:0 0 auto;width:88px;height:56px;object-fit:cover;border-radius:6px;
+ border:1px solid #e5e7eb}
+.sv-dep.sv-off{opacity:.42}
+.sv-dep.sv-off input,.sv-dep.sv-off select,.sv-dep.sv-off textarea{
+ background:#f5f6f8;cursor:not-allowed}
+.sv-actions{display:flex;gap:10px;align-items:center;margin-top:18px;flex-wrap:wrap}
+.sv-btn{border:0;border-radius:7px;padding:8px 16px;font-size:13px;cursor:pointer;
+ background:#18a058;color:#fff;font-weight:500;text-decoration:none;display:inline-block}
+.sv-btn:hover{background:#12924e}
+/* 次要按钮：底栏的「新增按钮」用描边样式，避免和「保存」抢视觉重心 */
+.sv-btn-ghost{background:#fff;color:#18a058;border:1px dashed #18a058}
+.sv-btn-ghost:hover{background:#f2fbf6}
+.sv-icon-btn.sv-del{color:#d93026}
+.sv-btn.ghost{background:#fff;color:#1f2329;border:1px solid #d9dce1}
+.sv-btn.ghost:hover{background:#f7f8fa}
+.sv-btn.danger{background:#fff;color:#d4380d;border:1px solid #ffd8c2}
+.sv-btn.danger:hover{background:#fff3ec}
+.sv-btn.sm{padding:4px 10px;font-size:12px}
+.sv-table{width:100%;border-collapse:collapse}
+.sv-table th{font-size:12px;font-weight:500;color:#86909c;text-align:left;
+ padding:10px 12px;background:#fafbfc;border-bottom:1px solid #eef0f3;white-space:nowrap}
+.sv-table td{padding:11px 12px;border-bottom:1px solid #f2f3f5;font-size:13px;vertical-align:middle}
+.sv-table tr:hover td{background:#fafbfc}
+.sv-table tr:last-child td{border-bottom:0}
+.sv-table td:last-child,.sv-table th:last-child{text-align:right}
+/* 固定布局表格：列宽由表头决定，超长内容单行省略。
+   直播列表里的地址是完整 URL，长度不可控，不固定布局会整张表撑出横向滚动条，
+   把排序/状态/操作列推出视野。 */
+.sv-table-fixed{table-layout:fixed}
+.sv-table-fixed td{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sv-table-fixed td .sv-code{display:inline-block;max-width:100%;overflow:hidden;
+ text-overflow:ellipsis;white-space:nowrap;vertical-align:middle}
+/* 卡片里的表格撑满卡片：表头横贯整条，首末列仍与卡片内边距对齐 */
+.sv-card>.sv-table{margin:0 calc(-1 * var(--sv-pad-x));width:calc(100% + 2 * var(--sv-pad-x))}
+.sv-card>.sv-table th:first-child,.sv-card>.sv-table td:first-child{padding-left:var(--sv-pad-x)}
+.sv-card>.sv-table th:last-child,.sv-card>.sv-table td:last-child{padding-right:var(--sv-pad-x)}
+/* 去掉卡片 overflow 后，表头自己的圆角要补上，免得方角盖住卡片圆角 */
+.sv-card>.sv-table:first-child th:first-child{border-top-left-radius:9px}
+.sv-card>.sv-table:first-child th:last-child{border-top-right-radius:9px}
+.sv-table td.sv-empty{text-align:center}
+.sv-thumb{width:38px;height:38px;object-fit:cover;border-radius:6px;border:1px solid #e5e6eb;margin-top:6px;display:block}
+.sv-badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:10px;
+ background:#f2f3f5;color:#4e5969}
+.sv-badge.ok{background:#e8f5ee;color:#18a058}
+.sv-badge.warn{background:#fff7e8;color:#d46b08}
+.sv-badge.off{background:#f2f3f5;color:#86909c}
+.sv-metrics{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px;
+ margin-bottom:18px}
+.sv-metric{background:#fff;border:1px solid #e5e6eb;border-radius:10px;padding:16px 18px}
+.sv-metric b{display:block;font-size:24px;line-height:1.3;color:#1f2329;margin-top:4px}
+.sv-metric span{font-size:12px;color:#86909c}
+.sv-empty{padding:28px;text-align:center;color:#a0a6b0;font-size:13px}
+.sv-hint{font-size:12px;color:#86909c;margin:14px 0 0}
+.sv-code{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:#f7f8fa;
+ border:1px solid #eef0f3;border-radius:6px;padding:2px 6px}
+.sv-inline{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+/* 设置页：一组一页的标签条 + 页容器 */
+.sv-ptabs{display:flex;gap:6px;flex-wrap:wrap}
+.sv-ptabs button{border:1px solid #e5e6eb;background:#fff;color:#4e5969;border-radius:8px;
+ padding:6px 14px;font-size:12.5px;cursor:pointer;font-family:inherit;transition:.15s}
+.sv-ptabs button:hover{background:#f7f8fa;color:#1f2329}
+.sv-ptabs button.is-active{background:#18a058;border-color:#18a058;color:#fff;font-weight:500}
+.sv-ptabs button.is-active:hover{background:#12924e;color:#fff}
+.sv-search{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 14px}
+.sv-input{border:1px solid #d9dce1;border-radius:7px;padding:7px 10px;font-size:13px;
+ width:240px;max-width:100%;outline:none;background:#fff;color:#1f2329}
+.sv-input:focus{border-color:#18a058;box-shadow:0 0 0 3px rgba(24,160,88,.12)}
+
+/* 自定义下拉：原生 select 只当数据源，可见的是按钮 + 列表 */
+.sv-select{position:relative;min-width:0}
+.sv-select-native{display:none!important}
+.sv-select-btn{width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;
+ border:1px solid #d9dce1;border-radius:7px;background:#fff;padding:7px 10px;font-size:13px;
+ color:#1f2329;cursor:pointer;font-family:inherit;text-align:left;line-height:1.2}
+.sv-select-btn:hover{border-color:#c9cdd4}
+.sv-select-btn:disabled{color:#a0a6b0;background:#f7f8fa;cursor:not-allowed}
+.sv-select-btn[aria-expanded="true"]{border-color:#18a058;box-shadow:0 0 0 3px rgba(24,160,88,.12)}
+.sv-select-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sv-select-caret{flex:none;width:0;height:0;border-left:4px solid transparent;
+ border-right:4px solid transparent;border-top:5px solid #86909c;transition:transform .15s}
+.sv-select-btn[aria-expanded="true"] .sv-select-caret{transform:rotate(180deg)}
+.sv-select-menu{position:absolute;z-index:30;left:0;right:0;top:calc(100% + 5px);background:#fff;
+ border:1px solid #e5e6eb;border-radius:9px;box-shadow:0 10px 28px rgba(31,35,41,.14);
+ padding:4px;max-height:240px;overflow:auto}
+.sv-select-opt{display:block;width:100%;text-align:left;border:0;background:none;
+ padding:7px 10px;border-radius:6px;font-size:13px;color:#4e5969;cursor:pointer;
+ font-family:inherit;line-height:1.2}
+.sv-select-opt:hover{background:#f2f3f5;color:#1f2329}
+.sv-select-opt.is-selected{background:#e8f5ee;color:#18a058;font-weight:600}
+.sv-toast{position:fixed;left:50%;bottom:32px;transform:translate(-50%,16px);
+ background:#1f2329;color:#fff;padding:9px 18px;border-radius:8px;font-size:13px;
+ opacity:0;pointer-events:none;transition:.2s;z-index:99}
+.sv-toast.show{opacity:1;transform:translate(-50%,0)}
+.sv-toast.err{background:#d4380d}
+.sv-progress{position:fixed;top:0;left:0;height:2px;width:0;background:#18a058;
+ transition:width .2s;z-index:100}
+.sv-progress.on{width:70%}
+.sv-progress.done{width:100%;opacity:0;transition:width .2s,opacity .3s .1s}
+/* 行编辑器：首页模块顺序 / 底部菜单，替代原来的 JSON 文本框 */
+.sv-rows{border:1px solid #eef0f3;border-radius:9px}
+.sv-rows>.sv-rrow:first-child{border-radius:9px 9px 0 0}
+.sv-rows>.sv-rrow:last-child{border-radius:0 0 9px 9px}
+.sv-rrow{display:grid;gap:10px;align-items:center;padding:9px 12px;
+ border-bottom:1px solid #f2f3f5;background:#fff;position:relative}
+.sv-rrow:last-child{border-bottom:0}
+/* 会员关闭时整行锁定：灰掉 + 不可点，比只禁用一个勾选框更容易看懂 */
+.sv-rrow.is-locked{opacity:.55;background:#fafbfc}
+.sv-rrow.is-locked input,.sv-rrow.is-locked select{background:#f4f5f7;cursor:not-allowed}
+.sv-rrow:hover{background:#fafbfc}
+.sv-rrow-tabs{grid-template-columns:minmax(120px,1.5fr) minmax(96px,1fr) minmax(110px,1fr) 104px 66px}
+/* 「显示」列里的补充说明另起一行：和勾选框挤一行会把列撑破，文字压到「顺序」上 */
+.sv-rrow-tabs .sv-check{white-space:normal;line-height:1.45}
+.sv-rrow-tabs .sv-check .sv-note{display:block;font-size:11px;color:#86909c;margin-top:2px}
+.sv-rrow-csv{grid-template-columns:minmax(140px,1fr) minmax(90px,.6fr) 66px}
+.sv-rrow-tabs.sv-rrow-head{background:#fafbfc;font-size:11px;color:#86909c;padding:7px 12px}
+.sv-rrow-tabs.sv-rrow-head span{padding:0 2px}
+.sv-rrow input[type=text]{border:1px solid #d9dce1;border-radius:7px;
+ padding:6px 9px;font-size:13px;background:#fff;color:#1f2329;outline:none;width:100%;min-width:0}
+.sv-rrow input[type=text]:focus{border-color:#18a058;box-shadow:0 0 0 3px rgba(24,160,88,.12)}
+.sv-rrow .sv-select-btn{padding:6px 9px}
+/* 下拉展开时把整行提到上层，否则会被下一行的白底盖住 */
+.sv-rrow:focus-within{z-index:5}
+/* 「底部五个按钮」示意图：让运营一眼看出第 2 个是哪一个 */
+.sv-tabmap{display:flex;gap:8px;flex-wrap:wrap;margin:2px 0 14px}
+.sv-tabmap span{padding:6px 16px;border:1px solid #e5e6eb;border-radius:8px;
+ font-size:12px;color:#86909c;background:#fff;white-space:nowrap}
+.sv-tabmap span.is-target{border-color:#18a058;background:#e8f5ee;color:#18a058;font-weight:600}
+.sv-tabmap-i{font-size:11px;color:#a0a6b0;margin:0 0 6px}
+.sv-na{display:flex;align-items:center;height:31px;color:#c9cdd4;font-size:13px;padding-left:2px}
+.sv-check{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#4e5969;
+ white-space:nowrap;cursor:pointer}
+.sv-check input{width:15px;height:15px;accent-color:#18a058;margin:0;cursor:pointer}
+.sv-move{display:flex;gap:4px;justify-content:flex-end}
+.sv-icon-btn{width:26px;height:26px;padding:0;line-height:1;border:1px solid #d9dce1;
+ background:#fff;color:#4e5969;border-radius:7px;cursor:pointer;font-size:13px}
+.sv-icon-btn:hover{background:#f2f3f5;color:#1f2329}
+@media (max-width:720px){
+ .sv-shell{padding:0 12px 40px}
+ .sv-tabs a{padding:9px 11px 10px;font-size:12.5px}
+ .sv-rrow-tabs,.sv-rrow-csv{grid-template-columns:1fr auto}
+ .sv-rrow-head{display:none}
+ .sv-card{--sv-pad-x:14px;--sv-pad-y:14px}
+}
+
+/* ---- 页面级零碎样式：从内联 style 搬过来 ----------------------------- */
+/* 提示条配色。四个色值都是搬过来的原值，没做统一：#d33 是「快捷入口」那页的
+   历史色，#d4380d 是功能灰度禁用时的警告色，都与 #d03050 有一点点差别。 */
+.sv-flash-err{color:#d03050}
+.sv-flash-ok{color:#18a058}
+.sv-flash-link{color:#d33}
+.sv-flash-disabled{color:#d4380d}
+/* .sv-hint 自带 14px 上边距，塞进按钮行或表格上方时要收回 */
+.sv-hint.sv-hint-inline{margin:0}
+/* 卡片内的页内标题：默认带 14px 下边距，做行内标题时要收回 */
+.sv-section-title.sv-title-flush{margin:0}
+/* 一行两端对齐（左边标题、右边状态）。flex-wrap 与 .sv-inline 保持一致，
+   窄屏时标题和状态各自换行，继承 .sv-inline 换成 .sv-split 不会改变换行行为。 */
+.sv-split{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+/* 专题简介：标题与操作行之间的一条灰字 */
+.sv-blurb{margin:6px 0 10px}
+/* 「已绑定影片」折叠块：与上方操作行之间一条分割线 */
+.sv-film-box{margin-top:12px;border-top:1px solid #f2f3f5;padding-top:10px}
+.sv-film-box>summary{cursor:pointer;font-size:13px;color:#4e5969;outline:none}
+.sv-film-table{margin-top:8px}
+/* 固定列宽：走 nth-child，页面里不再逐 th 写 style */
+.sv-table-films th:nth-child(3){width:80px}
+.sv-table-films th:nth-child(4){width:230px}
+.sv-table-live th:nth-child(1){width:40px}
+.sv-table-live th:nth-child(2){width:56px}
+.sv-table-live th:nth-child(3){width:18%}
+.sv-table-live th:nth-child(4){width:12%}
+.sv-table-live th:nth-child(6){width:60px}
+.sv-table-live th:nth-child(7){width:80px}
+.sv-table-live th:nth-child(8){width:210px}
+/* 设置页里跨满整行的分割线 */
+.sv-divider-full{grid-column:1/-1}
+/* 图片预览的小尺寸变体（用在同一页的缩略图与外链预览上） */
+.sv-thumb-sm{width:72px;height:44px;object-fit:cover;border-radius:4px}
+.sv-thumb-md{max-width:240px;border-radius:6px}
+/* 直播分组：输入条与分组徽标那一排 */
+.sv-group-input{width:200px;padding:6px 9px;border:1px solid #d9dce1;border-radius:7px;font-size:13px}
+.sv-group-chips{margin-top:10px;flex-wrap:wrap;gap:10px}
+.sv-inline-tight{gap:6px}
+/* 批量操作里的分组下拉占位（下拉本身 100% 宽，外面给个固定宽度） */
+.sv-select-cell{width:170px;flex:none}
+/* 用户页行内的加减分输入框：不复用 .sv-input（会带上白底与聚焦环），
+   也不设 font-size——原来这几个框就没设，跟着 UA 默认走 */
+.sv-adjust-input{width:88px;padding:4px 8px;border:1px solid #d9dce1;border-radius:6px}
+.sv-metrics-stacked{margin-top:16px}
+/* 推送页灰置整组 */
+.sv-disabled-group{border:0;margin:0;padding:0;opacity:.45}
+/* 右对齐的操作行（分页条） */
+.sv-actions-end{justify-content:flex-end}

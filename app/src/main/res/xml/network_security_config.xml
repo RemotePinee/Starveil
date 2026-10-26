@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  正式包的网络策略：只信任系统 CA，不放行明文。
+
+  这份文件是**必须存在**的：TradPlus SDK 自带 `@xml/tp_network_security_config`
+  并写进它自己的 manifest，合并时会抢占 application@networkSecurityConfig。
+  在 :app 显式声明 + tools:replace 把它顶回去，否则广告 SDK 的策略（含明文放行项）
+  会变成整个 App 的策略 —— 那正是中间人劫持的典型路径。
+
+  debug 变体有一份同名资源（app/src/debug/res/xml/），带 debug-overrides 信任用户 CA，
+  变体资源覆盖这份，所以本地抓包不受影响。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

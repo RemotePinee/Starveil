@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      launcher Activity 用这个主题：由 core-splashscreen 接管系统启动画面，
+      能在首页准备好之前把它停在原地（见 SplashAdActivity.installSplashScreen）。
+    -->
+    <style name="Theme.Starveil.Splash" parent="Theme.SplashScreen">
+        <!-- 库自己那条属性：API 30 及以下由它决定启动画面底色。 -->
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <!--
+          启动画面收起后到 Compose 首帧之间的兜底：底色 + 底部 lockup。
+          库的 windowSplashScreenBackground 只收颜色，这里用 drawable 让首帧慢时也有品牌图。
+        -->
+        <item name="android:windowBackground">@drawable/splash_window</item>
+        <!--
+          Android 12+ 的系统启动画面只认这条**系统属性**；库的映射不覆盖系统行为，
+          不写它，31+ 上会退回系统默认的浅色底——白屏就是这么回来的。
+        -->
+        <!--
+          系统强制给每个 App 画启动画面，关不掉。但图标可以换成透明的：
+          这样它只剩一层与应用同色的底，"启动画面"就退化成第一帧背景，
+          视觉上就是用户要的"没有启动窗口、直接进应用"。
+          不给这一条时系统会用 launcher 图标（居中的彩色大图），那才是明显的启动画面。
+        -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_blank</item>
+        <!-- 启动画面收起后换回正常主题。 -->
+        <item name="postSplashScreenTheme">@style/Theme.Starveil</item>
+    </style>
+
+    <!--
+      XML 主题只承担窗口背景与状态栏，视觉全部在 Compose 侧（StarveilTheme）。
+      用系统 Material 主题，避免为一个空壳引入 material components 依赖。
+    -->
+    <style name="Theme.Starveil" parent="android:Theme.Material.NoActionBar">
+        <!--
+          窗口背景来自 @drawable/splash_window（底色 + 底部 lockup 的 layer-list）。
+          底色仍是 @color/splash_background：浅色/深色各一份（values 与 values-night），
+          跟着系统走。用户在设置里强制浅/深时，SplashAdActivity 只替换底色层，logo 保留。
+        -->
+        <item name="android:windowBackground">@drawable/splash_window</item>
+        <!-- 浅色底上状态栏图标要用深色 -->
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>

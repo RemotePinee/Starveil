@@ -1,0 +1,4 @@
+-- 演示数据（可选）。结构与数据分离：不装也不影响任何接口。
+-- 旧插件把厂商域名、讯飞 appid、强制更新记录混进结构，这里一条都不带。
+--
+-- INSERT INTO `__PREFIX__cuican_topic` (`name`,`pic`,`blurb`,`status`) VALUES ('示例专题','','',1);

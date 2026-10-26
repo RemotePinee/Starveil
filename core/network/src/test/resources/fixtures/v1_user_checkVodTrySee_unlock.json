@@ -1,0 +1,16 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "code": 1,
+    "msg": "开启试看模式",
+    "trysee": 6,
+    "status": 1,
+    "user_video": 0,
+    "member_enabled": 1,
+    "can_vip": 1,
+    "can_points": 1,
+    "can_ad": 0,
+    "points_price": 30
+  }
+}

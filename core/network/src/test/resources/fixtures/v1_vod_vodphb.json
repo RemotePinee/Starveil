@@ -1,0 +1,23 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "list": [
+      {
+        "vod_id": 201,
+        "vod_name": "榜单影片 A",
+        "vod_pic": "https://img.example.com/201.jpg",
+        "vod_hits": 9000,
+        "vod_score": "9.1"
+      },
+      {
+        "vod_id": 202,
+        "vod_name": "榜单影片 B",
+        "vod_pic": null,
+        "vod_remarks": "更新至 12 集",
+        "vod_tags": "ignored"
+      }
+    ],
+    "total": 2
+  }
+}

@@ -1,0 +1,102 @@
+# detekt 配置 —— 对应 AGENTS.md 第 2 节「文件与函数规模」。
+#
+# 这里只覆盖阈值，其余规则沿用 detekt 默认集（buildUponDefaultConfig = true）。
+# 阈值改动必须同步改 AGENTS.md 与 docs/code-standards.md，否则三处会漂移。
+#
+# 禁止用 @Suppress 绕过：确需例外时写进 config/detekt/baseline.xml 并在 PR 里说明理由。
+
+build:
+  # 任何一条问题即失败，不留 warning 缓冲区
+  maxIssues: 0
+
+config:
+  validation: true
+  warningsAsErrors: false
+
+complexity:
+  active: true
+
+  # 单个函数 40 行
+  LongMethod:
+    active: true
+    threshold: 40
+    ignoreAnnotated:
+      - 'Composable'
+
+  # 单个类 200 行
+  LargeClass:
+    active: true
+    threshold: 200
+
+  # 参数个数 5
+  LongParameterList:
+    active: true
+    functionThreshold: 5
+    constructorThreshold: 5
+    ignoreDefaultParameters: true
+    ignoreDataClasses: true
+    ignoreAnnotatedParameter:
+      - 'Composable'
+
+  # 嵌套深度 3
+  NestedBlockDepth:
+    active: true
+    threshold: 3
+
+  # 圈复杂度 10
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 10
+    ignoreSingleWhenExpression: true
+
+  # 条件表达式里 3 个以上 and/or 就该提成有名字的布尔量
+  ComplexCondition:
+    active: true
+    threshold: 3
+
+  # 一个类里堆几十个函数是"上帝类"信号；组件文件不按类组织，故关闭
+  TooManyFunctions:
+    active: false
+
+naming:
+  active: true
+  FunctionNaming:
+    active: true
+    # Compose 组件必须首字母大写，这是框架约定，不是命名错误
+    ignoreAnnotated:
+      - 'Composable'
+
+style:
+  active: true
+
+  # 数值常量在 core:designsystem 的令牌层统一，业务与测试里出现裸数字
+  # 是正常写法；此处关闭以换取更低的噪音（间距/字号仍由令牌层强制）
+  MagicNumber:
+    active: false
+
+  # TODO/FIXME 禁止进主分支（docs/code-standards.md 第 6 节）
+  ForbiddenComment:
+    active: true
+    comments:
+      - reason: 'TODO / FIXME 不允许进主分支，见 docs/code-standards.md'
+        value: 'TODO:'
+      - reason: 'TODO / FIXME 不允许进主分支，见 docs/code-standards.md'
+        value: 'FIXME:'
+      - reason: '禁止用 STOPSHIP 标记绕过发布检查'
+        value: 'STOPSHIP'
+
+  MaxLineLength:
+    active: true
+    maxLineLength: 120
+    excludeCommentStatements: true
+
+exceptions:
+  active: true
+  TooGenericExceptionCaught:
+    active: true
+    # 仓库层必须把任意异常收敛成 AppError，见 AGENTS.md 第 5 节
+    excludes:
+      - '**/core/data/**'
+
+potential-bugs:
+  active: true

@@ -1,0 +1,9 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "token": "tok-123",
+    "seconds": 15,
+    "video_url": "https://cdn.example.com/reward.mp4"
+  }
+}

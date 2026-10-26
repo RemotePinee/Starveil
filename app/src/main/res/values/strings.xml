@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">星幕</string>
+
+    <!--
+      广告隐私弹窗的默认正文：后台「运营设置 → 广告 → 广告隐私弹窗文案」留空时用它。
+      文案要说清「采集什么、为什么、不同意会怎样」，避免让人以为不同意就不能用。
+    -->
+    <string name="ad_consent_body" translatable="false">免费内容靠广告支撑。同意后我们会初始化广告服务，它会收集设备标识用于投放与效果统计；选择暂不，则只展示不采集设备信息的自投素材，播放与观看不受影响。</string>
+
+</resources>

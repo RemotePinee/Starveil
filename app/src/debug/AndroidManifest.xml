@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  debug 变体不再单独声明 networkSecurityConfig：
+  主清单已经引用 @xml/network_security_config 并 tools:replace 顶掉广告 SDK 的策略，
+  而 app/src/debug/res/xml/network_security_config.xml 会覆盖同名资源，
+  本地联调照样信任用户 CA。
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" />

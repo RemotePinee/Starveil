@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      API 27+ 才有的主题属性。
+
+      `android:windowLightNavigationBar` 是 Android 8.1 引入的，放进 values/ 会被
+      lint 判为 NewApi（minSdk 24）。应用是纯暗色底，这里显式要浅色图标，
+      否则系统浅色模式下导航栏图标会变深、与底色融在一起。
+
+      同名 style 在限定目录里整体替换，所以每一项都要重写。
+    -->
+    <style name="Theme.Starveil" parent="android:Theme.Material.NoActionBar">
+        <!-- 与 values/themes.xml 同款：底色层 + 底部 lockup，不是纯色。 -->
+        <item name="android:windowBackground">@drawable/splash_window</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

@@ -1,0 +1,26 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "list": [
+      {
+        "vod_id": 101,
+        "vod_name": "示例影片 A",
+        "vod_pic": "https://img.example.com/a.jpg",
+        "source_index": 0,
+        "episode_index": 2,
+        "progress_sec": 600,
+        "updated_at": 1760000000,
+        "unknown_field_from_newer_backend": "ignored"
+      },
+      {
+        "vod_id": 102,
+        "vod_name": "示例影片 B",
+        "source_index": 1,
+        "episode_index": 0,
+        "progress_sec": 0,
+        "updated_at": 1759990000
+      }
+    ]
+  }
+}
