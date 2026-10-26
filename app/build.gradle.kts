@@ -68,6 +68,13 @@ android {
                 storePassword = keystorePassword
                 keyAlias = keyAliasValue
                 keyPassword = keyPasswordValue
+                // v2 是 API 24+ 的必选项。v1（JAR）由 AGP 按 minSdk 决定：
+                // 本项目 minSdk 24，因此不签 v1 —— AGP 与 apksigner 都会忽略强制开启，
+                // 真要补 v1 只能对已构建的 APK 用 apksigner --min-sdk-version 23 重签。
+                // v3 提供密钥轮换，Android 9+ 用它校验，显式打开避免只剩 v2。
+                enableV1Signing = false
+                enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
