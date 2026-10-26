@@ -12,6 +12,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.starveil.app.AppContainer
 import com.starveil.app.R
+import com.starveil.core.model.StartupConfig
 
 /**
  * 广告隐私同意入口。
@@ -50,6 +51,29 @@ internal fun AdConsentGate(
             prompt = false
             container.refreshAdGateway()
         },
+    )
+}
+
+/**
+ * 启动配置到位后才组合 [AdConsentGate]。
+ *
+ * 单独一层是为了不在 `StarveilNavHost` 里再加分支——那个 composable
+ * 的圈复杂度已经贴着 detekt 阈值。配置没到时文案与政策地址都是空的，
+ * 弹出来也只剩一个没有出处的协议正文。
+ */
+@Composable
+internal fun AdConsentGateWhenReady(
+    container: AppContainer,
+    context: Context,
+    text: String,
+    startup: StartupConfig?,
+) {
+    if (startup == null) return
+    AdConsentGate(
+        container = container,
+        context = context,
+        text = text,
+        privacyUrl = startup.privacyUrl.orEmpty(),
     )
 }
 
