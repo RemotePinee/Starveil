@@ -1,0 +1,24 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "total": 2,
+    "page": 1,
+    "limit": 10,
+    "list": [
+      {
+        "topic_id": "3",
+        "topic_name": "港片精选",
+        "topic_pic": "https://img.example.com/topic/3.jpg",
+        "topic_blurb": "经典港片合集",
+        "topic_content": "<p>每周更新</p>",
+        "topic_sort": 1
+      },
+      {
+        "topic_name": "无 id 专题",
+        "topic_pic": null,
+        "unknown_field_from_newer_backend": "ignored"
+      }
+    ]
+  }
+}

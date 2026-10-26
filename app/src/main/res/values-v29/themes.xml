@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      API 29+ 才有的主题属性。
+
+      `android:forceDarkAllowed` 是 Android 10 引入的，放进 values/ 会让 lint 报
+      NewApi（minSdk 24）。应用本身是纯暗色一套，没有浅色皮肤，这里是显式关掉
+      系统强制反色——不关的话，某些厂商的浅色模式下控件图标会被二次反色。
+
+      同名 style 在限定目录里整体替换，所以每一项都要重写。
+    -->
+    <style name="Theme.Starveil" parent="android:Theme.Material.NoActionBar">
+        <!-- 与 values/themes.xml 同款：底色层 + 底部 lockup，不是纯色。 -->
+        <item name="android:windowBackground">@drawable/splash_window</item>
+        <item name="android:forceDarkAllowed">false</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

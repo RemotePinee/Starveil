@@ -1,0 +1,25 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "list": [
+      {
+        "type_id": 1,
+        "type_name": "电影",
+        "type_pid": 0,
+        "extend": {
+          "area": ["大陆", "香港"],
+          "year": ["2026", "2025"],
+          "class": ["喜剧", "动作"],
+          "lang": ["国语", "粤语"]
+        }
+      },
+      {
+        "type_id": 2,
+        "type_name": "电视剧",
+        "type_pid": 0,
+        "extend": {}
+      }
+    ]
+  }
+}

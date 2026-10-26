@@ -1,0 +1,44 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "list": {
+      "1": {
+        "group_id": 1,
+        "group_name": "游客",
+        "group_status": 1,
+        "group_type": ",1,6,7,8,9,10,11,12,2,13,14,15,16,3,4,5,17,18,",
+        "group_points_day": 0,
+        "group_points_week": 0,
+        "group_points_month": 0,
+        "group_points_year": 0,
+        "group_points_free": 0
+      },
+      "2": {
+        "group_id": 2,
+        "group_name": "默认会员",
+        "group_status": 1,
+        "group_points_day": 0,
+        "group_points_week": 0,
+        "group_points_month": 0,
+        "group_points_year": 0,
+        "group_points_free": 0
+      },
+      "3": {
+        "group_id": 3,
+        "group_name": "VIP会员",
+        "group_status": 1,
+        "group_type": ",1,6,7,8,9,10,11,12,2,13,14,15,16,3,4,5,17,18,",
+        "group_popedom": {
+          "1": { "1": "1", "2": "2", "3": "3", "4": "4", "5": "5" },
+          "5": { "1": "1", "2": "2" }
+        },
+        "group_points_day": 10,
+        "group_points_week": 70,
+        "group_points_month": 300,
+        "group_points_year": 3600,
+        "group_points_free": 0
+      }
+    }
+  }
+}

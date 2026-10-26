@@ -1,0 +1,24 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "total": 0,
+    "page": 1,
+    "limit": 20,
+    "list": [
+      {
+        "id": 12,
+        "name": "CCTV-1 综合",
+        "img": "https://img.example.com/live/1.jpg",
+        "url": "https://live.example.com/cctv1.m3u8",
+        "sort": 1
+      },
+      {
+        "id": 4294967296,
+        "name": "无地址频道",
+        "img": null,
+        "unknown_field_from_newer_backend": true
+      }
+    ]
+  }
+}

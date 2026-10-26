@@ -1,0 +1,9 @@
+# 复制为 local.properties 后按需修改。该文件不进版本库。
+# 站点地址也可用环境变量 STARVEIL_API_HOST 覆盖，优先级更高。
+
+# Android SDK 路径。用 Android Studio 打开项目时会自动填好。
+sdk.dir=/path/to/Android/Sdk
+
+# 你的后端站点地址，必须 HTTPS（见 docs/security.md 第 1 节）。
+# 不填时用占位地址 https://api.example.com：能编译、能跑测试，但连不上任何后端。
+starveil.apiHost=https://api.example.com

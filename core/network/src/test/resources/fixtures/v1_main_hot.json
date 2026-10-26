@@ -1,0 +1,19 @@
+{
+  "code": 200,
+  "msg": "ok",
+  "data": {
+    "title": "热度榜",
+    "subtitle": "全站热播",
+    "vods": [
+      {
+        "vod_id": 201,
+        "vod_name": "热播影片 A",
+        "vod_remarks": "全40集"
+      },
+      {
+        "vod_id": 202,
+        "vod_name": "热播影片 B"
+      }
+    ]
+  }
+}

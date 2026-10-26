@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Android 12+ 的系统启动画面属性。
+
+      必须放在 values-v31：`android:windowSplashScreenBackground` 与
+      `android:windowSplashScreenAnimatedIcon` 都是 API 31 才有的系统属性，
+      写进 values/ 会让 lint 报 NewApi（minSdk 是 24）。低版本由 core-splashscreen
+      库自己的同名属性兜住（见 values/themes.xml）。
+
+      同名 style 在限定目录里是**整体替换**，所以这里要把每一项都写全。
+    -->
+    <style name="Theme.Starveil.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="android:windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash_blank</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_splash_blank</item>
+        <!--
+          底部品牌图（logo + STARVEIL 字标）。系统把它固定画在启动画面底部居中，
+          尺寸由系统缩放，深浅两套靠 drawable-night-nodpi 自动切换。
+
+          该属性已标记 deprecated，但 Android 16 实测仍然渲染（2026-10-24 抓帧确认）；
+          若将来版本移除，`windowBackground` 里的同款 lockup 会接住，不会裸奔。
+        -->
+        <item name="android:windowSplashScreenBrandingImage">@drawable/ic_splash_lockup</item>
+        <!--
+          上面那条 branding image 被系统移除时的兜底，也是启动画面收起后到首帧之间
+          窗口画的东西：底色 + 同款 lockup 的 layer-list（见 drawable/splash_window.xml）。
+        -->
+        <item name="android:windowBackground">@drawable/splash_window</item>
+        <item name="postSplashScreenTheme">@style/Theme.Starveil</item>
+    </style>
+</resources>

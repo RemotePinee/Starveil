@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      深色（系统夜间模式）。同名 style 在限定目录里是整体替换，所以每一项都要写全。
+      状态栏图标在深底上要用浅色，故 windowLightStatusBar = false。
+    -->
+    <style name="Theme.Starveil" parent="android:Theme.Material.NoActionBar">
+        <!-- 与 values/themes.xml 同款：底色层 + 底部 lockup 的 layer-list，夜间自动取深色那份。 -->
+        <item name="android:windowBackground">@drawable/splash_window</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

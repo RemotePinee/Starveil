@@ -1,0 +1,30 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "topic_name": "港片精选",
+    "topic_pic": "https://img.example.com/topic/3.jpg",
+    "topic_blurb": "经典港片合集",
+    "topic_content": "<p>每周更新</p>",
+    "topic_tag": "港片",
+    "vod_list": [
+      {
+        "vod_id": 101,
+        "vod_name": "示例影片 A",
+        "vod_pic": "https://img.example.com/a.jpg",
+        "vod_remarks": "HD",
+        "vod_year": "1998",
+        "vod_area": "香港",
+        "vod_score": "8.8",
+        "vod_blurb": "剧情简介",
+        "vod_play_list": [],
+        "vod_tags": "ignored"
+      },
+      {
+        "vod_id": 102,
+        "vod_name": "示例影片 B"
+      }
+    ],
+    "page": 1
+  }
+}

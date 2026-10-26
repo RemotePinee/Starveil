@@ -1,0 +1,30 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "total": 3,
+    "page": 1,
+    "limit": 6,
+    "list": [
+      {
+        "vod_id": 201,
+        "vod_name": "同类型影片 A",
+        "vod_pic": "https://img.example.com/r1.jpg",
+        "vod_remarks": "更新至6集",
+        "vod_score": "7.9",
+        "type_id": 3,
+        "vod_play_list": []
+      },
+      {
+        "vod_id": 202,
+        "vod_name": "同类型影片 B",
+        "type_id": 3
+      },
+      {
+        "vod_id": 203,
+        "vod_name": "同类型影片 C",
+        "type_id": 3
+      }
+    ]
+  }
+}

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  仅 debug：信任用户安装的 CA，方便本地联调（正式包不带这个文件）。
+  不含 cleartext 放行，正式环境仍强制 HTTPS。
+-->
+<network-security-config>
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates src="user" />
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>

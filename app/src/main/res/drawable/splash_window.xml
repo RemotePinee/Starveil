@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  窗口背景兜底：启动画面收起后、Compose 首帧之前，窗口画的就是这一层。
+
+  底色引用 @color/splash_background（浅色在 values/colors.xml，深色在
+  values-night/colors.xml），logo 固定贴底、居中、离底 32dp。
+  这样首帧慢的时候用户看到的是品牌图，而不是一块空底色。
+
+  logo 是 drawable*-nodpi 下的位图，按原始像素尺寸绘制：1080px 宽的机型上
+  正好铺满宽度，720px 宽的机型上左右各裁掉一点点透明边，不影响识别。
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <color android:color="@color/splash_background" />
+    </item>
+    <item android:bottom="32dp">
+        <bitmap
+            android:gravity="bottom|center_horizontal"
+            android:src="@drawable/ic_splash_lockup" />
+    </item>
+</layer-list>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  系统启动画面（Android 12+）的占位图标：透明。
+
+  这一层是系统强制绘制的，没有任何属性可以关掉它。图标留空时系统会回落成
+  launcher 图标（居中的大图），所以必须显式给一个透明的：启动画面就只剩背景色
+  与底部的品牌图（见 values-v31/themes.xml 的 windowSplashScreenBrandingImage），
+  视觉上是一个连续的画面，而不是"系统启动屏 → 应用界面"两次切换。
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@android:color/transparent" />
+    <size android:width="1dp" android:height="1dp" />
+</shape>

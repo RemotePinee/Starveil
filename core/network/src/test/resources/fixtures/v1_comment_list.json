@@ -1,0 +1,31 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "total": 42,
+    "page": 1,
+    "limit": 20,
+    "list": [
+      {
+        "comment_id": 901,
+        "content": "第三集反转太狠了",
+        "user_nick_name": "夜航船",
+        "user_portrait": "https://img.example.com/avatar/72.png",
+        "created_at": 1729300000
+      },
+      {
+        "comment_id": 900,
+        "content": "来二刷",
+        "user_nick_name": "游客",
+        "user_portrait": "",
+        "created_at": 1729290000,
+        "status": 1
+      },
+      {
+        "comment_id": 899,
+        "content": "结尾那段配乐值回票价",
+        "created_at": 1729280000
+      }
+    ]
+  }
+}

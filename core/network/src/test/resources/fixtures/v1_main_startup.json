@@ -1,0 +1,70 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "app_theme_ui": "3",
+    "app_banner_style": "5",
+    "app_ui_tab_fun": "1",
+    "app_cc_fd_jc": "1",
+    "ui_home_data": "2",
+    "ui_home_topbg": "1",
+    "app_ui_home_small_icons": "1",
+    "app_home_ads": "1",
+    "vip_close_ad": "0",
+    "app_play_recommend": "1",
+    "app_user_adurl": "",
+    "vip_purchase": "1",
+    "online_recharge": "0",
+    "push_enabled": 1,
+    "shortplay_type_id": 11,
+    "app_login_type": "0",
+    "search_hot": ["示例关键词一", "示例关键词二"],
+    "payments": [
+      { "payment": "alipay", "name": "支付宝", "status": 1 },
+      { "payment": "wechat", "name": "微信支付", "status": 1 }
+    ],
+    "ads": {
+      "ad_platform": "tradplus",
+      "tradplus": {
+        "app_id": "TPX_APP",
+        "splash": "TPX_SPLASH",
+        "reward": "TPX_REWARD",
+        "feed": "TPX_FEED",
+        "pause": "TPX_PAUSE",
+        "banner": "TPX_BANNER"
+      },
+      "application_id": { "id": 1, "typename": "应用", "status": 1, "description": "APP_ID" },
+      "sdk_startup": {
+        "id": 2,
+        "status": 1,
+        "description": "SPLASH_ID",
+        "image": "https://cdn.test/splash.png",
+        "url": "https://test.invalid/click",
+        "title": "开屏直投"
+      },
+      "sdk_banner": { "id": 3, "status": 0, "description": "BANNER_ID" },
+      "sdk_informationflow": {
+        "id": 7,
+        "status": 1,
+        "description": "FEED_ID",
+        "image": "https://cdn.test/feed.png",
+        "interval": 8
+      },
+      "sdk_excitation": {
+        "id": 4,
+        "status": 1,
+        "description": "REWARD_ID",
+        "image": "https://cdn.test/reward.png",
+        "seconds": 5
+      },
+      "player_pause": {
+        "id": 5,
+        "status": 1,
+        "description": "<div>pause ad</div>",
+        "image": "https://cdn.test/pause.png"
+      },
+      "xunfei_appid": { "id": 6, "status": 0, "description": "" }
+    },
+    "unknown_field_added_later": "must be ignored"
+  }
+}

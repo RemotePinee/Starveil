@@ -1,0 +1,33 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "vod_id": 101,
+    "vod_name": "示例影片 A",
+    "vod_pic": "https://img.example.com/a.jpg",
+    "vod_remarks": "全24集",
+    "vod_year": "2024",
+    "vod_area": "中国大陆",
+    "vod_score": "8.6",
+    "vod_blurb": "简介文本",
+    "type_id": 3,
+    "type_name": "科幻片",
+    "vod_play_list": [
+      {
+        "sid": 1,
+        "from": "线路一",
+        "url_count": 2,
+        "urls": [
+          { "nid": 1, "name": "第01集", "url": "https://cdn.example.com/1.m3u8" },
+          { "nid": 2, "name": "第02集", "url": "https://cdn.example.com/2.m3u8" }
+        ],
+        "player_info": {
+          "parse2": "youku,qq",
+          "features": "m3u8,mp4",
+          "issethead": "Referer||User-Agent",
+          "headers": "Referer=>https://example.com/||User-Agent=>Mozilla/5.0"
+        }
+      }
+    ]
+  }
+}

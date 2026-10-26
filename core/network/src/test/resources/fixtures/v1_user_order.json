@@ -1,0 +1,11 @@
+{
+  "code": 200,
+  "msg": "下单成功",
+  "data": {
+    "user_id": 64,
+    "order_code": "PAY20191120011606512230",
+    "order_price": "30",
+    "order_time": 1574183766,
+    "order_points": 300
+  }
+}

@@ -1,0 +1,44 @@
+name: plugin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+  pull_request:
+    paths:
+      - 'server/**'
+
+concurrency:
+  group: plugin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: mbstring, curl, pdo, pdo_mysql, json
+
+      - name: php -l
+        run: |
+          set -e
+          fail=0
+          while IFS= read -r f; do
+            if ! php -l "$f" > /dev/null; then
+              echo "::error file=$f::syntax error"
+              php -l "$f"
+              fail=1
+            fi
+          done < <(find server -name '*.php' -type f)
+          exit $fail
+
+      - name: 入口文件存在性
+        run: test -f server/icciu_api.php
+
+      - name: 插件类名与目录名一致
+        run: test -f server/starveilapi/Starveilapi.php

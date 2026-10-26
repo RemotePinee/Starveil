@@ -1,0 +1,30 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "total": 2,
+    "page": 1,
+    "limit": 20,
+    "list": [
+      {
+        "vod_id": 101,
+        "vod_name": "示例影片 A",
+        "vod_pic": "https://img.example.com/a.jpg",
+        "vod_remarks": "更新至12集",
+        "vod_year": "2024",
+        "vod_area": "中国大陆",
+        "vod_score": "8.6",
+        "vod_blurb": "简介文本",
+        "type_id": 30,
+        "type_name": "短剧",
+        "vod_play_list": []
+      },
+      {
+        "vod_id": 102,
+        "vod_name": "示例影片 B",
+        "vod_score": null,
+        "unknown_field_from_newer_backend": "ignored"
+      }
+    ]
+  }
+}

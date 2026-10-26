@@ -1,0 +1,48 @@
+{
+  "code": 200,
+  "msg": "success",
+  "data": {
+    "zhui": [
+      {
+        "vod_type_id": 1,
+        "vod_type_img": "https://img.example.com/type/1.png",
+        "vod_type_name": "电影",
+        "vod_list": [
+          {
+            "vod_id": 301,
+            "vod_name": "置顶影片",
+            "vod_pic": null
+          }
+        ]
+      }
+    ],
+    "list": [
+      {
+        "vod_type_id": 2,
+        "vod_type_name": "电视剧",
+        "vod_list": [
+          {
+            "vod_id": 302,
+            "vod_name": "热播剧 A",
+            "vod_pic": "https://img.example.com/302.jpg"
+          },
+          {
+            "vod_id": 303,
+            "vod_name": "热播剧 B"
+          }
+        ]
+      },
+      {
+        "vod_type_id": 3,
+        "vod_type_name": "综艺",
+        "vod_list": [],
+        "unknown_key": []
+      },
+      {
+        "vod_type_id": 4,
+        "vod_type_name": "   ",
+        "vod_list": []
+      }
+    ]
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "code": 200,
+  "msg": "ok",
+  "data": {
+    "title": "本周精选",
+    "subtitle": "编辑部手挑",
+    "vods": [
+      {
+        "vod_id": 101,
+        "vod_name": "示例影片 A",
+        "vod_pic": "https://img.example.com/a.jpg",
+        "vod_remarks": "更新至12集",
+        "vod_year": "2024",
+        "vod_area": "中国大陆",
+        "vod_score": "8.6",
+        "vod_blurb": "简介文本",
+        "type_id": 6,
+        "type_name": "动作片"
+      },
+      {
+        "vod_id": 102,
+        "vod_name": "示例影片 B"
+      }
+    ]
+  }
+}
