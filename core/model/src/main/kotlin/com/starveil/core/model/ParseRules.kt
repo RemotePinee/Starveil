@@ -183,4 +183,20 @@ object ParseRules {
         val host = baseUrl.substringAfter("://", baseUrl).trimEnd('/')
         return host + jiexiKey
     }
+
+    /**
+     * 地址是否命中后台配的「直链正则」。
+     *
+     * 命中就该跳过解析站直接播：m3u8 / mp4 这类地址拿去解析只会得到一次失败，
+     * 用户看到的是"全部线路解析失败"，而片子其实一点问题都没有。
+     *
+     * 正则写错时当作不命中——一条烂配置不该让整集播不了。
+     */
+    fun isDirectLink(url: String, patterns: List<String>): Boolean {
+        if (url.isBlank()) return false
+        return patterns.any { pattern ->
+            pattern.isNotBlank() &&
+                runCatching { Regex(pattern).containsMatchIn(url) }.getOrDefault(false)
+        }
+    }
 }

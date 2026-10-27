@@ -82,6 +82,18 @@ object PlaybackMachine {
         )
     }
 
+
+    /**
+     * 直链起播：地址本身就能播（m3u8 / mp4），不经过解析站。
+     *
+     * 复用 [onParsed] 的归一化与请求头逻辑，`targetIndex` 固定 0——直链没有解析线路，
+     * 万一真的拉流失败，[recordFailure] 记的也是这个不存在的下标，
+     * 而 `handlePlaybackError` 里 `failedTargets.size + 1 < parseTargets.size`
+     * 在解析站为空时恒假，会直接落到错误提示，不会卡在重试里。
+     */
+    fun beginDirect(session: PlaybackSession, url: String): PlaybackSession =
+        onParsed(session, 0, PlayStream(url = url))
+
     /** 某条线路探测失败（ 的 `onError` 分支）。 */
     fun recordFailure(session: PlaybackSession, targetIndex: Int): PlaybackSession {
         val failed = session.failedTargets + targetIndex
