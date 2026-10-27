@@ -20,24 +20,23 @@
 
 ## 1. 传输安全
 
-- 全站 HTTPS。Release 构建**禁止明文流量**：
-  `android:usesCleartextTraffic="false"`，`network_security_config` 不得写
-  `cleartextTrafficPermitted="true"`。
-- 部署方必须自备证书并全站 HTTPS。`local.properties` 里的 `starveil.apiHost`
-  只能写 `https://`：HTTP 地址会被系统直接拒绝（`cleartextTrafficPermitted="false"`），
-  站点侧也应把 80 端口 301 到 443。
-  debug 变体保留信任用户 CA，便于本地抓包；Release 不放行。
-- 引导域名（bootstrap）：
-  - 必须 HTTPS。
-  - 响应必须带签名（Ed25519 或 RSA-PSS），客户端内只存**公钥**。
-    用 RC4 对称加密、密钥放在 APK 里，等于没有保护。
-  - 下发内容至少包含：`apiurl`、`keyVersion`、`expiresAt`、`signature`。
-  - 校验失败 → 使用编译期内置的默认域名并上报，不静默接受。
+- 全站 HTTPS。Release 构建**禁止明文流量**：由 `network_security_config` 的
+  `<base-config cleartextTrafficPermitted="false">` 保证，`AndroidManifest.xml`
+  里的 `android:networkSecurityConfig` 指向它，并用 `tools:replace` 顶掉广告 SDK
+  合并进来的同名配置（TradPlus 自带一份含明文放行项的）。
+  部署方必须自备证书并全站 HTTPS；`local.properties` 的 `starveil.apiHost` 只能写
+  `https://`，站点侧也应把 80 端口 301 到 443。
+  debug 变体保留信任用户 CA（`app/src/debug/res/xml/`），便于本地抓包；Release 不放行。
+- 引导域名（bootstrap）与运行时下发 API 地址：**当前未实现**。
+  `starveil.apiHost` 在构建期注入成资源字符串，客户端不向服务端请求域名、
+  也没有签名校验环节。要改后端地址只能重新打包。后续若要做下发，必须带
+  Ed25519 / RSA-PSS 签名且客户端只存公钥，不接受未签名响应——在那之前不要在
+  文档里把它写成已有能力。
 - 证书异常（`onReceivedSslError`、`TrustManager`）**一律不得 proceed**。
   机器校验黑名单：`TrustAllCerts`、`AllowAllHostnameVerifier`、`X509TrustManager` 空实现、
   `MIXED_CONTENT_ALWAYS_ALLOW`。
-- 不做证书固定（pinning）：业务域名由服务端下发且可能变更，pin 会导致不可用。
-  改为对 bootstrap 域名做 pin（可选，第二阶段评估）。
+- 不做证书固定（pinning）：业务域名由配置注入且可能变更，pin 会导致不可用。
+  将来若启用域名下发，可只对下发源做 pin（第二阶段评估）。
 
 ## 2. 凭据与密钥
 
@@ -96,8 +95,7 @@
   `paths` 最小化（只暴露下载子目录）。
 
 ## 6. 权限最小化
-
-首期允许的权限（Manifest 白名单，机器校验）：
+白名单上限（`build.gradle.kts` 的 `allowedPermissions`，机器校验）：
 
 ```
 INTERNET
@@ -106,6 +104,13 @@ ACCESS_WIFI_STATE         (聚合广告 SDK 判定网络类型与信号强度)
 POST_NOTIFICATIONS        (Android 13+，播放通知需要)
 FOREGROUND_SERVICE        (后台播放)
 FOREGROUND_SERVICE_MEDIA_PLAYBACK
+WAKE_LOCK                 (后台播放保持屏幕唤醒)
+```
+
+**这只是上限，不等于当前已声明**。`AndroidManifest.xml` 现在实际只写了四项：
+`INTERNET`、`ACCESS_NETWORK_STATE`、`ACCESS_WIFI_STATE`、`AD_ID`。
+播放通知与前台服务尚未实现，等做的时候再从白名单里取用，不要提前往 manifest 里加。
+
 ```
 
 白名单之外还有一项由 SDK manifest 合并进来、本仓库 manifest 也显式声明的
@@ -123,7 +128,7 @@ FOREGROUND_SERVICE_MEDIA_PLAYBACK
 `ACCESS_FINE/COARSE_LOCATION`、`SYSTEM_ALERT_WINDOW`、`REQUEST_INSTALL_PACKAGES`、
 `RECORD_AUDIO`、`CAMERA`。
 
-广告带来的取舍：TopOn/TradPlus 的部分三方广告源要 `READ_PHONE_STATE`（设备标识）
+广告带来的取舍：TradPlus 接的几个三方广告源要 `READ_PHONE_STATE`（设备标识）
 与 `REQUEST_INSTALL_PACKAGES`（直接拉起安装）才给更高的出价。本仓库一律不申请，
 代价是这些源的填充率与 eCPM 低一档。要放开就必须产品决策，而且三处一起改：
 manifest 声明、`allowedPermissions` 加条目、本节同步；缺一处 `check` 就红。
@@ -144,10 +149,8 @@ manifest 声明、`allowedPermissions` 加条目、本节同步；缺一处 `che
 
 | SDK | 现状 | 要求 |
 |---|---|---|
-| 广告 · TopOn（`com.anythink.sdk:core-taku`） | 国内聚合壳，包名 `com.anythink.*`（海外版已改名 `com.secmtp.*`，别混） | 采集：设备标识（受系统权限约束）、网络状态、WiFi 信息；可延迟初始化——隐私同意后再初始化，不得在 `Application.onCreate` 无条件跑；个性化广告由 SDK 开关控制，provider 封装成设置页开关；SDK 只出现在 `:app` |
-| 广告 · TradPlus（`com.tradplusad:tradplus`） | 第二套聚合壳，与 TopOn 并行走同一层 provider 接口 | 采集：同上（设备标识、网络状态、WiFi 信息）；可延迟初始化，同样等隐私同意；个性化广告开关同上，不接 adapter（三方广告源由运营按渠道单独加）；SDK 只出现在 `:app` |
-| 崩溃/统计 | 曾用友盟 | 可替换，优先自建或选可关闭采集的方案 |
-| 讯飞语音 | 曾集成 `Msc.jar` | 首期不引入 |
+| 广告 · TradPlus（`com.tradplusad:tradplus` 16.9.0.1 + sigmob/mimo/oppo/vivo adapter） | 唯一的聚合壳。依赖只出现在 `:app`，`AdProviders` 里按 `platform.ready` 决定是否启用 | 采集：设备标识（受系统权限约束）、网络状态、WiFi 信息；**可延迟初始化**——`AdConsentStore.isGranted` 为假时完全不 init，不得在 `Application.onCreate` 无条件跑；用户拒绝隐私后降级成直投素材（`LocalAdGateway`），不采集任何信息；SDK 只出现在 `:app` |
+| 崩溃/统计 | 未接入 | 可替换，优先自建或选可关闭采集的方案 |
 
 SDK 初始化必须在用户同意隐私政策之后（`AppContainer` 里做开关），
 不得在 `Application.onCreate` 无条件初始化（常见实现就是无条件）。
