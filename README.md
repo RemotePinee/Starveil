@@ -74,7 +74,7 @@ cd starveil-android
 
 ### 插件
 
-需要 PHP 8.1+、MySQL 5.7+/8.0（utf8mb4）、苹果 CMS V10。
+需要 PHP 8.1+、MySQL 5.7+（utf8mb4，8.0 未实测）、苹果 CMS V10。
 
 1. `server/starveilapi/` 整个放进站点 `addons/starveilapi/`
 2. `server/icciu_api.php` 放到站点根（与 `index.php` 同级）

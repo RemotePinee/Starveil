@@ -306,7 +306,7 @@ curl -s https://站点/icciu_api.php/v1.main/startup | head
 | `Db::quote()` 在 Connection 上，facade 转发可用 | 安装器拼 SQL 安全 | 保持 |
 | `application/common.php` 由 `App::initCommon()` 载入 | 入口必须走 `initCommon()` 才能拿到 `mac_*` 助手函数 | 入口已改为 `base.php + initCommon()` |
 
-**环境下限**：PHP **8.1+**（用了 `readonly` 构造器属性、`match`、`str_starts_with`）、macCMS V10、MySQL 5.7+/8.0（utf8mb4）。PHP 8.0 会在 `readonly` 处解析失败，不要往下兼容。
+**环境下限**：PHP **8.1+**（用了 `readonly` 构造器属性、`match`、`str_starts_with`）、macCMS V10、MySQL **5.7+**（utf8mb4；8.0 未实测）。PHP 8.0 会在 `readonly` 处解析失败，不要往下兼容。
 
 ### 部署注意（否则接口 404）
 
