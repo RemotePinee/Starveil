@@ -114,23 +114,20 @@ class PlayerViewModel(
     /** 开始（或重新开始）一轮起播。 */
     fun start() {
         parseGeneration += 1
-        timeoutJob?.cancel()
-        cancelProbes()
+        timeoutJob?.cancel(); cancelProbes()
         reporter.reset()
         danmuDispatcher.reset()
-        lastSavedSec = 0
-        edit { it.copy(positionMs = 0L, durationMs = 0L, isPlaying = false) }
-        // 直链源（m3u8 / mp4）不需要解析站：后台配了「直链正则」且命中时直接起播。
-        // 不这么做的话，直链也会被送去解析，解析站不认识它，用户看到的是
-        // "全部 N 跳线路解析失败"——而片子本身一点问题没有。
-        val rawUrl = episodeOf(vod, session)?.url.orEmpty()
-        if (ParseRules.isDirectLink(rawUrl, session.playerInfo?.directLinkPatterns.orEmpty())) {
-            session = PlaybackMachine.beginDirect(session, rawUrl)
-            publish()
-            return
+        lastSavedSec = 0; edit { it.copy(positionMs = 0L, durationMs = 0L, isPlaying = false) }
+        // 命中「直链正则」就直接起播，不送解析站（原因见 ParseRules.isDirectLink）
+        val vodUrl = episodeOf(vod, session)?.url.orEmpty()
+        if (ParseRules.isDirectLink(vodUrl, session.playerInfo?.directLinkPatterns.orEmpty())) {
+            session = PlaybackMachine.beginDirect(session, vodUrl)
+            // 必须走 onPlaybackStarted：它才把 isPlaying 置 true 并 publish。
+            // 只 publish 的话 phase 到了 Playing，isPlaying 还是 false，
+            // 播放器拿到的意图是暂停，缓冲完了画面就是不动，得手动点播放。
+            onPlaybackStarted(); return
         }
-        session = PlaybackMachine.beginParse(session)
-        publish()
+        session = PlaybackMachine.beginParse(session); publish()
         val pending = (session.phase as? PlaybackPhase.Parsing)?.pendingTargets.orEmpty()
         pending.forEach(::launchProbe)
         if (pending.isNotEmpty()) launchTimeout()

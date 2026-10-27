@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -181,6 +182,8 @@ fun PlayerScreen(
     // 行数与区域有约束关系，也让本函数的圈复杂度不超 detekt 上限
     val danmuPrefs = rememberDanmuPrefs()
     val chrome = remember { ChromeVisibility() }
+    // 横滑预览位置：不为空时进度条画这个值，松手后清空回到真实播放位置
+    var seekPreview by remember { mutableStateOf<Long?>(null) }
     // 播放中常亮：横屏看片与内嵌小窗都会在系统休眠时限里黑屏。
     // 传 isPlaying 而不是恒为 true：内嵌在详情页时暂停就该让系统正常息屏。
     KeepScreenOnWhilePlaying(enabled = state.isPlaying)
@@ -244,7 +247,7 @@ fun PlayerScreen(
         PlayerGestureLayer(
             state = state,
             enabled = state.phase is PlaybackPhase.Playing && !state.isBlocked,
-            callbacks = gestureCallbacks(actions = actions, chrome = chrome),
+            callbacks = gestureCallbacks(actions = actions, chrome = chrome, onPreview = { seekPreview = it }),
             levels = levels,
             modifier = Modifier.fillMaxSize(),
         )
@@ -266,20 +269,22 @@ fun PlayerScreen(
             StalledHint(onRetry = actions.onRetry, modifier = Modifier.align(Alignment.Center))
         }
         if (!state.isBlocked) {
-            PlayerChromeOverlay(
-                state = state,
-                actions = actions,
-                config = ChromeConfig(
-                    visible = chromeShown,
-                    danmuEnabled = danmuPrefs.enabled,
-                    immersive = immersive,
-                    onInteract = chrome::show,
-                    onToggleDanmu = { danmuPrefs.enabled = !danmuPrefs.enabled },
-                    onOpenSheet = { sheet = it },
-                    // 倍速不再开弹层：点一下切下一档，按钮上直接显示当前档位
-                    onCycleSpeed = { actions.onSpeedSelected(PlayerSpeeds.next(state.speed)) },
-                ),
-            )
+            CompositionLocalProvider(LocalSeekPreview provides seekPreview) {
+                PlayerChromeOverlay(
+                    state = state,
+                    actions = actions,
+                    config = ChromeConfig(
+                        visible = chromeShown,
+                        danmuEnabled = danmuPrefs.enabled,
+                        immersive = immersive,
+                        onInteract = chrome::show,
+                        onToggleDanmu = { danmuPrefs.enabled = !danmuPrefs.enabled },
+                        onOpenSheet = { sheet = it },
+                        // 倍速不再开弹层：点一下切下一档，按钮上直接显示当前档位
+                        onCycleSpeed = { actions.onSpeedSelected(PlayerSpeeds.next(state.speed)) },
+                    ),
+                )
+            }
         }
         // 弹层在这里调用：它要读 immersive 决定弹层窗口要不要隐藏系统栏
         PlayerSheetHost(
@@ -293,8 +298,11 @@ fun PlayerScreen(
     }
 }
 
-/** 手势 → 控制层显隐 / 播放暂停 / 拖动进度。 */
-private fun gestureCallbacks(actions: PlayerActions, chrome: ChromeVisibility): GestureCallbacks =
+private fun gestureCallbacks(
+    actions: PlayerActions,
+    chrome: ChromeVisibility,
+    onPreview: (Long?) -> Unit,
+): GestureCallbacks =
     GestureCallbacks(
         onTap = chrome::toggle,
         onDoubleTap = {
@@ -303,6 +311,7 @@ private fun gestureCallbacks(actions: PlayerActions, chrome: ChromeVisibility): 
         },
         onSeek = actions.onSeekTo,
         onInteraction = chrome::show,
+        onSeekPreview = onPreview,
     )
 
 /**
@@ -392,7 +401,7 @@ private const val FULLSCREEN_SETTLE_GRACE_MS = 600L
  * "点返回先被拉成全屏再跳回竖屏"的抖动。
  */
 @Composable
-private fun rememberSettledFullscreen(fullscreen: Boolean, landscape: Boolean): Boolean {
+public fun rememberSettledFullscreen(fullscreen: Boolean, landscape: Boolean): Boolean {
     var settled by remember { mutableStateOf(fullscreen) }
     LaunchedEffect(fullscreen, landscape) {
         if (fullscreen) {

@@ -222,6 +222,9 @@ final class Startup
             // 上传存的是站内相对路径（upload/...），云存储则是完整 URL：
             // 统一经 Media::url 归一化，客户端只拿到能直接加载的绝对地址。
             'image' => Media::url((string)Setting::get('ad_' . $key . '_image', '')),
+            // 跳转地址：客户端读的就是这个 `url` 字段（见 StartupMapper.slotOf）。
+            // 漏了它，后台配好的落地页在所有广告位上都会失效——点了没反应。
+            'url' => (string)Setting::get('ad_' . $key . '_url', ''),
             'title' => Setting::get('ad_' . $key . '_title', ''),
             'subtitle' => Setting::get('ad_' . $key . '_subtitle', ''),
             // 信息流位才读插播间隔，其它位恒 0

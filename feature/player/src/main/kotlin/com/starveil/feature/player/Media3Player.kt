@@ -1,6 +1,5 @@
 package com.starveil.feature.player
 import android.os.SystemClock
-import android.util.Log
 import java.util.concurrent.TimeUnit
 import okhttp3.ConnectionPool
 import java.io.File
@@ -57,11 +56,13 @@ class Media3Player(context: Context) {
     }
 
     private val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext)
-        // 短剧是"短片段 + 高频切集"：起播门槛压到 1 秒，缓冲上限放到 30 秒，
-        // 这样单集 1-3 分钟的内容能一次缓冲完，滑动时不再反复拉流。
+        // 短剧是"短片段 + 高频切集"：缓冲上限放到 30 秒，单集 1-3 分钟能一次缓冲完，
+        // 滑动时不再反复拉流。
+        // 起播门槛从 1 秒降到 500ms：m3u8 只要首个分片到齐就能出画面，
+        // 1 秒是保守值，在 4G 下多等的那半秒纯属浪费。
         .setLoadControl(
             DefaultLoadControl.Builder()
-                .setBufferDurationsMs(/* minBufferMs = */ 8_000, /* maxBufferMs = */ 30_000, 1_000, 2_000)
+                .setBufferDurationsMs(/* minBufferMs = */ 8_000, /* maxBufferMs = */ 30_000, 500, 1_500)
                 .build(),
         )
         .build()
@@ -272,8 +273,6 @@ class Media3Player(context: Context) {
         if (started <= 0L) return
         prepareStartedAt = 0L
         PlayerStartupStats.record(SystemClock.elapsedRealtime() - started)
-        // 性能基线取样：只在 logcat 可见，不属于业务日志
-        Log.i("StarveilPlayer", PlayerStartupStats.summary().orEmpty()) // security-baseline-allow: 起播耗时基线
     }
 
     /** HLS 判定：带鉴权参数的地址以 `?` 结尾段，所以先截断再比后缀。 */

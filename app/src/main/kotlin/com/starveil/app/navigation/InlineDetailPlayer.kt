@@ -37,6 +37,7 @@ import com.starveil.core.model.Vod
 import com.starveil.feature.player.PlayerEvent
 import com.starveil.feature.player.PlayerRoute
 import com.starveil.feature.player.UnlockOptions
+import com.starveil.feature.player.rememberSettledFullscreen
 import com.starveil.feature.player.unlockOptions
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -220,7 +221,11 @@ private fun InlinePlayerRoute(
     val context = LocalContext.current
     // 等系统真的横过来再铺满：否则会先"竖屏铺满"再被转过去，看着像卡两下
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val fillStage = state.isFullscreen && isLandscape
+    // 退出全屏时 state.isFullscreen 立刻变 false，但窗口还要 200-400ms 才转回竖屏。
+    // 直接拿它算 fillStage，那几百毫秒里会排一次"横屏窗口 + 16:9 容器"——就是返回时
+    // 那下画面被拉变形的原因。这里跟 PlayerScreen 用同一个栅栏：真的转完（或超宽限）才算退出。
+    val settledFullscreen = rememberSettledFullscreen(state.isFullscreen, isLandscape)
+    val fillStage = settledFullscreen && isLandscape
     val shape = if (fillStage) {
         Modifier.fillMaxSize()
     } else {

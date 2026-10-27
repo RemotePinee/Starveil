@@ -6,6 +6,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +45,15 @@ private data class ProgressStyle(
     val thumbColor: Color,
 )
 
+
+/**
+ * 横滑时的预览位置。
+ *
+ * 手指在画面上左右滑时，进度条要跟着走；只在 `PlayerScreen` 提供，其它地方读到的
+ * 是 null，行为和以前一致。用 CompositionLocal 而不是层层传参：进度条在
+ * `ControlRow`（私有）里，中间隔着三层。
+ */
+internal val LocalSeekPreview = compositionLocalOf<Long?> { null }
 /**
  * 进度条：已播段主色、未播段是内容色降透明；原生播放器两端各让出一个圆点半径。
  *
@@ -64,7 +74,9 @@ internal fun PlayerProgressBar(
 ) {
     val enabled = durationMs > 0L
     var dragging by remember { mutableStateOf<Long?>(null) }
-    val shown = dragging ?: positionMs
+    // 手指在画面上横滑时，进度条要跟着预演位置走；拖动进度条本体时以 dragging 优先。
+    // 两者都为 null 才回落到真实播放位置。
+    val shown = dragging ?: LocalSeekPreview.current ?: positionMs
     val seek = rememberUpdatedState(onSeekTo)
     val span = rememberUpdatedState(if (enabled) durationMs else 1L)
     // compact 只换轨道粗细、未播段颜色与端点口径：轨道提到 4dp（Spacing.xs），

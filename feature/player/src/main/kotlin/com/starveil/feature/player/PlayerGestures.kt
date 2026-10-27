@@ -67,6 +67,13 @@ internal data class GestureCallbacks(
     val onDoubleTap: () -> Unit,
     val onSeek: (Long) -> Unit,
     val onInteraction: () -> Unit,
+    /**
+     * 横滑过程中的预览位置，松手时传 null。
+     *
+     * 不抛这个的话，手指在画面上滑的时候进度条一动不动，只有松手才跳到终点，
+     * 用户没法判断自己滑到了哪，只能盲滑。null 表示回到真实播放位置。
+     */
+    val onSeekPreview: (Long?) -> Unit = {},
 )
 
 /** 手势区：单击切显隐，左半屏上下滑调亮度、右半屏调音量、横滑调进度。 */
@@ -84,6 +91,8 @@ internal fun PlayerGestureLayer(
     val position = rememberUpdatedState(state.positionMs)
     val duration = rememberUpdatedState(state.durationMs)
     val seek = rememberUpdatedState(callbacks.onSeek)
+    val seekPreview = rememberUpdatedState(callbacks.onSeekPreview)
+
     val interaction = rememberUpdatedState(callbacks.onInteraction)
     LaunchedEffect(hint, hintVisible) {
         if (hintVisible) {
@@ -129,8 +138,12 @@ internal fun PlayerGestureLayer(
                             hint = it
                             hintVisible = true
                         }
+                        seekPreview.value(session.seekPreviewOrNull())
                     },
-                    onDragEnd = { if (session.mode == GestureMode.Seek) seek.value(session.seekTo) },
+                    onDragEnd = {
+                        seekPreview.value(null)
+                        session.seekPreviewOrNull()?.let { seek.value(it) }
+                    },
                 )
             },
     ) {
@@ -180,6 +193,9 @@ private class GestureSession {
         private set
     var seekTo: Long = 0L
         private set
+
+    /** 横滑中的预览位置；不是横滑就返回 null。收在这里，调用点就不用写 if。 */
+    fun seekPreviewOrNull(): Long? = if (mode == GestureMode.Seek) seekTo else null
 
     private var left = true
     private var totalX = 0f

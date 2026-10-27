@@ -23,9 +23,10 @@ internal fun PlayerEngineEffects(engine: Media3Player, state: PlayerUiState, vie
     val isPlaying = rememberUpdatedState(state.isPlaying)
 
     LaunchedEffect(url, audioUrl, state.headers) {
-        if (url != null) engine.prepare(url, state.headers, audioUrl)
+        if (url == null) return@LaunchedEffect
+        engine.prepare(url, state.headers, audioUrl)
+        if (isPlaying.value) engine.play()
     }
-    // 断点续播 + 回页续接：prepare 之后按位置定位一次，成功即清标记，避免来回 seek。
     //
     // pendingSeekMs 只在"新起播"时有值（构造参数 resume）；从别的页面切回来时引擎是
     // 重建的，pendingSeekMs 已经是 0，但 ViewModel 还留着上一次的 positionMs——

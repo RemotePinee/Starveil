@@ -15,6 +15,8 @@ import okhttp3.Cache
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.cache.CacheDataSource
 
 /**
  * 播放用的 HTTP 层：连接复用 + 磁盘缓存 + "下一集预取"。
@@ -36,15 +38,14 @@ internal class VideoHttp(private val context: Context) {
         .cache(Cache(File(context.cacheDir, CACHE_DIR), CACHE_BYTES))
         .addNetworkInterceptor { chain ->
             val request = chain.request()
-            // 清单一律不缓存：解析站下发的 m3u8 里分片地址常带短时效签名，
-            // 缓存清单 = 之后拿到过期地址 → 播放直接报「源站拒绝（HTTP 错误）」。
-            // 只缓存分片：分片本身是内容寻址的，重复取同一片没有风险。
+            // 清单缓存 PLAYLIST_TTL 秒：解析站下发的 m3u8 里分片地址常带短时效签名，
+            // 缓存太久会拿到过期地址、播放直接报「源站拒绝」。
+            // 但完全 no-store 也有代价——同一集切后台回来、切清晰度都会重新拉一遍清单，
+            // 每次 300-500ms。30 秒是个安全窗口：签名不会在这么短的间隔内失效，
+            // 而重复 prepare 全落在这个区间里。
             val response = chain.proceed(request)
-            if (request.url.encodedPath.endsWith(HLS_SUFFIX)) {
-                response.newBuilder().header("Cache-Control", "no-store").build()
-            } else {
-                response.newBuilder().header("Cache-Control", "public, max-age=$SEGMENT_TTL").build()
-            }
+            val ttl = if (request.url.encodedPath.endsWith(HLS_SUFFIX)) PLAYLIST_TTL else SEGMENT_TTL
+            response.newBuilder().header("Cache-Control", "public, max-age=$ttl").build()
         }
         .build()
 
@@ -52,13 +53,24 @@ internal class VideoHttp(private val context: Context) {
     private var job: Job? = null
     private var primedUrl: String? = null
 
-    /** 每集新建一个 Factory（要带该集的请求头），但底层 client 与连接池是共享的。 */
+    /**
+     * 每集新建一个 Factory（要带该集的请求头），但底层 client、连接池与分片缓存是共享的。
+     *
+     * 外面套一层 [CacheDataSource]：Media3 先查 [VideoCache]，未命中才走网络。
+     * 换集回看、拖动重播同一片都直接命中磁盘，不必重新下载。
+     */
     @androidx.annotation.OptIn(UnstableApi::class)
-    fun dataSource(headers: Map<String, String>, userAgent: String?): OkHttpDataSource.Factory =
-        OkHttpDataSource.Factory(client).apply {
+    fun dataSource(headers: Map<String, String>, userAgent: String?): DataSource.Factory {
+        val upstream = OkHttpDataSource.Factory(client).apply {
             userAgent?.let { setUserAgent(it) }
             if (headers.isNotEmpty()) setDefaultRequestProperties(headers)
         }
+        return CacheDataSource.Factory()
+            .setCache(VideoCache.get(context))
+            .setUpstreamDataSourceFactory(upstream)
+            // 缓存读坏了就退回网络，不让一个坏分片把整集卡死
+            .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+    }
 
     /**
      * 预取清单与前几个分片。
@@ -114,7 +126,8 @@ internal class VideoHttp(private val context: Context) {
         const val CACHE_DIR = "video-http"
         const val CACHE_BYTES = 80L * 1024 * 1024
 
-        const val PLAYLIST_TTL = 600
+        /** 清单缓存 30 秒：够覆盖同一次起播里的重复 prepare，又赶不上签名过期。 */
+        const val PLAYLIST_TTL = 30
         const val SEGMENT_TTL = 180
 
         /** 只预取首片：短剧首帧靠它，取多了浪费流量。 */

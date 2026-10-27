@@ -137,7 +137,13 @@ internal fun PlayerPauseAd(
         Box(modifier = Modifier.width(adWidth)) {
             AdCreativeCard(
                 creative = creative,
-                onClick = { if (creative.clickUrl.isNotBlank()) openLanding(creative.clickUrl) },
+                onClick = {
+                    if (creative.clickUrl.isBlank()) return@AdCreativeCard
+                    openLanding(creative.clickUrl)
+                    // 点击即视为有效曝光：贴片立刻关掉，否则从浏览器回来时它还占着画面，
+                    // onHold 仍然为 true，播放键怎么点都没反应，看着像播放器死了。
+                    onDismiss()
+                },
                 aspectRatio = AD_WIDE_RATIO,
             )
             // 倒计时期间只画秒数，不画关闭键：给一个点不动的叉，比不给更让人恼
