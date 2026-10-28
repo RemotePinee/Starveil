@@ -12,7 +12,7 @@ package com.starveil.core.model
 object ParseRules {
 
     /** 一条线路的探活超时。 */
-    const val LINE_PROBE_SECONDS = 8
+    const val LINE_PROBE_SECONDS = 15
 
     /** 后端解析接口成功码，注意按**字符串**比较。 */
     const val SUCCESS_CODE = "200"

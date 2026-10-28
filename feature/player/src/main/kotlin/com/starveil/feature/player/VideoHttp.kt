@@ -32,7 +32,8 @@ import androidx.media3.datasource.cache.CacheDataSource
 internal class VideoHttp(private val context: Context) {
 
     private val client: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
+        // 连接与读取都给到 15 秒：资源站首包偶尔要十几秒，8 秒会把还能连上的线路判死。
+        .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .connectionPool(ConnectionPool(4, 5, TimeUnit.MINUTES))
         .cache(Cache(File(context.cacheDir, CACHE_DIR), CACHE_BYTES))

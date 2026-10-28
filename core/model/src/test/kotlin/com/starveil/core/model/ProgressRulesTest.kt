@@ -33,6 +33,6 @@ class ProgressRulesTest {
         assertEquals(30_000L, ProgressRules.REPORT_INTERVAL_MS)
         assertEquals(10_000L, ProgressRules.DANMU_PREFETCH_WINDOW_MS)
         assertEquals(30_000L, ProgressRules.DANMU_EMPTY_ADVANCE_MS)
-        assertEquals(8_000L, PlaybackMachine.LINE_TIMEOUT_MS)
+        assertEquals(15_000L, PlaybackMachine.LINE_TIMEOUT_MS)
     }
 }

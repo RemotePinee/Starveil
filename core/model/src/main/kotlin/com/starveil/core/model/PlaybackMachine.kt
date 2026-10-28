@@ -18,8 +18,8 @@ package com.starveil.core.model
  */
 object PlaybackMachine {
 
-    /** 单条解析线路的探测超时（ 的 `time = 8`）。 */
-    const val LINE_TIMEOUT_MS = 8_000L
+    /** 单条解析线路的探测超时。资源站偶尔首包要十几秒，8 秒会把能播的线路提前判死。 */
+    const val LINE_TIMEOUT_MS = 15_000L
 
     /**
      * 开始一轮解析。
