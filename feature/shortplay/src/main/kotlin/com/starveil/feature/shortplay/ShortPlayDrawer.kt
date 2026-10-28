@@ -35,6 +35,9 @@ import com.adamglin.phosphoricons.regular.Heart
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Spacing
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import com.starveil.core.model.ShortPlayType
 
 @Composable
 internal fun ShortPlayDrawer(
@@ -72,16 +75,17 @@ private fun ShortPlayDrawerContent(
                 modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
             )
             ShortPlayDrawerSection("分类")
-        }
-        items(state.types, key = { it.id }) { type ->
-            ShortPlayDrawerItem(
-                label = type.name.ifBlank { "短剧" },
-                selected = type.id == state.selectedTypeId,
-                onClick = { onAction { actions.onTypeSelect(type.id) } },
-            )
-        }
-        if (state.types.isEmpty()) {
-            item { ShortPlayDrawerSection("后台暂无分类") }
+            // 分类是后台配的个位数列表，用流式药丸而不是整宽列表行：
+            // 一行能放下 2-3 个，抽屉里省下的纵向空间给下面的常用入口。
+            if (state.types.isEmpty()) {
+                ShortPlayDrawerSection("后台暂无分类")
+            } else {
+                CategoryPillFlow(
+                    types = state.types,
+                    selectedTypeId = state.selectedTypeId,
+                    onSelect = { id -> onAction { actions.onTypeSelect(id) } },
+                )
+            }
         }
         item {
             Spacer(Modifier.height(Spacing.lg))
@@ -99,6 +103,61 @@ private fun ShortPlayDrawerSection(title: String) {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
     )
+}
+
+/**
+ * 分类药丸：流式排布，一行放得下几个就放几个。
+ *
+ * 用 [FlowRow] 而不是横向滚动：抽屉本身不宽，横向滚动会把后面的分类藏起来，
+ * 用户根本不知道还有；换行铺开一眼能看全。
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CategoryPillFlow(
+    types: List<ShortPlayType>,
+    selectedTypeId: Int,
+    onSelect: (Int) -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.md),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        types.forEach { type ->
+            CategoryPill(
+                label = type.name.ifBlank { "剧集" },
+                selected = type.id == selectedTypeId,
+                onClick = { onSelect(type.id) },
+            )
+        }
+    }
+}
+
+/**
+ * 单个药丸标签。
+ *
+ * 选中时铺主色，未选中用 `surfaceContainerHigh`——比描边款在抽屉底色上更清楚，
+ * 也不用为深浅两套主题各调一次边框透明度。
+ */
+@Composable
+private fun CategoryPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Surface(
+        onClick = onClick,
+        shape = AppShape.full,
+        color = if (selected) colors.primary else colors.surfaceContainerHigh,
+        contentColor = if (selected) colors.onPrimary else colors.onSurfaceVariant,
+        modifier = Modifier.semantics { this.selected = selected },
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm),
+        )
+    }
 }
 
 @Composable
