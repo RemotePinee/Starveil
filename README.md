@@ -93,6 +93,14 @@ cd starveil-android
 - **数据库只在 MySQL 5.7.40 上跑过**，8.0 未测；也没有压测与并发下单测试。
 - **短剧广告 SSV 接口已就绪，但客户端 `AdGateway` 仍是 Noop**，需要你接入真实广告平台后才能真正解锁。
 
+## 社区
+
+- **Telegram 群组**：https://t.me/+vLgkzhHZ9c44YzA1
+- **问题反馈**：[GitHub Issues](https://github.com/RemotePinee/Starveil/issues)
+
+除上面这个链接外，本项目没有其它 Telegram 群、微信群或 QQ 群。
+任何以本项目名义建立的其它群组都与作者无关。
+
 ## 文档
 
 | 文件 | 内容 |
