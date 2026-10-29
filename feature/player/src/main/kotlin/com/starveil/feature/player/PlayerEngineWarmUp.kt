@@ -5,6 +5,10 @@ import androidx.annotation.OptIn
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * 播放引擎预热。
@@ -19,10 +23,16 @@ import java.util.concurrent.atomic.AtomicBoolean
 public object PlayerEngineWarmUp {
 
     private val finished = AtomicBoolean(false)
+    /** 缓存初始化走 IO：开 SQLite、扫目录都是磁盘操作，压在首页滚动那一帧上会掉帧。 */
+    private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun warm(context: Context) {
         if (!finished.compareAndSet(false, true)) return
-        // 预热失败无所谓：真正的实例照样会建，只是第一次慢一点。
-        runCatching { ExoPlayer.Builder(context.applicationContext).build().release() }
+        // 分片缓存也在这里建：VideoCache 首次创建要开 SQLite 索引库、扫缓存目录算已用空间，
+        // 几百毫秒。留到首次播放那一刻就是用户盯着"缓冲中"白等；挪到这里，用户在看首页。
+        val app = context.applicationContext
+        io.launch { runCatching { VideoCache.get(app) } }
+        // ExoPlayer 只能在主线程构建，这一句留在调用线程上。
+        runCatching { ExoPlayer.Builder(app).build().release() }
     }
 }
