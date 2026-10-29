@@ -254,13 +254,22 @@ sign = md5(trans_id + '|' + vod_id + '|' + episode_number + '|' + timestamp + '|
 
 ### CI 为什么只做语法检查
 
-接口回归**故意不放进 CI**。`tests/` 下三套脚本都需要一个真装好的站点：
+接口回归**故意不放进 CI**。`tests/` 下四套脚本都需要一个真装好的站点：
 
 | 脚本 | 前置条件 |
 |---|---|
+| `tests/contract.php` | 只要插件 Installer 跑过一次（读设置 + 调 `Startup::payload()`，不需要 HTTP） |
 | `tests/smoke.sh` | macCMS V10 + MySQL 5.7.40 + 插件 Installer 已跑完 + 导入 `seed_demo.sql` |
 | `tests/admin.sh` | 同上，且后台可通过 HTTP 访问 |
 | `tests/notify.sh` | 同上，且支付通道已配好 |
+
+`contract.php` 覆盖两条曾经「保存了但没生效」的链路：广告位的 `ad_xxx_url` 必须出现在
+`startup` 的 `ads` 里、`bottom_tabs` 写入后必须能读回。它只依赖数据库，不依赖 HTTP，
+所以部署完或改完后台保存逻辑后，跑一句就能确认：
+
+```bash
+php addons/starveilapi/tests/contract.php
+```
 
 在 CI 里铺这套环境要：拉 macCMS 全量源码、跑它的安装向导（写配置文件 + 建库）、配 PHP-FPM 与 Nginx 的 `PATH_INFO` 伪静态、导入种子数据。维护成本高于它能挡住的回归风险；而环境一旦和线上不一致，跑出来就是**假绿**——比没有 CI 更危险。
 

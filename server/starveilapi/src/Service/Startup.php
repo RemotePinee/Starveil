@@ -66,6 +66,8 @@ final class Startup
             'app_home_ads' => Setting::get('app_home_ads', '0'),
             'vip_close_ad' => Setting::get('vip_close_ad', '0'),
             'app_play_recommend' => Setting::get('app_play_recommend', '1'),
+            // 进详情页是否直接起播；老站点没有这个键时默认开启（保持上一版行为）
+            'app_detail_autoplay' => Setting::get('app_detail_autoplay', '1'),
             'app_user_adurl' => Setting::get('app_user_adurl', ''),
             // 只认 vip_purchase：会员关闭时一并下发 0，避免客户端还显示套餐区
             'vip_purchase' => Setting::int('member_enabled', 1) === 1

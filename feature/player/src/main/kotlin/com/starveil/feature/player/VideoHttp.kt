@@ -1,9 +1,13 @@
 package com.starveil.feature.player
 
 import android.content.Context
-import androidx.media3.datasource.okhttp.OkHttpDataSource
+import android.net.Uri
 import androidx.media3.common.util.UnstableApi
-import java.io.File
+import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.DataSpec
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheWriter
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,23 +15,21 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
-import okhttp3.Cache
 import okhttp3.ConnectionPool
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import androidx.media3.datasource.DataSource
-import androidx.media3.datasource.cache.CacheDataSource
 
 /**
- * 播放用的 HTTP 层：连接复用 + 磁盘缓存 + "下一集预取"。
+ * 播放用的 HTTP 层：连接复用 + 分片缓存 + "下一集预取"。
  *
  * 单独成文件有两个原因：
  * 1. `Media3Player` 已经贴着 450 行闸门，播放器不该再背着网络细节；
- * 2. 这套东西（缓存目录、TTL、预取策略）与播放状态机无关，改它不应碰播放逻辑。
+ * 2. 这套东西（缓存、预取策略）与播放状态机无关，改它不应碰播放逻辑。
  *
- * 缓存策略：资源站的 m3u8/分片一般不带 `Cache-Control`，OkHttp 默认不缓存，
- * 所以这里给播放响应补一个短 TTL——清单 10 分钟、分片 3 分钟，只覆盖一次连滑，
- * 不长期占盘。
+ * **缓存只有一层**：Media3 的 [VideoCache]（SimpleCache）。OkHttp 自己的磁盘 Cache
+ * 已经去掉——它和 SimpleCache 存的是同一批分片，各存一份白占几十 MB，
+ * 而且两套 TTL 各有各的失效时机，出问题要同时怀疑两条链路。
+ * 预取也走同一个缓存（[CacheWriter]），起播时 Media3 能直接命中。
  */
 internal class VideoHttp(private val context: Context) {
 
@@ -36,18 +38,6 @@ internal class VideoHttp(private val context: Context) {
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
         .connectionPool(ConnectionPool(4, 5, TimeUnit.MINUTES))
-        .cache(Cache(File(context.cacheDir, CACHE_DIR), CACHE_BYTES))
-        .addNetworkInterceptor { chain ->
-            val request = chain.request()
-            // 清单缓存 PLAYLIST_TTL 秒：解析站下发的 m3u8 里分片地址常带短时效签名，
-            // 缓存太久会拿到过期地址、播放直接报「源站拒绝」。
-            // 但完全 no-store 也有代价——同一集切后台回来、切清晰度都会重新拉一遍清单，
-            // 每次 300-500ms。30 秒是个安全窗口：签名不会在这么短的间隔内失效，
-            // 而重复 prepare 全落在这个区间里。
-            val response = chain.proceed(request)
-            val ttl = if (request.url.encodedPath.endsWith(HLS_SUFFIX)) PLAYLIST_TTL else SEGMENT_TTL
-            response.newBuilder().header("Cache-Control", "public, max-age=$ttl").build()
-        }
         .build()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -86,7 +76,7 @@ internal class VideoHttp(private val context: Context) {
         job = scope.launch {
             runCatching {
                 val targets = if (isHls(url)) firstSegments(url, headers) else listOf(url)
-                targets.forEach { fetch(url = it, headers = headers) }
+                targets.forEach { cacheByWriter(it, headers) }
             }
         }
     }
@@ -107,7 +97,30 @@ internal class VideoHttp(private val context: Context) {
             .toList()
     }
 
-    /** GET 一个地址并读空响应体（读空才会落进 OkHttp 缓存）；返回文本。 */
+    /**
+     * 把一条地址整个读进 [VideoCache]。
+     *
+     * 用 [CacheWriter] 而不是直接 GET：它负责分块写入与 span 登记，
+     * 起播时 Media3 的 [CacheDataSource] 才命中得了同一份数据。
+     * 直接 GET 只是把字节读进内存又丢掉，对缓存没有任何贡献。
+     */
+    @androidx.annotation.OptIn(UnstableApi::class)
+    private fun cacheByWriter(url: String, headers: Map<String, String>) {
+        val upstream = OkHttpDataSource.Factory(client).apply {
+            if (headers.isNotEmpty()) setDefaultRequestProperties(headers)
+        }
+        // CacheWriter 要求 CacheDataSource 实体（不是 Factory 建出来的 DataSource 接口），
+        // 所以这里直接构造：cache + 上游 + 不跳过缓存 + 不额外挂 sink。
+        val source = CacheDataSource(
+            VideoCache.get(context),
+            upstream.createDataSource(),
+            CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR,
+        )
+        val spec = DataSpec.Builder().setUri(Uri.parse(url)).build()
+        runCatching { CacheWriter(source, spec, ByteArray(0), null).cache() }
+    }
+
+    /** 读一个地址的文本。只用来解析 m3u8 清单，不落缓存。 */
     private fun fetch(url: String, headers: Map<String, String>): String? {
         val request = Request.Builder().url(url).apply {
             headers.forEach { (name, value) -> header(name, value) }
@@ -122,14 +135,6 @@ internal class VideoHttp(private val context: Context) {
 
     private companion object {
         const val HLS_SUFFIX = ".m3u8"
-
-        /** 80MB 大约能放 2-4 集短剧的清单与首片。 */
-        const val CACHE_DIR = "video-http"
-        const val CACHE_BYTES = 80L * 1024 * 1024
-
-        /** 清单缓存 30 秒：够覆盖同一次起播里的重复 prepare，又赶不上签名过期。 */
-        const val PLAYLIST_TTL = 30
-        const val SEGMENT_TTL = 180
 
         /** 只预取首片：短剧首帧靠它，取多了浪费流量。 */
         const val SEGMENT_PREFETCH = 2

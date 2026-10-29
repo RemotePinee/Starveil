@@ -82,7 +82,12 @@ class FakeClock(private var current: Long = 0L) : PlayerClock {
 }
 
 /** 两个播放源：源 0 有两条解析线路、两集；源 1 只有一条线路、一集。 */
-fun sampleVod(): Vod = Vod(
+fun sampleVod(
+    /** 命中这些正则的集地址直接起播，不经解析站。 */
+    directLinkPatterns: List<String> = emptyList(),
+    /** 第 1 集的地址。默认是假的资源站 id，直链用例需要传真实后缀。 */
+    firstEpisodeUrl: String = "vod-1-1",
+): Vod = Vod(
     id = 7,
     name = "示例影片",
     poster = null,
@@ -96,12 +101,12 @@ fun sampleVod(): Vod = Vod(
             index = 0,
             name = "高清",
             episodes = listOf(
-                PlayUrl(episodeNumber = 1, title = "第 1 集", url = "vod-1-1"),
+                PlayUrl(episodeNumber = 1, title = "第 1 集", url = firstEpisodeUrl),
                 PlayUrl(episodeNumber = 2, title = "第 2 集", url = "vod-1-2"),
             ),
             playerInfo = PlayerInfo(
                 parseTargets = listOf("parse-0-a", "parse-0-b"),
-                directLinkPatterns = emptyList(),
+                directLinkPatterns = directLinkPatterns,
                 headerPatterns = emptyList(),
                 headers = emptyMap(),
             ),

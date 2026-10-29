@@ -19,6 +19,8 @@ data class StartupConfig(
     val appUiHomeSmallIcons: String?,
     val topBarUsesBanner: Boolean,
     val playRecommendEnabled: Boolean,
+    /** 进详情页是否直接起播。缺字段（老后端）按开启处理，与加开关之前的行为一致。 */
+    val detailAutoplay: Boolean = true,
     val ads: AdPlacements,
     val payments: List<PaymentMethod>,
     val searchHot: List<String>,

@@ -35,6 +35,7 @@ import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.Vod
 import com.starveil.feature.player.PlayerEvent
+import com.starveil.feature.player.Media3Player
 import com.starveil.feature.player.PlayerRoute
 import com.starveil.feature.player.UnlockOptions
 import com.starveil.feature.player.rememberSettledFullscreen
@@ -79,6 +80,18 @@ class InlinePlayerCallbacks(
     val onFullscreenChange: (Boolean) -> Unit = {},
     /** 当前播放集变化（含自动下一集）：详情页据此把选集条切到同一集。 */
     val onEpisodeChanged: (Int) -> Unit = {},
+)
+
+/**
+ * 内嵌播放器的一屏：探测结果 + 提前建好的播放器。
+ *
+ * 打包成对象是因为 [InlinePlayerRoute] 的参数已经到 detekt 的 5 个上限，
+ * 而这两个值总是一起产生（探测一完成就有播放器可用）。
+ */
+private class InlinePlayerStage(
+    val load: GateLoad.Ready,
+    /** 探测阶段就建好，由 [InlinePlayback] 持有并负责释放。 */
+    val engine: Media3Player,
 )
 
 /**
@@ -166,11 +179,17 @@ private fun InlinePlayback(
     modifier: Modifier,
     callbacks: InlinePlayerCallbacks,
 ) {
+    val context = LocalContext.current
+    // 探测地址要几百毫秒，而建播放器又要几百毫秒——原先两件事串着做，用户干等。
+    // 提到 when 外面，探测一开始播放器就先搭起来，等 Ready 时直接 prepare。
+    val engine = remember(context) { Media3Player(context) }
+    // 提前建就要提前管释放：用户可能探测没完就返回，那时 PlayerRoute 还没组合过。
+    DisposableEffect(engine) { onDispose { engine.release() } }
     when (val load = rememberGate(container, request)) {
         GateLoad.Loading -> InlineLoading(modifier)
         is GateLoad.Ready -> InlinePlayerRoute(
             container = container,
-            load = load,
+            stage = InlinePlayerStage(load = load, engine = engine),
             modifier = modifier,
             callbacks = callbacks,
         )
@@ -210,10 +229,12 @@ private fun RecheckInlineGateOnResume(
 @Composable
 private fun InlinePlayerRoute(
     container: AppContainer,
-    load: GateLoad.Ready,
+    stage: InlinePlayerStage,
     modifier: Modifier,
     callbacks: InlinePlayerCallbacks,
 ) {
+    val load = stage.load
+    val engine = stage.engine
     val viewModel = rememberPlayerViewModel(container, load)
     val state by viewModel.state.collectAsStateWithLifecycle()
     // 播放器内换集（选集弹层）只改会话，不动 request；购买要按「当前这一集」下单
@@ -255,6 +276,7 @@ private fun InlinePlayerRoute(
         PlayerRoute(
             viewModel = viewModel,
             modifier = Modifier.fillMaxSize(),
+            engine = engine,
             unlock = load.gate?.unlockOptions(container.adGateway.isReady(AdSlot.REWARD))
                 ?: UnlockOptions(),
             // 看完广告重查闸门，放不放行由服务端说了算；

@@ -102,12 +102,21 @@ fun PlayerRoute(
     onFullscreenChange: (Boolean) -> Unit = {},
     unlock: UnlockOptions = UnlockOptions(),
     onWatchAd: () -> Unit = {},
+    /**
+     * 外部已经建好的播放器。内嵌播放器在探测地址阶段就把它建起来，省掉
+     * 「探测完 → 再建播放器」那几百毫秒的串行等待；独立播放页不传，这里自己建。
+     *
+     * **所有权**：谁传谁释放。传进来的实例这里不 release，否则外部还在用就被销毁了。
+     */
+    engine: Media3Player? = null,
 ) {
     val state = viewModel.state.collectAsStateWithLifecycle().value
     val danmu = viewModel.danmu.collectAsStateWithLifecycle().value
     val context = LocalContext.current
-    val engine = remember(context) { Media3Player(context) }
-    val actions = remember(viewModel, engine) { playerActions(viewModel, engine) }
+    // 只有没外部传入时才自己建：条件稳定（engine 传进来就不会变），remember 在此安全
+    val ownEngine = if (engine == null) remember(context) { Media3Player(context) } else null
+    val media = engine ?: ownEngine!!
+    val actions = remember(viewModel, media) { playerActions(viewModel, media) }
     // 前台状态：退后台后播放与弹幕都要停，回来由用户自己点播放
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val isResumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
@@ -116,11 +125,12 @@ fun PlayerRoute(
     LaunchedEffect(viewModel) { viewModel.events.collect(onEvent) }
     // 横竖屏切换属于宿主 Activity：本模块只报告状态，不直接改窗口
     LaunchedEffect(state.isFullscreen) { onFullscreenChange(state.isFullscreen) }
-    DisposableEffect(engine) {
+    DisposableEffect(media) {
         onDispose {
             // 离页补一次位置：不补的话最后几秒会丢，观看记录断点会偏
             viewModel.persistCurrentPosition()
-            engine.release()
+            // 只释放自己建的；外部传入的由外部管
+            ownEngine?.release()
         }
     }
     // 退到后台立刻暂停：ON_PAUSE 比 ON_STOP 早，切桌面那一刻就断，声音不会在桌面上继续响
@@ -129,11 +139,11 @@ fun PlayerRoute(
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
         // 幂等暂停：ON_PAUSE 与 ON_STOP 都会到，之前用 toggle 会切两次又变回播放，
         // 表现就是"退后台回来按钮还是暂停中，得点两下"
-        engine.pause()
+        media.pause()
         viewModel.pausePlayback()
     }
     // 页面恢复只由官方 ContentFrame 重新绑定视频输出；不 seek，也不重建 source。
-    PlayerEngineEffects(engine = engine, state = state, viewModel = viewModel)
+    PlayerEngineEffects(engine = media, state = state, viewModel = viewModel)
     // 播放页固定深色：视频画面本来就是暗底，浅色皮肤下控制条、弹层、选集面板
     // 变白会直接看不见控件。皮肤只决定强调色，明暗在这里不跟系统。
     StarveilTheme(
@@ -142,7 +152,7 @@ fun PlayerRoute(
     ) {
         PlayerScreen(
             state = state,
-            engine = engine,
+            engine = media,
             actions = actions,
             danmu = danmu,
             isResumed = isResumed,

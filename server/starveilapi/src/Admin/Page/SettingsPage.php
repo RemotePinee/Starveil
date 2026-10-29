@@ -144,7 +144,14 @@ final class SettingsPage extends BasePage
             . '<input type="hidden" name="op" value="save_player">'
             . '<div class="sv-grid">'
             . $this->field('解析接口地址', 'parse2', (string)$info['parse2'], '例如 https://jx.example.com/json?url=')
-            . $this->field('直链正则', 'features', (string)$info['features'], '可空；命中的地址直接播放，不走解析')
+            . $this->field(
+                '直链正则',
+                'features',
+                (string)$info['features'],
+                '可空；命中的地址直接播放，不走解析。逗号分隔多条，'
+                . '直接写 m3u8,mp4 就行，不必加反斜杠 —— '
+                . '写成 \\\\.m3u8 会被当成「字面反斜杠」，反而一条都命中不了'
+            )
             . $this->field('需要请求头的地址正则', 'issethead', (string)$info['issethead'], '可空')
             . $this->field('请求头', 'headers', (string)$info['headers'], '可空；格式 Referer:https://a||User-Agent:xxx')
             . '</div><div class="sv-actions"><button class="sv-btn" type="submit">保存解析配置</button></div>'

@@ -217,12 +217,10 @@ private fun EpisodeStrip(
     LaunchedEffect(selectedIndex) {
         stripState.animateScrollToItem((selectedIndex - STRIP_ANCHOR_OFFSET).coerceAtLeast(0))
     }
-    // 文本型标题（日期/版本名）走宽一点的卡：两行显示，不再截成「2026-10-」残片
-    // 单集（电影正片）不走宽卡：一块 96×64 的空格子看着像没渲染完。
-    // 只有多数是文本标题时才整条切换：「先导」混在数字集里就一项宽、其余窄，
-    // 卡片宽窄不一，横向扫过去参差不齐。
+    // 所有集数同一尺寸、单行显示。文本型标题超宽就省略，点进播放器看完整名。
+    // 不做「文本多就整条切宽卡」的判断：只要有一格变宽，同一排里其余格子立刻稀疏，
+    // 集号也不再连续可扫（「先导」夹在 1~5 中间时最明显）。
     val labels = episodes.map { episodeText(it.title, it.episodeNumber) }
-    val wide = labels.count { it.wide } * 2 > episodes.size && episodes.size > 1
     LazyRow(
         state = stripState,
         contentPadding = PaddingValues(horizontal = Spacing.pageHorizontal),
@@ -231,7 +229,6 @@ private fun EpisodeStrip(
         itemsIndexed(episodes) { index, _ ->
             EpisodeCell(
                 label = labels[index],
-                wide = wide,
                 playing = index == selectedIndex,
                 onClick = { onSelect(index) },
             )
@@ -328,7 +325,6 @@ private fun EpisodeCell(
     label: EpisodeText,
     playing: Boolean,
     onClick: () -> Unit,
-    wide: Boolean = false,
 ) {
     val haptics = rememberHaptics()
     val background = if (playing) {
@@ -338,10 +334,7 @@ private fun EpisodeCell(
     }
     Box(
         modifier = Modifier
-            .size(
-                width = if (wide) WIDE_CELL_WIDTH else CELL_WIDTH,
-                height = if (wide) WIDE_CELL_HEIGHT else CELL_HEIGHT,
-            )
+            .size(width = CELL_WIDTH, height = CELL_HEIGHT)
             .clip(AppShape.small)
             .background(background)
             .clickable {
@@ -354,30 +347,13 @@ private fun EpisodeCell(
         if (playing) {
             // 只放音量柱，集号隐藏
             PlayingBars(contentDescription = "正在播放")
-        } else if (wide) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = label.primary,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = starveilExtraColors.textMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                if (label.secondary.isNotBlank()) {
-                    Text(
-                        text = label.secondary,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = starveilExtraColors.textMuted,
-                        maxLines = 1,
-                    )
-                }
-            }
         } else {
             Text(
                 text = label.primary,
                 style = MaterialTheme.typography.labelMedium,
                 color = starveilExtraColors.textMuted,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -385,10 +361,6 @@ private fun EpisodeCell(
 
 private val CELL_WIDTH: Dp = Spacing.xxl + Spacing.lg
 private val CELL_HEIGHT: Dp = Spacing.xxl + Spacing.xs
-
-/** 文本型标题的宽卡：一行放得下「2026-10-24」，两行放得下标题 + 集号。 */
-private val WIDE_CELL_WIDTH: Dp = Spacing.xxl * 3
-private val WIDE_CELL_HEIGHT: Dp = Spacing.xxl + Spacing.xxl
 
 /** 横条锚定时往上留两格，当前集不会贴在最左边。 */
 private const val STRIP_ANCHOR_OFFSET = 2

@@ -60,6 +60,27 @@ class PlayerViewModelTest {
     }
 
     @Test
+    fun `direct link pattern skips every parse target`() = runTest {
+        val probe = ScriptedProbe(mapOf(0 to listOf("https://cdn.example.com/x.m3u8")))
+        val viewModel = playerViewModel(
+            probe,
+            directLinkPatterns = listOf("\\.m3u8"),
+            firstEpisodeUrl = "https://cdn.example.com/x.m3u8",
+        )
+
+        viewModel.start()
+        advanceUntilIdle()
+
+        // 一个解析站都没请求过：直链不该先拿去解析一遍再失败
+        assertTrue("直链不应触碰解析站", probe.targets.isEmpty())
+        // 直接进播放，且沿用原始地址
+        assertTrue(viewModel.state.value.phase is PlaybackPhase.Playing)
+        assertEquals("https://cdn.example.com/x.m3u8", viewModel.state.value.url)
+        // 起播即播放：漏了 onPlaybackStarted 的话这里是 false，用户得手动点播放
+        assertTrue("直链起播应自动播放", viewModel.state.value.isPlaying)
+    }
+
+    @Test
     fun `dual stream line exposes audio url to the player surface`() = runTest {
         val probe = ScriptedProbe(
             script = mapOf(0 to listOf("https://relay.example.com/stream?p=bilibili&url=video")),
@@ -203,8 +224,10 @@ private fun TestScope.playerViewModel(
     clock: PlayerClock = FakeClock(),
     access: TrySeeAccess = TrySeeAccess.FREE,
     trySeeMinutes: Int = 0,
+    directLinkPatterns: List<String> = emptyList(),
+    firstEpisodeUrl: String = "vod-1-1",
 ): PlayerViewModel = PlayerViewModel(
-    vod = sampleVod(),
+    vod = sampleVod(directLinkPatterns = directLinkPatterns, firstEpisodeUrl = firstEpisodeUrl),
     deps = PlayerDeps(
         probe = probe,
         progressSink = sink,

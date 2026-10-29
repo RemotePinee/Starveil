@@ -40,6 +40,8 @@ fun StartupDto.toDomain(localThemeOverride: String? = null): StartupConfig = Sta
     appUiHomeSmallIcons = homeSmallIcons,
     topBarUsesBanner = homeTopBg == "1",
     playRecommendEnabled = playRecommend == "1",
+    // 缺字段（null）按开启：老后端没有这个键，行为与加开关之前一致
+    detailAutoplay = detailAutoplay != "0",
     ads = ads.toDomain(),
     // 详情页三块：缺字段（null）按显示处理，与加开关之前的行为一致
     detailSections = detailSectionsOf(),

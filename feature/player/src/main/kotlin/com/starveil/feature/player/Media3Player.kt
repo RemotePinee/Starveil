@@ -56,13 +56,20 @@ class Media3Player(context: Context) {
     }
 
     private val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext)
-        // 短剧是"短片段 + 高频切集"：缓冲上限放到 30 秒，单集 1-3 分钟能一次缓冲完，
-        // 滑动时不再反复拉流。
-        // 起播门槛从 1 秒降到 500ms：m3u8 只要首个分片到齐就能出画面，
-        // 1 秒是保守值，在 4G 下多等的那半秒纯属浪费。
+        // 缓冲四个门槛：前两个是目标缓冲量，后两个是"什么时候可以开播/恢复播放"。
+        //
+        // bufferForPlaybackMs 原来是 500ms —— 攒半秒就开播，起播最快。但分片只有 1~2 秒
+        // 的小码流根本补不及：播一秒就断，断了攒 1.5 秒又续上，表现正是"每一两秒缓冲一次"。
+        // 这两个门槛该按分片长度定，不该按起播速度定：起播多等半秒几乎无感，
+        // 播放中途一卡一卡却很难忍。
         .setLoadControl(
             DefaultLoadControl.Builder()
-                .setBufferDurationsMs(/* minBufferMs = */ 8_000, /* maxBufferMs = */ 30_000, 500, 1_500)
+                .setBufferDurationsMs(
+                    /* minBufferMs = */ 15_000,
+                    /* maxBufferMs = */ 50_000,
+                    /* bufferForPlaybackMs = */ 1_500,
+                    /* bufferForPlaybackAfterRebufferMs = */ 3_000,
+                )
                 .build(),
         )
         .build()

@@ -97,6 +97,9 @@ private fun DetailEntry(
     var playEpisode by rememberSaveable(vodId) { mutableStateOf(0) }
     // 断点续播：起播前从服务端进度读回，交给播放器定位一次
     var resumeMs by rememberSaveable(vodId) { mutableLongStateOf(0L) }
+    // 进详情页是否自动起播：后台「设置 → 基础 → 进详情页自动播放」。
+    // 缺配置（老后端）按开启处理，与加这个开关之前的行为一致。
+    val autoPlayOnEnter = container.startupRepository.cached()?.detailAutoplay ?: true
     DetailRoute(
         viewModel = detailViewModel,
         onBack = { nav.popBackStack() },
@@ -116,6 +119,16 @@ private fun DetailEntry(
                 }
             }
 
+            // 起播：手动点播放键与「进页面自动播」走同一条路。
+            // 先把断点读回来再起播——播放器 VM 一旦按 resumeMs=0 建好，后面再改 request
+            // 也不会重建，续播就永远不生效。
+            val startFrom: (Int, Int) -> Unit = { source, episode ->
+                scope.launch {
+                    resumeMs = resumeMsOf(container, vodId, source, episode)
+                    playSource = source
+                    playEpisode = episode
+                }
+            }
             // 切源：正在播就按新源的同一集接着播，不用再点一次集数
             LaunchedEffect(content.sourceIndex) {
                 if (playSource != NOT_STARTED && content.sourceIndex != playSource) {
@@ -123,6 +136,15 @@ private fun DetailEntry(
                     playEpisode = content.episodeIndex
                     playSource = content.sourceIndex
                 }
+            }
+            // 进详情页直接起播，不再要求先点海报上的播放键。
+            // 试看闸门不受影响：它在探测阶段（GateLoad）判定，自动起播一样会被拦下来。
+            var autoStarted by rememberSaveable(vodId) { mutableStateOf(false) }
+            LaunchedEffect(content.vod.id) {
+                // 关掉自动播时保持"停在海报、点播放键才开始"的老行为
+                if (autoStarted || !autoPlayOnEnter) return@LaunchedEffect
+                autoStarted = true
+                startFrom(content.sourceIndex, content.episodeIndex)
             }
             InlineDetailHero(
                 nav = nav,
@@ -134,21 +156,7 @@ private fun DetailEntry(
                     resumeMs = resumeMs,
                 ),
                 callbacks = InlineHeroCallbacks(
-                    onStart = { source, episode ->
-                        // 先把断点读回来再起播：播放器 VM 一旦按 resumeMs=0 建好，
-                        // 后面再改 request 也不会重建，续播就永远不生效
-                        scope.launch {
-                            // 读精确断点（服务端 cuican_vlog），不用最近 10 条的列表
-                            val stored = (container.playbackRepository.progressOf(vodId) as? AppResult.Success)?.value
-                            val sameEpisode = stored != null &&
-                                stored.sourceIndex == source &&
-                                stored.episodeIndex == episode &&
-                                stored.resumable
-                            resumeMs = if (sameEpisode) stored.positionSec * MILLIS_PER_SECOND else 0L
-                            playSource = source
-                            playEpisode = episode
-                        }
-                    },
+                    onStart = startFrom,
                     onFullscreenChange = { fullscreen -> fullscreenController.set(fullscreen) },
                     onEpisodeChanged = { index ->
                         // 播放器（含自动下一集）换集 → 详情页选集条与高亮同步
@@ -230,4 +238,24 @@ private fun InlineDetailHero(
             onEpisodeChanged = callbacks.onEpisodeChanged,
         ),
     )
+}
+
+/**
+ * 读断点：同一集且可续播才返回位置，否则 0（从头）。
+ *
+ * 抽成独立函数是为了把 `&&` 与三元判断挪出 [DetailEntry] —— 那里的圈复杂度
+ * 已经贴着 detekt 阈值，多几个分支就会红。
+ */
+private suspend fun resumeMsOf(
+    container: AppContainer,
+    vodId: Int,
+    source: Int,
+    episode: Int,
+): Long {
+    val stored = (container.playbackRepository.progressOf(vodId) as? AppResult.Success)?.value
+        ?: return 0L
+    val same = stored.sourceIndex == source &&
+        stored.episodeIndex == episode &&
+        stored.resumable
+    return if (same) stored.positionSec * MILLIS_PER_SECOND else 0L
 }

@@ -27,6 +27,7 @@ data class StartupDto(
     @SerialName("app_home_ads") val homeAds: String? = null,
     @SerialName("vip_close_ad") val vipCloseAd: String? = null,
     @SerialName("app_play_recommend") val playRecommend: String? = null,
+    @SerialName("app_detail_autoplay") val detailAutoplay: String? = null,
     @SerialName("app_user_adurl") val userAdUrl: String? = null,
     @SerialName("vip_purchase") val vipPurchase: String? = null,
     @SerialName("online_recharge") val onlineRecharge: String? = null,

@@ -19,6 +19,7 @@ final class SettingsSchema
     public const SELECT = [
         'member_enabled' => ['1' => '开启', '0' => '关闭'],
         'app_force_login' => ['1' => '开启', '0' => '关闭'],
+        'app_detail_autoplay' => ['1' => '开启', '0' => '关闭'],
         'device_recovery' => ['1' => '开启', '0' => '关闭'],
         // 这两个原来都是文本框，运营得自己猜 0/1——做成下拉，语义直接摆在选项里
         'register_require_sms' => ['1' => '需要（注册要填短信码）', '0' => '不需要（默认）'],
@@ -95,6 +96,7 @@ final class SettingsSchema
             'ui_home_data' => ['首页列数', '2 或 3'],
             'vip_group_id' => ['会员组 id', 'mac_group.group_id'],
             'app_force_login' => ['强制登录', '开启后冷启动直接锁全屏登录，未登录进不了 App'],
+            'app_detail_autoplay' => ['进详情页自动播放', '开启后进详情页直接起播；关闭则停在封面，要点播放键才开始'],
         ],
         '会员体系' => [
             'member_enabled' => ['会员体系', '关闭后客户端自动隐藏会员页与底栏入口；历史会员权益保留至到期'],
