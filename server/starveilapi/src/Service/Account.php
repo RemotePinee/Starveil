@@ -299,6 +299,13 @@ final class Account
         }
 
         $code = (string)random_int(100000, 999999);
+        $result = Sms::send($phone, $code, $purpose);
+        if ($result['code'] !== 1) {
+            return ['code' => 500, 'msg' => $result['msg']];
+        }
+        // 发送成功之后才落库：先 insert 再发送时，发送失败的那一行仍占着上面的
+        // 60 秒冷却与今日额度，用户等于被自己的一次失败锁住 60 秒（审计 S19）。
+        // 顺序反过来之后就没有"要删的残留行"——失败分支根本不会写进来。
         Db::table($table)->insert([
             'phone' => $phone,
             'code' => $code,
@@ -307,11 +314,6 @@ final class Account
             'used' => 0,
             'created_at' => time(),
         ]);
-
-        $result = Sms::send($phone, $code, $purpose);
-        if ($result['code'] !== 1) {
-            return ['code' => 500, 'msg' => $result['msg']];
-        }
         return ['code' => 200, 'msg' => '验证码已发送'];
     }
 

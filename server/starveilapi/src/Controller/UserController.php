@@ -459,12 +459,18 @@ final class UserController extends BaseController
             return;
         }
         $points = Setting::int('sign_points', 5);
-        Db::table($table)->insert([
+        // 上面的 find() 与这里的 insert() 之间有个窗口：连点两次会有一边撞
+        // `cuican_sign` 的唯一索引（user_id,sign_date），PHP 8 下 1062 被兜成 500。
+        // 撞键当作"已经签过"，积分只发一次（审计 S16）。
+        if (!$this->insertOnce($table, [
             'user_id' => $uid,
             'sign_date' => $today,
             'points' => $points,
             'created_at' => time(),
-        ]);
+        ])) {
+            Json::ok(['score' => '0'], '今天已经签到过了');
+            return;
+        }
         (new Users())->addPoints($uid, $points);
         Json::ok(['score' => (string)$points], '签到成功，获得' . $points . '积分');
     }
@@ -526,7 +532,14 @@ final class UserController extends BaseController
             Json::fail(400, '任务还没完成');
             return;
         }
-        Db::table(Installer::prefix() . 'cuican_setting')->insert(['k' => $this->claimKey($uid, $action), 'v' => '1']);
+        // 同一原因：并发领取时后到的那次撞 `cuican_setting` 主键（k），按已领取处理
+        if (!$this->insertOnce(Installer::prefix() . 'cuican_setting', [
+            'k' => $this->claimKey($uid, $action),
+            'v' => '1',
+        ])) {
+            Json::ok(['score' => '0'], '今天已经领取过了');
+            return;
+        }
         $points = (int)$task['task_points'];
         if ($points > 0) {
             (new Users())->addPoints($uid, $points);
@@ -637,7 +650,32 @@ final class UserController extends BaseController
         return 'task_claim_' . $uid . '_' . $action . '_' . date('Ymd');
     }
 
-
+    /**
+     * 插一行"一天只一条"的记录，返回本次是否真的写进去。
+     *
+     * 三个调用方都是先 find() 再 insert()：并发时两个请求会同时通过 find()，
+     * 后到的那个撞唯一键（1062 / Duplicate entry）。TP5.0 在 PHP 8 下把 warning
+     * 与 PDO 异常一律抛成 500，用户看到的就是"连点报错"。
+     * 撞键说明这一行已经存在，按"已经领过"回 200，与 [ShortPlayController::recordUnlock]
+     * 同一写法。
+     *
+     * 其它数据库错误照旧抛出去：那不是"已领过"，不能静默吞掉。
+     *
+     * @param array<string,mixed> $row
+     */
+    private function insertOnce(string $table, array $row): bool
+    {
+        try {
+            Db::table($table)->insert($row);
+            return true;
+        } catch (\Throwable $e) {
+            $message = $e->getMessage();
+            if (str_contains($message, '1062') || str_contains($message, 'Duplicate entry')) {
+                return false;
+            }
+            throw $e;
+        }
+    }
 
     /** 分享信息 `v1.user/shareInfo`。 */
     public function getShareinfo(): void
@@ -666,7 +704,10 @@ final class UserController extends BaseController
             Json::ok(['score' => '0'], '今天已经领过分享奖励');
             return;
         }
-        $settings->insert(['k' => $key, 'v' => '1']);
+        if (!$this->insertOnce(Installer::prefix() . 'cuican_setting', ['k' => $key, 'v' => '1'])) {
+            Json::ok(['score' => '0'], '今天已经领过分享奖励');
+            return;
+        }
         (new Users())->addPoints($uid, $points);
         Json::ok(['score' => (string)$points], '分享成功，获得' . $points . '积分');
     }

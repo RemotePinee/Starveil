@@ -47,7 +47,6 @@ internal fun LiveChannelCard(
     playback: LivePlaybackState?,
     onClick: () -> Unit,
 ) {
-    val playing = playback != null
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -55,80 +54,92 @@ internal fun LiveChannelCard(
             .background(starveilExtraColors.surfaceCard)
             .clickable(onClick = onClick),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(THUMB_RATIO)
-                .background(
-                    Brush.verticalGradient(
-                        0f to starveilExtraColors.surfaceElevated,
-                        1f to starveilExtraColors.surfaceCard,
-                    ),
+        LiveChannelThumb(channel = channel, playing = playback != null)
+        LiveChannelCaption(channel = channel)
+    }
+}
+
+/** 封面：有图放图，没图放占位图标；正在播的台盖一层遮罩 + 播放图标。 */
+@Composable
+private fun LiveChannelThumb(channel: LiveChannel, playing: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(THUMB_RATIO)
+            .background(
+                Brush.verticalGradient(
+                    0f to starveilExtraColors.surfaceElevated,
+                    1f to starveilExtraColors.surfaceCard,
                 ),
-            contentAlignment = Alignment.Center,
-        ) {
-            if (!channel.cover.isNullOrBlank()) {
-                AsyncImage(
-                    model = channel.cover,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (!channel.cover.isNullOrBlank()) {
+            AsyncImage(
+                model = channel.cover,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Icon(
+                imageVector = PhosphorIcons.Regular.Waveform,
+                contentDescription = null,
+                tint = starveilExtraColors.textFaint,
+                modifier = Modifier.size(IconSize.lg),
+            )
+        }
+        LiveBadge(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(Spacing.xs),
+        )
+        if (playing) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(starveilExtraColors.scrimStrong.copy(alpha = 0.35f)),
+                contentAlignment = Alignment.Center,
+            ) {
                 Icon(
-                    imageVector = PhosphorIcons.Regular.Waveform,
-                    contentDescription = null,
-                    tint = starveilExtraColors.textFaint,
+                    imageVector = PhosphorIcons.Regular.Play,
+                    contentDescription = "正在播放",
+                    tint = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.size(IconSize.lg),
                 )
             }
-            LiveBadge(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(Spacing.xs),
-            )
-            if (playing) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(starveilExtraColors.scrimStrong.copy(alpha = 0.35f)),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = PhosphorIcons.Regular.Play,
-                        contentDescription = "正在播放",
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(IconSize.lg),
-                    )
-                }
-            }
         }
-        Column(modifier = Modifier.padding(Spacing.sm)) {
+    }
+}
+
+/** 名称两行 + 分组名做副标题（版式说明见 [LiveChannelCard]）。 */
+@Composable
+private fun LiveChannelCaption(channel: LiveChannel) {
+    Column(modifier = Modifier.padding(Spacing.sm)) {
+        Text(
+            text = channel.name,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.size(Spacing.xxs))
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(Spacing.xs)
+                    .clip(AppShape.full)
+                    .background(starveilExtraColors.accent),
+            )
+            Spacer(Modifier.width(Spacing.xxs))
             Text(
-                text = channel.name,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 2,
+                text = channel.group.ifBlank { "直播中" },
+                style = MaterialTheme.typography.bodySmall,
+                color = starveilExtraColors.textMuted,
+                maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            Spacer(Modifier.size(Spacing.xxs))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(Spacing.xs)
-                        .clip(AppShape.full)
-                        .background(starveilExtraColors.accent),
-                )
-                Spacer(Modifier.width(Spacing.xxs))
-                Text(
-                    text = channel.group.ifBlank { "直播中" },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = starveilExtraColors.textMuted,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
         }
     }
 }

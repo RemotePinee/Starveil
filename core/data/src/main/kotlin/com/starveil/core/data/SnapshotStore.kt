@@ -90,7 +90,7 @@ class SnapshotStore(
     private fun writeNow(name: String, payload: String, issuedAt: Long) {
         if (issuedAt != generation.get()) return
         // 先写临时文件再替换：进程被杀在中途时，旧快照仍然完整可用
-        runCatching {
+        val written = runCatching {
             dir.mkdirs()
             val temp = File(dir, "$name.v$VERSION.tmp")
             temp.writeText(payload)
@@ -99,7 +99,24 @@ class SnapshotStore(
                 target.delete()
                 temp.renameTo(target)
             }
-        }
+        }.isSuccess
+        // 升过版本后旧文件名的快照已经读不到了，再留着只会长期占住 prune 的 keep 名额
+        if (written) deleteStaleVersions(name)
+    }
+
+    /**
+     * 删掉**同名**、不同版本号的快照（`name.v1.json` 之于 VERSION=2）。
+     *
+     * 只在写入成功后调用：写失败时旧版本文件是仅有的可用数据，不能先删。
+     * 文件名精确匹配 `name.v{数字}.json`，不按前缀扫——`home` 这种短名字按前缀
+     * 会把 `home_feed.v1.json` 一起删掉。
+     */
+    private fun deleteStaleVersions(name: String) {
+        val current = file(name).name
+        val stale = Regex("""^${Regex.escape(name)}\.v\d+\.json$""")
+        runCatching {
+            dir.listFiles { file -> file.isFile && file.name != current && stale.matches(file.name) }
+        }.getOrNull()?.forEach { file -> runCatching { file.delete() } }
     }
 
     /** 删除单份快照：服务端明确说"没有这条数据"时用，别让旧快照替已删内容续命。 */

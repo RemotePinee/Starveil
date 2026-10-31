@@ -38,6 +38,14 @@ internal interface PlayerUiHost {
 
     /** 保存播放位置（观看记录 + 断点续播）。 */
     fun persist(positionMs: Long)
+
+    /**
+     * 当前播放位置（毫秒）。
+     *
+     * 单独一条流、不进 [PlayerUiState]：播放器每 500ms 报一次位置，写进 UiState
+     * 等于整页 2Hz 重组（见 `PlayerViewModel.position`）。
+     */
+    var currentPositionMs: Long
 }
 
 /** 播放 / 暂停（用户点击，切换）。 */
@@ -120,5 +128,5 @@ internal fun PlayerUiHost.retryPlayback() {
  */
 internal fun PlayerUiHost.pausePlayback() {
     edit { it.copy(isPlaying = false, isPauseAdEligible = false) }
-    persist(uiState.positionMs)
+    persist(currentPositionMs)
 }

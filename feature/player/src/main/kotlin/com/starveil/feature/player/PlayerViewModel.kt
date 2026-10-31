@@ -73,6 +73,23 @@ class PlayerViewModel(
     private val _state = MutableStateFlow(sessionStateOf(vod, session, PlayerUiState()))
     val state: StateFlow<PlayerUiState> = _state.asStateFlow()
 
+    private val _position = MutableStateFlow(0L)
+
+    /**
+     * 播放位置（毫秒），独立于 [state]。
+     *
+     * 播放器每 500ms 报一次位置，写进 UiState 等于整页 2Hz 重组：控制层、覆盖层、
+     * 手势层全部跟着重画一遍。这里单独一条流，只有真正读它的叶子（进度条数字、
+     * 弹幕层）会刷新——注入方式同 DanmuLayer 的逐帧插值。
+     */
+    val position: StateFlow<Long> = _position.asStateFlow()
+
+    override var currentPositionMs: Long
+        get() = _position.value
+        set(value) {
+            _position.value = value
+        }
+
     private val _events = Channel<PlayerEvent>(Channel.BUFFERED)
     val events: Flow<PlayerEvent> = _events.receiveAsFlow()
 
@@ -117,7 +134,9 @@ class PlayerViewModel(
         timeoutJob?.cancel(); cancelProbes()
         reporter.reset()
         danmuDispatcher.reset()
-        lastSavedSec = 0; edit { it.copy(positionMs = 0L, durationMs = 0L, isPlaying = false) }
+        lastSavedSec = 0
+        currentPositionMs = 0L
+        edit { it.copy(durationMs = 0L, isPlaying = false) }
         // 红果解密开关随片源下发，默认关；写进运行时供 DataSource 层读取
         val pi = session.playerInfo
         PlayerLog.warn { PlayerLog.describePlayerInfo("viewModel", pi) }
@@ -162,7 +181,9 @@ class PlayerViewModel(
             reporter.onTick(isPlaying, session.sourceIndex, session.episodeIndex)
             if (isPlaying) persist(positionMs)
         }
-        edit { it.copy(positionMs = positionMs, durationMs = durationMs) }
+        // 位置单独下发：进 UiState 会让整页跟着 2Hz 重组
+        currentPositionMs = positionMs
+        edit { it.copy(durationMs = durationMs) }
         danmuDispatcher.onPosition()
     }
 
@@ -190,7 +211,7 @@ class PlayerViewModel(
     fun onSpeedSelected(speed: Float) = selectSpeed(speed)
 
     fun onSeekTo(positionMs: Long) {
-        edit { it.copy(positionMs = positionMs) }
+        currentPositionMs = positionMs
         reporter.onSeek()
         // 拖完立刻落一次盘：拖到目标位置就退出页面时，500ms 的采样还没轮到，
         // 只靠 onProgress 会丢掉这次拖动。persist 自带 5 秒步长，拖多少次也只写一次。
@@ -224,14 +245,14 @@ class PlayerViewModel(
     fun pausePlayback() = pausePlaybackImpl()
 
     /** 退后台 / 离页补一次位置。 */
-    fun persistCurrentPosition() = persist(_state.value.positionMs)
+    fun persistCurrentPosition() = persist(currentPositionMs)
 
     /** 播放器已按 [PlayerUiState.pendingSeekMs] 定位完成，清标记避免重复 seek。 */
     fun onSeekConsumed() = edit { it.copy(pendingSeekMs = 0L) }
 
     /** 发送弹幕；失败由 [PlayerDanmuDispatcher] 把后端原话透出来。 */
     fun sendDanmu(text: String, colorHex: String = "") {
-        danmuDispatcher.send(content = text, atTimeMs = _state.value.positionMs, colorHex = colorHex)
+        danmuDispatcher.send(content = text, atTimeMs = currentPositionMs, colorHex = colorHex)
     }
 
     // ---- 解析 ---------------------------------------------------------------

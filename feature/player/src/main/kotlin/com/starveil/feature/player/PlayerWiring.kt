@@ -32,7 +32,8 @@ internal fun PlayerEngineEffects(engine: Media3Player, state: PlayerUiState, vie
     // 重建的，pendingSeekMs 已经是 0，但 ViewModel 还留着上一次的 positionMs——
     // 不认它就会从头播（"切页面回来从头开始"就是这么来的）。
     LaunchedEffect(url, state.pendingSeekMs) {
-        val resume = if (state.pendingSeekMs > 0L) state.pendingSeekMs else state.positionMs
+        // 位置不在 UiState 里：这是效果体，读流的值不订阅、不引起重组
+        val resume = if (state.pendingSeekMs > 0L) state.pendingSeekMs else viewModel.currentPositionMs
         if (url != null && resume > 0L) {
             engine.seekTo(resume)
             viewModel.onSeekConsumed()

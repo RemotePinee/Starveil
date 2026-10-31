@@ -1,47 +1,33 @@
 package com.starveil.feature.player
 
-import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
-import androidx.annotation.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LifecycleEventEffect
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
-import androidx.media3.common.util.UnstableApi
-import androidx.compose.ui.layout.ContentScale
-import androidx.media3.ui.compose.ContentFrame
-import androidx.media3.ui.compose.SURFACE_TYPE_TEXTURE_VIEW
 
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.LocalSkinSelection
 import com.starveil.core.designsystem.StarveilTheme
-import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.PlaybackPhase
 import kotlinx.coroutines.delay
 
@@ -73,7 +59,7 @@ class PlayerActions(
  * [idleKey] 给"操作一次就重置 3 秒倒计时"用。
  */
 @Stable
-private class ChromeVisibility {
+internal class ChromeVisibility {
     var visible by mutableStateOf(true)
     var idleKey by mutableIntStateOf(0)
 
@@ -112,6 +98,9 @@ fun PlayerRoute(
 ) {
     val state = viewModel.state.collectAsStateWithLifecycle().value
     val danmu = viewModel.danmu.collectAsStateWithLifecycle().value
+    // 播放位置独立于 UiState：每 500ms 变一次的值不能挂在整页状态上。
+    // 这里拿到的只是 State 对象本身，什么时候读由下层决定（见 PlayerStage）。
+    val position = viewModel.position.collectAsStateWithLifecycle()
     val context = LocalContext.current
     // 只有没外部传入时才自己建：条件稳定（engine 传进来就不会变），remember 在此安全
     val ownEngine = if (engine == null) remember(context) { Media3Player(context) } else null
@@ -122,7 +111,10 @@ fun PlayerRoute(
     val isResumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
 
     LaunchedEffect(viewModel) { viewModel.ensureStarted() }
-    LaunchedEffect(viewModel) { viewModel.events.collect(onEvent) }
+    // 事件闭包必须是"最新的那个"：同一个 VM 换回调时（内嵌小窗 → 独立全屏页）key 只有
+    // viewModel，首帧闭包会被永久捕获，事件全发给旧接线。state 那边一直用同一招。
+    val latestOnEvent = rememberUpdatedState(onEvent)
+    LaunchedEffect(viewModel) { viewModel.events.collect { latestOnEvent.value(it) } }
     // 横竖屏切换属于宿主 Activity：本模块只报告状态，不直接改窗口
     LaunchedEffect(state.isFullscreen) { onFullscreenChange(state.isFullscreen) }
     DisposableEffect(media) {
@@ -133,8 +125,7 @@ fun PlayerRoute(
             ownEngine?.release()
         }
     }
-    // 退到后台立刻暂停：ON_PAUSE 比 ON_STOP 早，切桌面那一刻就断，声音不会在桌面上继续响
-    val playing = rememberUpdatedState(state.isPlaying)
+    // 退到后台立刻暂停：ON_PAUSE 比 ON_STOP 早，切桌面那一刻就断，声音不会在桌面上继续响。
     // 直接调 engine.pause()：不依赖状态回流的那一帧，切桌面那一刻就真的静音
     LifecycleEventEffect(Lifecycle.Event.ON_PAUSE) {
         // 幂等暂停：ON_PAUSE 与 ON_STOP 都会到，之前用 toggle 会切两次又变回播放，
@@ -154,6 +145,7 @@ fun PlayerRoute(
             state = state,
             engine = media,
             actions = actions,
+            position = position,
             danmu = danmu,
             isResumed = isResumed,
             modifier = modifier,
@@ -178,6 +170,8 @@ fun PlayerScreen(
     state: PlayerUiState,
     engine: Media3Player,
     actions: PlayerActions,
+    /** 播放位置：单独一条 State，只有读它的叶子跟着刷新，整页不跟着 2Hz 重组。 */
+    position: State<Long>,
     modifier: Modifier = Modifier,
     danmu: List<DanmuItem> = emptyList(),
     /** 页面是否在前台（RESUMED）：退后台时播放停、弹幕也必须停，否则黑着屏还在飘字。 */
@@ -187,127 +181,70 @@ fun PlayerScreen(
     /** 贴片占屏时置 true：ViewModel 据此拦住"恢复播放"，倒计时才真的生效。 */
     onPauseAdHold: (Boolean) -> Unit = {},
 ) {
-    var sheet by remember { mutableStateOf<PlayerSheetKind?>(null) }
-    // 弹幕显示偏好（开关/字号/颜色/行数/区域/不透明度）收在 DanmuPrefs：
-    // 行数与区域有约束关系，也让本函数的圈复杂度不超 detekt 上限
-    val danmuPrefs = rememberDanmuPrefs()
-    val chrome = remember { ChromeVisibility() }
-    // 横滑预览位置：不为空时进度条画这个值，松手后清空回到真实播放位置
-    var seekPreview by remember { mutableStateOf<Long?>(null) }
+    // 页面级纯 UI 状态（弹层 / 弹幕偏好 / 控制层显隐 / 横滑预览 / 亮度）收进一个持有者：
+    // 都是"换一下就要存一次盘没有意义"的东西，不进 ViewModel
+    val page = rememberPlayerPage()
+    val immersive = rememberImmersive(state.isFullscreen)
     // 播放中常亮：横屏看片与内嵌小窗都会在系统休眠时限里黑屏。
     // 传 isPlaying 而不是恒为 true：内嵌在详情页时暂停就该让系统正常息屏。
     KeepScreenOnWhilePlaying(enabled = state.isPlaying)
-    // 窗口亮度记在页面这一层：GestureLevels 构造时抓进入前的原始值，
-    // 页面销毁时按它还原——否则退出播放页后，详情页/首页会保留调过的亮度。
-    val context = LocalContext.current
-    val levels = remember(context) { GestureLevels(context) }
-    DisposableEffect(levels) { onDispose { levels.restoreBrightness() } }
-    // 回前台只做兜底恢复，不重建 SurfaceView：重建会把正在拉的流打断，表现成"一直转圈"
-    val lifecycle = LocalLifecycleOwner.current.lifecycle
-    val position = rememberUpdatedState(state.positionMs)
-    DisposableEffect(lifecycle, engine) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_START) {
-                // 出错（多半是签名地址过期）就重新解析；只是掉了 source 才就地重建
-                if (engine.hasError) actions.onRetry() else engine.recoverIfNeeded(position.value)
-            }
-        }
-        lifecycle.addObserver(observer)
-        onDispose { lifecycle.removeObserver(observer) }
-    }
-    val stalled = rememberStalled(isBuffering = state.isBuffering, durationMs = state.durationMs)
-    // 弹层打开时控制层保持可见，免得"点开面板，控制层先自己消失了"
-    val chromeShown = chromeShownOf(chrome.visible, sheet)
-    // 关掉开关只是不渲染这一层，时间轴与拉取仍在跑，重新打开不用等下一个窗口；
-    // 解析阶段也不渲染：画面还没出来弹幕先飘，会盖在转圈/海报上
-    val danmuItems = visibleDanmu(danmuPrefs.enabled, state, danmu)
-    ChromeIdleEffect(playing = state.isPlaying, shown = chromeShown, idleKey = chrome.idleKey) {
-        chrome.visible = false
-    }
+    // 回前台兜底恢复（不重建 SurfaceView，重建会把正在拉的流打断）
+    PlayerLifecycleEffects(engine = engine, actions = actions, position = position)
+    PlayerChromeIdle(state = state, page = page)
     // 返回键优先级：先关弹层 → 再退全屏 → 最后才退出播放页。
     // 少了"退全屏"这一级，全屏按返回会直接把播放页弹出栈：先看到首页再转回竖屏，就是那一下闪
-    BackHandler(enabled = sheet != null) { sheet = null }
-    BackHandler(enabled = sheet == null && state.isFullscreen) { actions.onFullscreenToggle() }
+    BackHandler(enabled = page.sheet != null) { page.sheet = null }
+    BackHandler(enabled = page.sheet == null && state.isFullscreen) { actions.onFullscreenToggle() }
+    val stalled = rememberStalled(isBuffering = state.isBuffering, durationMs = state.durationMs)
+    // 手势回调以前在包体里 new：现在只在真正影响它的输入变化时重建（见 gestureCallbacks 的注释）
+    val callbacks = remember(actions, page.chrome) {
+        gestureCallbacks(
+            actions = actions,
+            chrome = page.chrome,
+            onPreview = { page.seekPreview = it },
+        )
+    }
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(starveilExtraColors.scrimStrong),
     ) {
-        // 视频面永远铺满自己的容器，画面比例由 VideoSurface 的 aspectRatio 兜住
-        val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-        // 布局与系统栏按"系统真的转完屏"之后的状态走：退出全屏时窗口还有 200-400ms
-        // 停在横屏，这期间若先按竖屏排一遍，视频会先在横向窗口里被拉伸一下再跳回正常比例。
-        val settledFullscreen = rememberSettledFullscreen(state.isFullscreen, landscape)
-        val immersive = isImmersive(settledFullscreen, landscape)
-        VideoSurface(engine = engine, modifier = Modifier.fillMaxSize())
-        DanmuLayer(
-            items = danmuItems,
-            // 不能因为弹层打开就停绘制：停掉后位置时钟冻结、每 500ms 被状态拉回去，
-            // 弹幕就变成"一下一下跳"。这里只跟着播放状态走。
-            // 前台 + 正在播才推进弹幕：退后台播放停了，弹幕也必须停
-            isPlaying = state.isPlaying && isResumed,
-            fontScale = danmuPrefs.fontScale,
-            positionMs = state.positionMs,
-            // 行数必须显式传：漏了就一直按默认 3 行画，用户改行数等于没改
-            laneCount = danmuPrefs.laneCount,
-            opacity = danmuPrefs.opacity,
-            areaFraction = danmuPrefs.areaFraction,
-            modifier = Modifier.fillMaxSize().padding(top = Spacing.xs),
+        PlayerStage(
+            ui = PlayerStageUi(
+                state = state,
+                engine = engine,
+                position = position,
+                danmu = visibleDanmu(page.danmuPrefs.enabled, state, danmu),
+                danmuPrefs = page.danmuPrefs,
+                isResumed = isResumed,
+                levels = page.levels,
+            ),
+            handlers = PlayerStageHandlers(
+                actions = actions,
+                unlock = unlock,
+                onWatchAd = onWatchAd,
+                onPauseAdHold = onPauseAdHold,
+            ),
+            callbacks = callbacks,
+            stalled = stalled,
         )
-        PlayerGestureLayer(
-            state = state,
-            enabled = state.phase is PlaybackPhase.Playing && !state.isBlocked,
-            callbacks = gestureCallbacks(actions = actions, chrome = chrome, onPreview = { seekPreview = it }),
-            levels = levels,
-            modifier = Modifier.fillMaxSize(),
-        )
-        // 暂停贴片：位于手势层之上、三态覆盖层与控制层之下。它不跟随控制层显隐——
-        // 暂停态点屏幕只隐藏播控，广告留在画面上（见 PlayerPauseAd 的 visibility 说明）
-        PlayerPauseAdLayer(
-            state = state,
-            onHold = onPauseAdHold,
-            modifier = Modifier.fillMaxSize(),
-        )
-        PlayerOverlay(
+        PlayerChrome(
             state = state,
             actions = actions,
-            modifier = Modifier.fillMaxSize(),
-            unlock = unlock,
-            onWatchAd = onWatchAd,
+            page = page,
+            extras = ChromeExtras(position = position, immersive = immersive),
         )
-        if (stalled) {
-            StalledHint(onRetry = actions.onRetry, modifier = Modifier.align(Alignment.Center))
-        }
-        if (!state.isBlocked) {
-            CompositionLocalProvider(LocalSeekPreview provides seekPreview) {
-                PlayerChromeOverlay(
-                    state = state,
-                    actions = actions,
-                    config = ChromeConfig(
-                        visible = chromeShown,
-                        danmuEnabled = danmuPrefs.enabled,
-                        immersive = immersive,
-                        onInteract = chrome::show,
-                        onToggleDanmu = { danmuPrefs.enabled = !danmuPrefs.enabled },
-                        onOpenSheet = { sheet = it },
-                        // 倍速不再开弹层：点一下切下一档，按钮上直接显示当前档位
-                        onCycleSpeed = { actions.onSpeedSelected(PlayerSpeeds.next(state.speed)) },
-                    ),
-                )
-            }
-        }
         // 弹层在这里调用：它要读 immersive 决定弹层窗口要不要隐藏系统栏
-        PlayerSheetHost(
-            kind = sheet,
-            state = state,
-            actions = actions,
-            onDismiss = { sheet = null },
-            immersive = immersive,
-            danmu = DanmuSettings(style = danmuPrefs.style(), events = danmuPrefs.events()),
-        )
+        PlayerSheets(state = state, actions = actions, page = page, immersive = immersive)
     }
 }
 
+/**
+ * 手势回调集合。
+ *
+ * 调用点必须 `remember(actions, chrome)` 住它：以前在 PlayerScreen 的包体里每次重组都
+ * new 一份，`GestureCallbacks` 又是按字段比较的数据类，等于每次都给手势层换了新回调。
+ */
 private fun gestureCallbacks(
     actions: PlayerActions,
     chrome: ChromeVisibility,
@@ -344,7 +281,7 @@ private fun rememberStalled(isBuffering: Boolean, durationMs: Long): Boolean {
 
 /** 播放中 3 秒无操作就收起控制层；暂停或控制层已隐藏时不再计时。 */
 @Composable
-private fun ChromeIdleEffect(playing: Boolean, shown: Boolean, idleKey: Int, onIdle: () -> Unit) {
+internal fun ChromeIdleEffect(playing: Boolean, shown: Boolean, idleKey: Int, onIdle: () -> Unit) {
     val idle = rememberUpdatedState(onIdle)
     LaunchedEffect(playing, shown, idleKey) {
         if (shown && playing) {
@@ -368,37 +305,9 @@ private fun drawableDanmu(enabled: Boolean, state: PlayerUiState): Boolean =
 private fun blockingForDanmu(state: PlayerUiState): Boolean =
     state.isBlocked || state.isBuffering || state.errorMessage != null
 
-/**
- * 视频面（长剧与短剧共用同一条纹理路径）。
- *
- * 不用 `PlayerView`：它内部的 `AspectRatioFrameLayout` 会和我们的容器各算一套画面矩形，
- * 容器与窗口不完全重合时就会偏心（典型的"上下左留黑、右边贴边"）。
- *
- * 直接使用 Media3 原生 Player 与 ContentFrame：Surface 绑定、解绑和释放都由 Media3
- * 管理。页面组合重建时不接管 TextureView listener，也不跨 View 保存 SurfaceTexture。
- */
-@OptIn(UnstableApi::class)
-@Composable
-private fun VideoSurface(engine: Media3Player, modifier: Modifier = Modifier) {
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        ContentFrame(
-            player = engine.mediaPlayer,
-            surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-            contentScale = ContentScale.Fit,
-            keepContentOnReset = true,
-            modifier = Modifier.aspectRatio(engine.videoAspectRatio),
-            shutter = {},
-        )
-    }
-}
-
 /** 弹层打开时控制层保持可见；抽成纯函数，避免主 Composable 的圈复杂度继续上涨。 */
-private fun chromeShownOf(visible: Boolean, sheet: PlayerSheetKind?): Boolean =
+internal fun chromeShownOf(visible: Boolean, sheet: PlayerSheetKind?): Boolean =
     visible && sheet == null
-
-/** 全屏且横屏才算沉浸：竖屏全屏不收起系统栏，避免画面被拉成两截。 */
-private fun isImmersive(fullscreen: Boolean, landscape: Boolean): Boolean =
-    fullscreen && landscape
 
 /** 退出全屏后等系统转回竖屏再切布局的宽限；设备锁竖屏时靠它兜底，不能永远等。 */
 private const val FULLSCREEN_SETTLE_GRACE_MS = 600L

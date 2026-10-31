@@ -102,7 +102,11 @@ class Installer
     }
 
     /**
-     * 卸载只删自己的表，且必须显式确认，避免后台误点一次把订单删光。
+     * 卸载：清自己的表、站点根入口、后台快捷菜单，且必须显式确认。
+     *
+     * 确认位由插件类（`Starveilapi::uninstall()`）显式传 true：它是后台「卸载」按钮
+     * 唯一对应的路径，传 true 才是"点一下真的卸载"。别的代码顺手调到这里却没传
+     * 确认位时，仍然什么都不删，避免误伤。
      */
     public static function uninstall(bool $confirm): bool|array
     {
@@ -114,7 +118,14 @@ class Installer
             $table = str_replace('`', '', (string)reset($row));
             Db::execute('DROP TABLE IF EXISTS `' . $table . '`');
         }
+        // 已下线的两张表（游戏位 / 播放器广告）：v2.5.4 的升级迁移里 DROP 过，
+        // 这里兜住"装了但一直没升到 v2.5.4"的站点，卸载后不留空表（审计 S20）。
+        // 上面那条 LIKE 已经覆盖它们（同为 cuican_ 前缀），这两句是显式写出意图。
+        foreach (['cuican_youxi', 'cuican_player_ad'] as $retired) {
+            Db::execute('DROP TABLE IF EXISTS `' . self::prefix() . $retired . '`');
+        }
         self::removeMenu();
+        self::removeRootEntry();
         @unlink(self::lockFile());
         return true;
     }
@@ -242,6 +253,25 @@ ENTRY;
         }
         @file_put_contents($target, self::ROOT_ENTRY);
         @chmod($target, 0644);
+    }
+
+    /**
+     * 卸载时删掉站点根入口。
+     *
+     * 只删本类写的那一份：内容里必须带 [ROOT_ENTRY] 的引导标记。站长自己改过的入口
+     * 归他维护，这里不碰——删掉一个正在被别处引用的文件，代价比留一个 3KB 的壳大。
+     */
+    private static function removeRootEntry(): void
+    {
+        $target = ROOT_PATH . 'icciu_api.php';
+        if (!is_file($target)) {
+            return;
+        }
+        $content = (string)@file_get_contents($target);
+        if (!str_contains($content, 'addons/starveilapi/src/entry.php')) {
+            return;
+        }
+        @unlink($target);
     }
 
     /**

@@ -12,6 +12,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +39,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.Stable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -105,35 +107,122 @@ internal fun LiveFullscreenPlayer(
     // 播的是哪一台，用 channel.id 记身份，不用下标：换分类是原地替换 items
     // （LiveViewModel.selectGroup → load → fetchFirst），条数会变少——在"全部"里看第 40 台
     // 时切到只有 12 台的组，旧下标直接越界；不越界时也可能指着另一台，顶栏与画面就各说各话。
-    var selectedId by remember {
-        mutableLongStateOf(channels[initialIndex.coerceIn(0, channels.lastIndex)].id)
+    val viewer = remember {
+        LiveViewerState(channels[initialIndex.coerceIn(0, channels.lastIndex)].id)
     }
-    // 手势回调在 pointerInput 里长期存活，用 state 读最新列表，避免抓住旧分类的副本
-    val liveChannels = rememberUpdatedState(channels)
-    var error by remember { mutableStateOf<String?>(null) }
-    var loading by remember { mutableStateOf(true) }
-    // 新源真正出帧前，用一块黑幕把上一台的最后一帧盖住：
-    // TextureView 会一直保留旧画面，不盖就是"卡在上一个台 + 转圈"。
-    var surfaceReady by remember { mutableStateOf(false) }
-    var drag by remember { mutableFloatStateOf(0f) }
-    // 视频原始宽高比：视频面铺满整屏会把画面拉变形（4:3 的台被拉成 21:9），
-    // 所以按 ExoPlayer 报的 size 动态约束，多出来的地方留黑边。
-    var videoAspect by remember { mutableFloatStateOf(DEFAULT_ASPECT) }
-    // 换台提示只在进入时出现一次，2.5 秒后淡出，不常驻挡画面
-    var showHint by remember { mutableStateOf(true) }
-    var showPicker by remember { mutableStateOf(false) }
     // 每次组合按 id 反查：该台不在新分类里就退回第一台，下标永远落在合法范围
-    val index = channelIndex(channels, selectedId)
+    val index = channelIndex(channels, viewer.selectedId)
     val channel = channels[index]
-
-    LaunchedEffect(Unit) {
-        delay(HINT_VISIBLE_MS)
-        showHint = false
-    }
-
     val player = remember {
         ExoPlayer.Builder(context).build().apply { playWhenReady = true }
     }
+    LivePlayerEffects(player = player, channel = channel, viewer = viewer, context = context)
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false,
+        ),
+    ) {
+        LiveDialogImmersive()
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+        ) {
+            // 按视频原始比例居中：多余区域留黑边，不做任何拉伸。
+            // matchHeightConstraintsFirst=true 让它在横屏下先吃满高度，再按比例算宽度。
+            PlayerSurface(
+                player = player,
+                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .aspectRatio(viewer.videoAspect, matchHeightConstraintsFirst = true),
+            )
+
+            SwitchCurtain(visible = !viewer.surfaceReady)
+            LiveSwipePager(channels = channels, viewer = viewer)
+            LiveFullscreenChrome(
+                channel = channel,
+                position = "${index + 1} / ${channels.size}",
+                viewer = viewer,
+                onDismiss = onDismiss,
+            )
+            LivePickerPanel(
+                model = model,
+                channels = channels,
+                viewer = viewer,
+                onSelectGroup = onSelectGroup,
+            )
+        }
+    }
+}
+
+/**
+ * 直播全屏的可变播放状态。
+ *
+ * 收成一个类是因为它被"装载 → 播放器回调 → 手势 → 顶栏"四条线同时读写；散在函数体里
+ * 时它们都是局部 `var`，一旦拆组件就得逐个当参数传，很容易撞参数上限。
+ * [selectedId] 也放在这里：手势那段 pointerInput 长期存活，只有读 state 才拿得到最新值。
+ */
+@Stable
+private class LiveViewerState(initialChannelId: Long) {
+    /** 正在播的频道身份（不是下标）。 */
+    var selectedId by mutableLongStateOf(initialChannelId)
+
+    var error by mutableStateOf<String?>(null)
+    var loading by mutableStateOf(true)
+
+    /** 新源真正出帧前，用一块黑幕把上一台的最后一帧盖住。 */
+    var surfaceReady by mutableStateOf(false)
+
+    var drag by mutableFloatStateOf(0f)
+
+    /** 视频原始宽高比：视频面铺满整屏会把画面拉变形（4:3 的台被拉成 21:9）。 */
+    var videoAspect by mutableFloatStateOf(DEFAULT_ASPECT)
+
+    /** 换台提示只在进入时出现一次，2.5 秒后淡出，不常驻挡画面。 */
+    var showHint by mutableStateOf(true)
+
+    var showPicker by mutableStateOf(false)
+}
+
+/** 播放器回调：缓冲 / 出帧 / 画面比例 / 错误，全部落到 [LiveViewerState]。 */
+private class LivePlayerListener(private val viewer: LiveViewerState) : Player.Listener {
+
+    override fun onPlaybackStateChanged(state: Int) {
+        viewer.loading = state == Player.STATE_BUFFERING
+        // READY 才是"新源已经有画面了"：这时才让黑幕淡出
+        if (state == Player.STATE_READY) {
+            viewer.surfaceReady = true
+        }
+    }
+
+    override fun onPlayerError(e: PlaybackException) {
+        viewer.loading = false
+        // 不再把 ERROR_CODE_* 抛给用户：403 说被限制、404 说地址失效、
+        // 连不上说网络，用户至少知道下一步该做什么
+        viewer.error = liveErrorMessage(e.errorCodeName, httpStatusOf(e))
+    }
+
+    override fun onVideoSizeChanged(videoSize: VideoSize) {
+        // 按真实画面比例收缩视频面，别把 4:3 的台拉成整屏
+        if (videoSize.width > 0 && videoSize.height > 0) {
+            viewer.videoAspect = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
+        }
+    }
+}
+
+/** 窗口与播放器的副作用：转屏 / 系统栏 / 实例释放 / 换台装载 / 换台提示计时。 */
+@OptIn(UnstableApi::class)
+@Composable
+private fun LivePlayerEffects(
+    player: ExoPlayer,
+    channel: LiveChannel,
+    viewer: LiveViewerState,
+    context: Context,
+) {
     // 直播全屏必须横屏：竖屏全屏时 16:9 的画面要么上下大片黑边、要么被裁掉一半。
     //
     // 只改**当前 Activity 的 requestedOrientation**，不碰系统"自动旋转"开关
@@ -160,20 +249,19 @@ internal fun LiveFullscreenPlayer(
     DisposableEffect(Unit) {
         onDispose { player.release() }
     }
-
     // 换台：只换 MediaItem，播放器实例不动。
     // 直播地址基本都是 m3u8，统一用 HlsMediaSource；非 HLS 的 flv/直链由 ExoPlayer 自动探测。
     LaunchedEffect(channel.id, channel.url) {
         val url = channel.url
         // 先把旧画面盖掉再装载：否则切到一个卡住的台时，观众看到的是上一台
         // 的画面配一个转圈，会以为"没切过去"
-        surfaceReady = false
+        viewer.surfaceReady = false
         if (url.isNullOrBlank()) {
-            error = "这个频道没有播放地址"
+            viewer.error = "这个频道没有播放地址"
             return@LaunchedEffect
         }
-        error = null
-        loading = true
+        viewer.error = null
+        viewer.loading = true
         val source = HlsMediaSource.Factory(DefaultHttpDataSource.Factory())
             .setAllowChunklessPreparation(true)
             .createMediaSource(MediaItem.fromUri(Uri.parse(url)))
@@ -181,109 +269,86 @@ internal fun LiveFullscreenPlayer(
         player.prepare()
         player.playWhenReady = true
     }
-
     DisposableEffect(player) {
-        val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(state: Int) {
-                loading = state == Player.STATE_BUFFERING
-                // READY 才是"新源已经有画面了"：这时才让黑幕淡出
-                if (state == Player.STATE_READY) {
-                    surfaceReady = true
-                }
-            }
-
-            override fun onPlayerError(e: PlaybackException) {
-                loading = false
-                // 不再把 ERROR_CODE_* 抛给用户：403 说被限制、404 说地址失效、
-                // 连不上说网络，用户至少知道下一步该做什么
-                error = liveErrorMessage(e.errorCodeName, httpStatusOf(e))
-            }
-
-            override fun onVideoSizeChanged(videoSize: VideoSize) {
-                // 按真实画面比例收缩视频面，别把 4:3 的台拉成整屏
-                if (videoSize.width > 0 && videoSize.height > 0) {
-                    videoAspect = videoSize.width * videoSize.pixelWidthHeightRatio / videoSize.height
-                }
-            }
-        }
+        val listener = LivePlayerListener(viewer)
         player.addListener(listener)
         onDispose { player.removeListener(listener) }
     }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            usePlatformDefaultWidth = false,
-            decorFitsSystemWindows = false,
-        ),
-    ) {
-        LiveDialogImmersive()
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black),
-        ) {
-            // 按视频原始比例居中：多余区域留黑边，不做任何拉伸。
-            // matchHeightConstraintsFirst=true 让它在横屏下先吃满高度，再按比例算宽度。
-            PlayerSurface(
-                player = player,
-                surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .aspectRatio(videoAspect, matchHeightConstraintsFirst = true),
-            )
-
-            SwitchCurtain(visible = !surfaceReady)
-
-            // 左右滑动换台：松手时才判定，拖动过程中只累积距离
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(channels.size) {
-                        detectHorizontalDragGestures(
-                            // 判定单独抽成 swipedIndex()：条件留在 lambda 里会让主函数
-                            // 的圈复杂度顶到阈值（detekt CyclomaticComplexMethod = 10）
-                            onDragEnd = {
-                                val list = liveChannels.value
-                                val next = swipedIndex(
-                                    channelIndex(list, selectedId),
-                                    drag,
-                                    list.lastIndex,
-                                    size.width * SWIPE_RATIO,
-                                )
-                                selectedId = list[next].id
-                                drag = 0f
-                            },
-                            onDragCancel = { drag = 0f },
-                        ) { _, amount -> drag += amount }
-                    },
-            )
-
-            LivePlayerTopBar(
-                name = channel.name,
-                position = "${index + 1} / ${channels.size}",
-                onDismiss = onDismiss,
-                onOpenPicker = { showPicker = true },
-            )
-            LivePlayerStatus(loading = loading, error = error)
-            LivePlayerHint(visible = showHint)
-            if (showPicker) {
-                LiveChannelPicker(
-                    model = model,
-                    onPick = { picked ->
-                        // 面板给的是当前列表的下标；换分类的瞬间列表可能已换代，越界就当没点
-                        channels.getOrNull(picked)?.let { selectedId = it.id }
-                        showPicker = false
-                    },
-                    onDismiss = { showPicker = false },
-                    onSelectGroup = { name ->
-                        showPicker = false
-                        onSelectGroup(name)
-                    },
-                )
-            }
-        }
+    LaunchedEffect(Unit) {
+        delay(HINT_VISIBLE_MS)
+        viewer.showHint = false
     }
+}
+
+/** 左右滑动换台：松手时才判定，拖动过程中只累积距离。 */
+@Composable
+private fun LiveSwipePager(channels: List<LiveChannel>, viewer: LiveViewerState) {
+    // 手势回调在 pointerInput 里长期存活，用 state 读最新列表，避免抓住旧分类的副本
+    val liveChannels = rememberUpdatedState(channels)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(channels.size) {
+                detectHorizontalDragGestures(
+                    // 判定单独抽成 swipedIndex()：条件留在 lambda 里会让主函数的
+                    // 圈复杂度顶到阈值（detekt CyclomaticComplexMethod = 10）
+                    onDragEnd = {
+                        val list = liveChannels.value
+                        val next = swipedIndex(
+                            channelIndex(list, viewer.selectedId),
+                            viewer.drag,
+                            list.lastIndex,
+                            size.width * SWIPE_RATIO,
+                        )
+                        viewer.selectedId = list[next].id
+                        viewer.drag = 0f
+                    },
+                    onDragCancel = { viewer.drag = 0f },
+                ) { _, amount -> viewer.drag += amount }
+            },
+    )
+}
+
+/** 顶栏 + 缓冲/错误态 + 换台提示。 */
+@Composable
+private fun BoxScope.LiveFullscreenChrome(
+    channel: LiveChannel,
+    position: String,
+    viewer: LiveViewerState,
+    onDismiss: () -> Unit,
+) {
+    LivePlayerTopBar(
+        name = channel.name,
+        position = position,
+        onDismiss = onDismiss,
+        onOpenPicker = { viewer.showPicker = true },
+    )
+    LivePlayerStatus(loading = viewer.loading, error = viewer.error)
+    LivePlayerHint(visible = viewer.showHint)
+}
+
+/** 选台面板：选一台 / 关掉 / 换分组，三种动作都在这里收敛。 */
+@Composable
+private fun BoxScope.LivePickerPanel(
+    model: LivePickerModel,
+    channels: List<LiveChannel>,
+    viewer: LiveViewerState,
+    onSelectGroup: (String) -> Unit,
+) {
+    if (!viewer.showPicker) return
+    LiveChannelPicker(
+        model = model,
+        onPick = { picked ->
+            // 面板给的是当前列表的下标；换分类的瞬间列表可能已换代，越界就当没点
+            channels.getOrNull(picked)?.let { pickedChannel -> viewer.selectedId = pickedChannel.id }
+            viewer.showPicker = false
+        },
+        onDismiss = { viewer.showPicker = false },
+        onSelectGroup = { name ->
+            viewer.showPicker = false
+            onSelectGroup(name)
+        },
+    )
 }
 
 /**

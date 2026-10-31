@@ -173,9 +173,13 @@ fun StarveilNavHost(container: AppContainer) {
     val ads = startup?.ads ?: remember {
         AdPlacements.NONE.copy(splash = AdSplashGate.splash(context) ?: AdPlacement())
     }
-    val adGateway = remember(ads) {
+    // 广告位来自启动配置；换配置要重建网关，但**初始化 SDK 是副作用**，只能在效果里做。
+    // 网关是容器上的普通引用（AdRuntime 持有的是实例本身），所以效果跑完要把新实例放回
+    // state，否则这一层永远拿着旧网关。
+    var adGateway by remember(ads) { mutableStateOf(container.adGateway) }
+    LaunchedEffect(ads) {
         container.updateAdPlacements(ads)
-        container.adGateway
+        adGateway = container.adGateway
     }
     // "下次冷启动要不要为 SDK 开屏停一下"只按真实配置记：兜底 ads 里的平台配置是空的，
     // 拿它写会把 SDK 开屏标记误清成 false。

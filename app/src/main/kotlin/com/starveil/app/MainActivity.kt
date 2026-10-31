@@ -66,6 +66,14 @@ class MainActivity : ComponentActivity() {
     /** 是否离开过前台：区分"冷启动第一次 onResume"与"从后台回来"。 */
     private var wasBackgrounded = false
 
+    /**
+     * 首帧后预热播放引擎的回调。
+     *
+     * 存成字段只为能在 [onDestroy] 里 `removeCallbacks`：页面在 800ms 内被关掉时，
+     * 延迟任务是最后一条强引用，会对着已销毁的 Activity 白构造一次播放器。
+     */
+    private val warmUpPlayer = Runnable { PlayerEngineWarmUp.warm(this) }
+
     override fun onResume() {
         super.onResume()
         container.attachActivity(this)
@@ -83,6 +91,12 @@ class MainActivity : ComponentActivity() {
         // 按实例摘：冷启动时开屏页可能在本页 resume 之后才销毁，它清的是自己。
         container.detachActivity(this)
         super.onPause()
+    }
+
+    override fun onDestroy() {
+        // 预热还没到点就把 Activity 关掉时，撤掉它，别让延迟任务拖着已销毁的实例跑
+        window.decorView.removeCallbacks(warmUpPlayer)
+        super.onDestroy()
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         val splash = installSplashScreen()
@@ -188,7 +202,7 @@ class MainActivity : ComponentActivity() {
      * 卡出来的样子就是"dock 已经切过去、页面还没进来"。放首帧之后空闲时烤一次。
      */
     private fun warmUpPlayerEngineLater() {
-        window.decorView.postDelayed({ PlayerEngineWarmUp.warm(this) }, PLAYER_WARMUP_DELAY_MS)
+        window.decorView.postDelayed(warmUpPlayer, PLAYER_WARMUP_DELAY_MS)
     }
 
     @Composable

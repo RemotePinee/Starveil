@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.Spacing
+import com.starveil.core.designsystem.token.parseArgbHexOrNull
 import kotlin.math.abs
 
 /**
@@ -98,24 +99,30 @@ private class DanmuScene(
     val motion: DanmuMotionGeometry,
 )
 
-/** 一帧的绘制参数（4 个：时间窗再收成对象）。 */
-private class LaidFrame(
-    val items: List<LaidDanmu>,
-    val window: DanmuFrameWindow,
-    val motion: DanmuMotionGeometry,
-    val palette: DanmuPalette,
-)
+/**
+ * 一帧要画的东西：场景与颜色表在**组合期**定好，draw 阶段只改标量字段。
+ *
+ * 早先每帧 new 一层 `LaidFrame` + `DanmuFrameWindow` + `DanmuPalette`，由
+ * [rememberInterpolatedPosition] 的 withFrameNanos 循环驱动，60fps 下每秒 180 次
+ * 分配 + GC 抖动；现在帧间只有赋值，一个对象都不产生。
+ */
+private class DanmuDrawer(
+    val scene: DanmuScene,
+    val colorTable: Map<String, Int>,
+    val fallbackColor: Int,
+) {
+    /** 当前帧的可绘制下标窗口：原地覆盖，不构造区间对象。 */
+    val window = DanmuVisibleWindow()
 
-/** 当前帧的播放位置与可绘制下标区间。 */
-private class DanmuFrameWindow(
-    val positionMs: Long,
-    val range: IntRange,
-)
-
-private class DanmuPalette(
-    val table: Map<String, Int>,
-    val fallback: Int,
-)
+    /**
+     * 当前帧的播放位置与文字 alpha：每帧由 [drawDanmu] 写一次，[drawOne] 直接读。
+     *
+     * 收进这个持有者只为少一路穿参（`drawOne` 的参数个数会撞上 detekt 的
+     * `LongParameterList`）。帧间仍然只是赋值，不产生对象。
+     */
+    var positionMs: Long = 0L
+    var textAlpha: Int = 0
+}
 
 private class DanmuMetrics(
     val textSizePx: Float,
@@ -191,19 +198,15 @@ fun DanmuLayer(
                 ),
             ),
         )
+        // 绘制器与场景一起缓存：只在尺寸 / 内容 / 颜色表变化时重建，帧间一个对象都不 new
+        val drawer = remember(scene, colorTable) {
+            DanmuDrawer(scene = scene, colorTable = colorTable, fallbackColor = defaultColor)
+        }
         Canvas(modifier = Modifier.fillMaxSize()) {
             // 位置在绘制阶段读：每帧只重绘这一层，不触发重组
-            val pos = framePosition.longValue
             drawDanmu(
-                frame = LaidFrame(
-                    items = scene.items,
-                    window = DanmuFrameWindow(
-                        positionMs = pos,
-                        range = visibleRange(scene.items, pos, scene.travelMs),
-                    ),
-                    motion = scene.motion,
-                    palette = DanmuPalette(table = colorTable, fallback = defaultColor),
-                ),
+                drawer = drawer,
+                positionMs = framePosition.longValue,
                 paint = paint,
                 textAlpha = textAlpha,
             )
@@ -253,54 +256,63 @@ private fun rememberDanmuScene(
     }
 }
 
-/** 画一帧。 */
-private fun DrawScope.drawDanmu(frame: LaidFrame, paint: Paint, textAlpha: Int) {
-    if (frame.window.range.isEmpty() || frame.motion.speedPxPerSecond <= 0f) return
-    frame.window.range.forEach { index ->
-        drawOne(frame, index, paint, textAlpha)
+/** 画一帧；下标窗口在复用容器里原地更新，帧间不分配对象。 */
+private fun DrawScope.drawDanmu(
+    drawer: DanmuDrawer,
+    positionMs: Long,
+    paint: Paint,
+    textAlpha: Int,
+) {
+    val motion = drawer.scene.motion
+    if (motion.speedPxPerSecond <= 0f) return
+    // 当前帧的标量先写进持有者：单条绘制直接读，不再一路穿参
+    drawer.positionMs = positionMs
+    drawer.textAlpha = textAlpha
+    drawer.window.locate(drawer.scene.items, positionMs, drawer.scene.travelMs)
+    if (drawer.window.isEmpty) return
+    val end = drawer.window.endExclusive
+    var index = drawer.window.start
+    while (index < end) {
+        drawOne(drawer, index, paint)
+        index++
     }
     // 还原，避免同一支 Paint 把上一条颜色带给下一条
-    paint.color = frame.palette.fallback
+    paint.color = drawer.fallbackColor
     paint.alpha = textAlpha
 }
 
 /** 单条：算入场横坐标，仍在屏内才画。 */
 private fun DrawScope.drawOne(
-    frame: LaidFrame,
+    drawer: DanmuDrawer,
     index: Int,
     paint: Paint,
-    textAlpha: Int,
 ) {
-    val item = frame.items[index]
-    val age = frame.window.positionMs - item.atTimeMs
+    val motion = drawer.scene.motion
+    val item = drawer.scene.items[index]
+    val age = drawer.positionMs - item.atTimeMs
     // 每轨速度带 ±15% 抖动（优酷 uniformSpeed × random(0.85~1.15)，同轨复用同一速度）：
     // 同一秒涌入的多条弹幕不会一直并排成"柱"，会自然错开
-    val laneSpeed = frame.motion.speedPxPerSecond * laneSpeedFactor(item.lane)
+    val laneSpeed = motion.speedPxPerSecond * laneSpeedFactor(item.lane)
     val x = size.width - age / 1_000f * laneSpeed
     val textWidth = paint.measureText(item.text)
     if (x > size.width || x + textWidth < 0f) return
-    val baseline = frame.motion.window.topInsetPx + frame.motion.textSizePx +
-        frame.motion.window.laneStepPx * item.lane
-    paint.color = item.colorHex?.let { frame.palette.table[it] } ?: frame.palette.fallback
-    paint.alpha = textAlpha
+    val baseline = motion.window.topInsetPx + motion.textSizePx +
+        motion.window.laneStepPx * item.lane
+    paint.color = item.colorHex?.let { drawer.colorTable[it] } ?: drawer.fallbackColor
+    paint.alpha = drawer.textAlpha
     drawContext.canvas.nativeCanvas.drawText(item.text, x, baseline, paint)
 }
 
-
-/** 颜色表：带不带井号都认，解析失败回落默认白。 */
+/** 颜色表：带不带井号都认，解析失败回落默认白（解析规则见 token 层的 parseArgbHexOrNull）。 */
 private fun buildColorTable(items: List<DanmuItem>, defaultColor: Int): Map<String, Int> {
     val table = HashMap<String, Int>()
     items.forEach { item ->
         val hex = item.colorHex?.trim().orEmpty()
         if (hex.isEmpty() || hex in table) return@forEach
-        table[hex] = parseColorOrNull(hex) ?: defaultColor
+        table[hex] = parseArgbHexOrNull(hex) ?: defaultColor
     }
     return table
 }
-
-private fun parseColorOrNull(hex: String): Int? = runCatching {
-    android.graphics.Color.parseColor(if (hex.startsWith("#")) hex else "#$hex")
-}.getOrNull()
 
 /**
  * 播放位置的逐帧插值。

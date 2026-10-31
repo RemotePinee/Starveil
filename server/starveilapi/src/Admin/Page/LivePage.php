@@ -423,7 +423,7 @@ final class LivePage extends BasePage
             // r.json() 直接失败，用户只会看到"网络错误"，还以为没导进去
             Guard::jsonOk($summary);
         }
-        header('Location: ?a=live&imported=' . $added . '&skipped=' . $skipped);
+        header('Location: ?a=live&imported=' . $added . '&skipped=' . $duplicated);
         exit;
     }
 }

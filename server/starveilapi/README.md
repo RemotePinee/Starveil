@@ -52,20 +52,20 @@ macCMS V10 插件。**不改 macCMS 核心文件**，所有表带 `cuican_` 前�
 |---|---|
 | PHP 8 解析错误 `$txt{$i}` | 全部重写，无花括号取字符 |
 | 安装器使用未定义变量 | `Installer` 类，`__DIR__` 绝对路径 |
-| 建表脚本含 18 条 `DROP TABLE`，进配置页即清库 | 只有 `CREATE TABLE IF NOT EXISTS` |
+| 建表脚本含 18 条 `DROP TABLE`，进配置页即清库 | 安装与迁移只建表（`CREATE TABLE IF NOT EXISTS`）；唯一的 DROP 在 `v2_5_4` 迁移里，用来下线两张已废弃的空表，升级前请备份；卸载时才清自己的表 |
 | 结构脚本写在空处，从不执行 | 结构走 schema 文件 + 版本号 |
 | 打包产物被复制到 web 根目录 | 不存在任何复制动作 |
 | 覆盖核心 `application/data/update/database.php` | 不碰核心 |
 | 无鉴权的积分充值端点 | 删除，路由白名单 |
 | 反射分发无白名单 | `Kernel::ROUTES` 显式表 |
-| `col` 参数注入可登录任意用户 | openid 字段白名单 |
+| `col` 参数注入可登录任意用户 | 没有列名 / openid 参数入口，登录只按 `user_name` 查库 |
 | 资料整表更新 | 只允许昵称/头像 |
-| 上传无鉴权 + 路径拼接 | 本版未实现上传（下一批） |
+| 上传无鉴权 + 路径拼接 | `v1.upload/user`、`v1.upload/withdraw` 均需登录，只收 JPG/PNG/WEBP ≤2MB，扩展名按文件内容决定，文件名带 12 字节随机串 |
 | 支付不看金额、状态机写反 | 服务端算价 + `0→1` 单向迁移 + 金额校验 |
 | 支付回调验签 fail-open | 验签失败一律拒绝 |
 | CORS `*` + credentials | 只回显白名单 Origin |
 | 注册页不带验证码 | 服务端强制校验，60 秒冷却 + 每日上限 |
-| 密码 = Base64(ANDROID_ID) | HMAC 签名会话 + `password_hash`（兼容旧 md5 并升级） |
+| 密码 = Base64(ANDROID_ID) | 设备令牌换会话 cookie（`md5(user_random-user_name-user_id-)`，与 macCMS 的 `user_check` 同口径）+ `password_hash`（兼容旧 md5 并升级） |
 | 厂商域名、SDK appid、强制更新配置硬编码在种子数据 | 一条不带，全部走配置 |
 
 ## 3. 已实现的接口

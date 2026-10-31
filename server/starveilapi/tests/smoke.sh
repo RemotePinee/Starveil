@@ -8,7 +8,7 @@
 # - 需要能接收 cookie 的 curl；
 # - 站点需至少有一条 mac_vod、一个 cuican_topic、一个 cuican_zhibo；
 # - 支付回调测试需要 cuican_pay_channel 里有一个 code=epay、driver=epay 的通道，
-#   脚本会把它的 key 当作测试密钥（默认 testkey）。
+#   脚本会把它的 key 当作测试密钥（默认与 tests/seed_demo.sql 里的占位符一致）。
 set -u
 
 BASE="${BASE:-http://127.0.0.1:18080/icciu_api.php}"
@@ -146,7 +146,7 @@ check "ads 含 tradplus 子对象" '"tradplus":' "$ADS_STARTUP"
 check "topon 透出 app_key" '"app_key":' "$ADS_STARTUP"
 
 echo "== 短剧广告解锁（SSV） =="
-SSV_SECRET="${SSV_SECRET:-smoke-ssv-secret}"
+SSV_SECRET="${SSV_SECRET:-<YOUR_SSV_SECRET>}"
 SSV_TS="$(date +%s)"
 SSV_TRANS="smoke-ssv-$SSV_TS-$$"
 SSV_SIGN="$(md5hex "$SSV_TRANS|1|2|$SSV_TS|$SSV_SECRET")"

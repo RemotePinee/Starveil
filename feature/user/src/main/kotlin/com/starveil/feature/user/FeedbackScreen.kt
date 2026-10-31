@@ -57,86 +57,112 @@ fun FeedbackScreen(
     }
     Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.sm, vertical = Spacing.xs),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                IconButton(onClick = onBack) {
-                    Icon(
-                        imageVector = PhosphorIcons.Regular.ArrowLeft,
-                        contentDescription = "返回",
-                        tint = starveilExtraColors.textMuted,
-                        modifier = Modifier.size(IconSize.md).mirrorIconInRtl(),
-                    )
-                }
-                Text(
-                    text = TITLE,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onBackground,
-                )
-            }
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = Spacing.pageHorizontal, vertical = Spacing.md),
-                verticalArrangement = Arrangement.spacedBy(Spacing.sm),
-            ) {
-                Surface(
-                    shape = AppShape.medium,
-                    color = starveilExtraColors.surfaceCard,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(INPUT_HEIGHT),
-                ) {
-                    BasicTextField(
-                        value = state.content,
-                        onValueChange = viewModel::onContentChange,
-                        textStyle = MaterialTheme.typography.bodyMedium.copy(
-                            color = MaterialTheme.colorScheme.onSurface,
-                        ),
-                        cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(Spacing.md),
-                        decorationBox = { inner ->
-                            Box {
-                                if (state.content.isEmpty()) {
-                                    Text(
-                                        text = HINT,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = starveilExtraColors.textFaint,
-                                    )
-                                }
-                                inner()
-                            }
-                        },
-                    )
-                }
-                Text(
-                    text = "${state.content.length} / $MAX_LENGTH",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = starveilExtraColors.textFaint,
-                    modifier = Modifier.align(Alignment.End),
-                )
-                TextButton(
-                    onClick = viewModel::submit,
-                    enabled = state.canSubmit,
-                    modifier = Modifier.align(Alignment.End),
-                ) {
-                    if (state.isSubmitting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(IconSize.item),
-                            color = starveilExtraColors.textFaint,
-                            strokeWidth = Spacing.xxs,
-                        )
-                    } else {
-                        Text(text = ACTION_SEND)
-                    }
-                }
-            }
+            FeedbackTitleBar(onBack = onBack)
+            FeedbackComposer(state = state, viewModel = viewModel)
         }
         SnackbarHost(hostState = snackbarHostState, modifier = Modifier.align(Alignment.BottomCenter))
+    }
+}
+
+/** 顶栏：返回 + 标题。 */
+@Composable
+private fun FeedbackTitleBar(onBack: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = Spacing.sm, vertical = Spacing.xs),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        IconButton(onClick = onBack) {
+            Icon(
+                imageVector = PhosphorIcons.Regular.ArrowLeft,
+                contentDescription = "返回",
+                tint = starveilExtraColors.textMuted,
+                modifier = Modifier.size(IconSize.md).mirrorIconInRtl(),
+            )
+        }
+        Text(
+            text = TITLE,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onBackground,
+        )
+    }
+}
+
+/** 输入区：输入框 + 字数 + 提交键。 */
+@Composable
+private fun FeedbackComposer(state: FeedbackUiState, viewModel: FeedbackViewModel) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.pageHorizontal, vertical = Spacing.md),
+        verticalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        Surface(
+            shape = AppShape.medium,
+            color = starveilExtraColors.surfaceCard,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(INPUT_HEIGHT),
+        ) {
+            BasicTextField(
+                value = state.content,
+                onValueChange = viewModel::onContentChange,
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                ),
+                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(Spacing.md),
+                decorationBox = { inner ->
+                    Box {
+                        if (state.content.isEmpty()) {
+                            Text(
+                                text = HINT,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = starveilExtraColors.textFaint,
+                            )
+                        }
+                        inner()
+                    }
+                },
+            )
+        }
+        Text(
+            text = "${state.content.length} / $MAX_LENGTH",
+            style = MaterialTheme.typography.labelSmall,
+            color = starveilExtraColors.textFaint,
+            modifier = Modifier.align(Alignment.End),
+        )
+        FeedbackSubmitButton(
+            state = state,
+            onSubmit = viewModel::submit,
+            modifier = Modifier.align(Alignment.End),
+        )
+    }
+}
+
+/** 提交键：提交中换成菊花，其余显示文案。 */
+@Composable
+private fun FeedbackSubmitButton(
+    state: FeedbackUiState,
+    onSubmit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    TextButton(
+        onClick = onSubmit,
+        enabled = state.canSubmit,
+        modifier = modifier,
+    ) {
+        if (state.isSubmitting) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(IconSize.item),
+                color = starveilExtraColors.textFaint,
+                strokeWidth = Spacing.xxs,
+            )
+        } else {
+            Text(text = ACTION_SEND)
+        }
     }
 }
 

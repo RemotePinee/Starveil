@@ -21,12 +21,6 @@ final class Users
     /** 允许客户端修改的列。改这个表要评审，别顺手加 group_id。 */
     private const PROFILE_WHITELIST = ['user_nick_name', 'user_portrait'];
 
-    /** 第三方登录字段白名单：不接受客户端拼列名。 */
-    private const OPENID_FIELDS = [
-        'weixin' => 'user_openid_weixin',
-        'qq' => 'user_openid_qq',
-    ];
-
     public function findById(int $userId): ?array
     {
         if ($userId <= 0) {
@@ -49,16 +43,6 @@ final class Users
             return null;
         }
         $row = Db::name('user')->where('user_name', $userName)->find();
-        return $row ?: null;
-    }
-
-    public function findByOpenid(string $provider, string $openid): ?array
-    {
-        $column = self::OPENID_FIELDS[$provider] ?? null;
-        if ($column === null || $openid === '') {
-            return null;
-        }
-        $row = Db::name('user')->where($column, $openid)->find();
         return $row ?: null;
     }
 

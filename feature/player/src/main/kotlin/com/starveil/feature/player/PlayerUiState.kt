@@ -29,7 +29,6 @@ data class PlayerUiState(
     val qualities: List<QualityOption> = emptyList(),
     val trySeeNotice: String? = null,
     val errorMessage: String? = null,
-    val positionMs: Long = 0L,
     val durationMs: Long = 0L,
     val speed: Float = PlayerSpeeds.DEFAULT,
     val isPlaying: Boolean = false,
@@ -41,7 +40,7 @@ data class PlayerUiState(
      * 待执行的定位（断点续播）。
      *
      * 起播后交给播放器 seek 一次，成功再清零：引擎要等 prepare 完成才能 seek，
-     * 只改 positionMs 是不够的。
+     * 只改播放位置是不够的（位置单独一条流，见 `PlayerViewModel.position`）。
      */
     val pendingSeekMs: Long = 0L,
 ) {

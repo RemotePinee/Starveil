@@ -77,19 +77,45 @@ private fun placeGroup(
 }
 
 /**
+ * 某一帧的可绘制窗口 `[start, endExclusive)`。
+ *
+ * 与 [visibleRange] 是同一条规则（整集弹幕按时间升序，二分定位），区别只在结果写进
+ * 字段：逐帧绘制路径每帧调一次，不能每次都造一个 IntRange 对象。
+ */
+internal class DanmuVisibleWindow {
+    var start = 0
+        private set
+    var endExclusive = 0
+        private set
+
+    /** 本帧没有可绘制项。 */
+    val isEmpty: Boolean get() = endExclusive <= start
+
+    /** 原地更新窗口；[travelMs] 是整条横穿屏的时间，用来把已离场的弹幕排掉。 */
+    fun locate(items: List<LaidDanmu>, positionMs: Long, travelMs: Long) {
+        if (items.isEmpty() || positionMs < 0) {
+            start = 0
+            endExclusive = 0
+            return
+        }
+        val from = positionMs - travelMs
+        var begin = items.binarySearchFirst { it.atTimeMs >= from }
+        var finish = items.binarySearchFirst { it.atTimeMs > positionMs }
+        if (begin < 0) begin = 0
+        if (finish > items.size) finish = items.size
+        start = begin
+        endExclusive = finish
+    }
+}
+
+/**
  * 找出某一帧应当绘制的弹幕区间下标。
  *
  * 整集弹幕是升序的，用二分定位窗口，避免每帧遍历几千条。
  */
 internal fun visibleRange(items: List<LaidDanmu>, positionMs: Long, travelMs: Long): IntRange {
-    if (items.isEmpty() || positionMs < 0) return IntRange.EMPTY
-    val from = positionMs - travelMs
-    val to = positionMs
-    var start = items.binarySearchFirst { it.atTimeMs >= from }
-    var end = items.binarySearchFirst { it.atTimeMs > to }
-    if (start < 0) start = 0
-    if (end > items.size) end = items.size
-    return if (start >= end) IntRange.EMPTY else start until end
+    val window = DanmuVisibleWindow().apply { locate(items, positionMs, travelMs) }
+    return if (window.isEmpty) IntRange.EMPTY else window.start until window.endExclusive
 }
 
 /** 第一个满足条件的位置；找不到返回 size。 */

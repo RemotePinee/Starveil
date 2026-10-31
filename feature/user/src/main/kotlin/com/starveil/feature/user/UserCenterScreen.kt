@@ -68,6 +68,57 @@ fun UserCenterScreen(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val shareConfirm by viewModel.shareConfirm.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
+    UserCenterEvents(viewModel = viewModel, snackbar = snackbarHostState)
+    LifecycleResumeEffect(viewModel) {
+        viewModel.onResumed()
+        onPauseOrDispose { }
+    }
+    // 分享信息到位后画海报、拉系统分享面板；积分等用户回到前台确认后再发
+    UserShareLauncher(viewModel = viewModel)
+    val actions = UserCenterActions(
+        onLoginClick = onLoginClick,
+        onEntryClick = onEntryClick,
+        onLogoutClick = {
+            viewModel.logout()
+            onSignedOut()
+        },
+        onRetry = viewModel::refresh,
+    )
+    var showSkinPicker by remember { mutableStateOf(false) }
+    val skinSelection = LocalSkinSelection.current
+    UserCenterContent(
+        state = state,
+        actions = actions,
+        snackbar = snackbarHostState,
+        onTopAction = { action ->
+            when (action) {
+                UserCenterTopAction.Skin -> showSkinPicker = true
+                UserCenterTopAction.Share -> viewModel.share()
+            }
+        },
+        modifier = modifier,
+    )
+    if (showSkinPicker) {
+        SkinPickerSheet(
+            selected = skinSelection.current,
+            onSelect = { code ->
+                showSkinPicker = false
+                skinSelection.select(code)
+            },
+            onDismiss = { showSkinPicker = false },
+        )
+    }
+    if (shareConfirm) {
+        ShareRewardDialog(
+            onConfirm = viewModel::confirmShare,
+            onDismiss = viewModel::dismissShareConfirm,
+        )
+    }
+}
+
+/** 事件分流：分享结果走系统 Toast，其余走底部 snackbar。 */
+@Composable
+private fun UserCenterEvents(viewModel: UserCenterViewModel, snackbar: SnackbarHostState) {
     val context = LocalContext.current
     LaunchedEffect(viewModel) {
         viewModel.events.collect { event ->
@@ -75,18 +126,23 @@ fun UserCenterScreen(
             if (event.asToast) {
                 Toast.makeText(context, event.text, Toast.LENGTH_SHORT).show()
             } else {
-                snackbarHostState.showSnackbar(event.text)
+                snackbar.showSnackbar(event.text)
             }
         }
     }
-    LifecycleResumeEffect(viewModel) {
-        viewModel.onResumed()
-        onPauseOrDispose { }
-    }
+}
+
+/**
+ * 分享海报：链接到位后画图并拉起系统分享面板。
+ *
+ * 配色取当前主题令牌；chooser 没有结果回调，等用户回到前台确认后再发奖（见 onResumed）。
+ */
+@Composable
+private fun UserShareLauncher(viewModel: UserCenterViewModel) {
+    val context = LocalContext.current
     val accent = starveilExtraColors.accent.toArgb()
     val posterBg = MaterialTheme.colorScheme.background.toArgb()
     val posterFg = MaterialTheme.colorScheme.onSurface.toArgb()
-    // 分享信息到位后画海报、拉系统分享面板；积分等用户回到前台确认后再发
     LaunchedEffect(viewModel, accent, posterBg, posterFg) {
         viewModel.shareLinks.collect { link ->
             val poster = SharePoster.create(
@@ -115,17 +171,20 @@ fun UserCenterScreen(
             }
         }
     }
-    val actions = UserCenterActions(
-        onLoginClick = onLoginClick,
-        onEntryClick = onEntryClick,
-        onLogoutClick = {
-            viewModel.logout()
-            onSignedOut()
-        },
-        onRetry = viewModel::refresh,
-    )
-    var showSkinPicker by remember { mutableStateOf(false) }
-    val skinSelection = LocalSkinSelection.current
+}
+
+/** 顶栏两个入口：换主题皮肤 / 分享海报。合成一个回调，必填参数才降得下来。 */
+private enum class UserCenterTopAction { Skin, Share }
+
+/** 主体：加载态 / 英雄区 + 内容面板 / 底部提示。 */
+@Composable
+private fun UserCenterContent(
+    state: UserCenterUiState,
+    actions: UserCenterActions,
+    snackbar: SnackbarHostState,
+    onTopAction: (UserCenterTopAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -142,8 +201,7 @@ fun UserCenterScreen(
                 UserCenterHero(
                     state = state,
                     actions = actions,
-                    onSkinClick = { showSkinPicker = true },
-                    onShareClick = viewModel::share,
+                    onTopAction = onTopAction,
                 )
                 UserCenterPanel(
                     state = state,
@@ -153,24 +211,8 @@ fun UserCenterScreen(
             }
         }
         SnackbarHost(
-            hostState = snackbarHostState,
+            hostState = snackbar,
             modifier = Modifier.align(Alignment.BottomCenter),
-        )
-    }
-    if (showSkinPicker) {
-        SkinPickerSheet(
-            selected = skinSelection.current,
-            onSelect = { code ->
-                showSkinPicker = false
-                skinSelection.select(code)
-            },
-            onDismiss = { showSkinPicker = false },
-        )
-    }
-    if (shareConfirm) {
-        ShareRewardDialog(
-            onConfirm = viewModel::confirmShare,
-            onDismiss = viewModel::dismissShareConfirm,
         )
     }
 }
@@ -195,8 +237,7 @@ private fun ShareRewardDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
 private fun UserCenterHero(
     state: UserCenterUiState,
     actions: UserCenterActions,
-    onSkinClick: () -> Unit,
-    onShareClick: () -> Unit,
+    onTopAction: (UserCenterTopAction) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth().fogBackdrop()) {
         Column(
@@ -207,8 +248,7 @@ private fun UserCenterHero(
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
             UserCenterTitleBar(
-                onSkinClick = onSkinClick,
-                onShareClick = onShareClick,
+                onAction = onTopAction,
             )
             UserProfileBlock(
                 state = state,
@@ -265,8 +305,7 @@ private fun UserCenterPanel(
 
 @Composable
 private fun UserCenterTitleBar(
-    onSkinClick: () -> Unit,
-    onShareClick: () -> Unit,
+    onAction: (UserCenterTopAction) -> Unit,
 ) {
     Row(
         modifier = Modifier
@@ -282,7 +321,7 @@ private fun UserCenterTitleBar(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(WEIGHT_FULL),
         )
-        IconButton(onClick = onShareClick) {
+        IconButton(onClick = { onAction(UserCenterTopAction.Share) }) {
             Icon(
                 imageVector = PhosphorIcons.Regular.ShareNetwork,
                 contentDescription = ACTION_SHARE,
@@ -290,7 +329,7 @@ private fun UserCenterTitleBar(
                 modifier = Modifier.size(IconSize.md),
             )
         }
-        IconButton(onClick = onSkinClick) {
+        IconButton(onClick = { onAction(UserCenterTopAction.Skin) }) {
             Icon(
                 imageVector = PhosphorIcons.Regular.Palette,
                 contentDescription = ACTION_THEME,

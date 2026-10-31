@@ -71,12 +71,13 @@ internal fun PlayerViewModel.onPlaybackStarted() {
     // 等 seek 落地才跳到断点，看起来像"闪一下"。
     val resume = maxOf(resumePositionMs.coerceAtLeast(0L), lastKnownPositionMs)
     lastKnownPositionMs = 0L
+    // 位置走独立那条流（UiState 里没有它了），否则进度条会先显示 0 再被 seek 拉回断点
+    currentPositionMs = resume
     edit {
         it.copy(
             isPlaying = true,
             isBuffering = true,
             isPauseAdEligible = false,
-            positionMs = resume,
             pendingSeekMs = resume,
         )
     }

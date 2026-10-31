@@ -29,6 +29,7 @@ import com.starveil.core.designsystem.mirrorIconInRtl
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.Spacing
+import androidx.compose.runtime.State
 import com.starveil.core.designsystem.interaction.rememberHaptics
 import com.starveil.core.designsystem.interaction.HapticKind
 
@@ -59,6 +60,8 @@ internal fun PlayerBottomBar(
     state: PlayerUiState,
     actions: PlayerActions,
     callbacks: BottomBarCallbacks,
+    /** 播放位置：只在叶子读，底栏本身不因位置刷新而重组。 */
+    position: State<Long>,
     modifier: Modifier = Modifier,
     applyInsets: Boolean = false,
     danmuEnabled: Boolean = true,
@@ -81,7 +84,7 @@ internal fun PlayerBottomBar(
             state = state,
             actions = actions,
             callbacks = callbacks,
-            danmuEnabled = danmuEnabled,
+            extras = ControlExtras(position = position, danmuEnabled = danmuEnabled),
         )
     }
 }
@@ -94,13 +97,27 @@ internal class BottomBarCallbacks(
     val onCycleSpeed: () -> Unit,
 )
 
+/**
+ * 控制行的两个额外输入：播放位置与弹幕开关。
+ *
+ * 收成 data class 是为了守住 detekt 的 `LongParameterList`（data class 的构造参数不计入）。
+ * 它在 [PlayerBottomBar] 里每次重组都会新建，但只作为参数向下传，不参与记忆：
+ * `position` 是同一个 State 实例、`danmuEnabled` 是布尔，按值比较仍相等，
+ * 不会把控制行这棵子树额外标脏，所以不必用 remember 包住。
+ */
+private data class ControlExtras(
+    /** 播放位置：只在两个叶子里读，控制行本身不因 2Hz 位置刷新重组。 */
+    val position: State<Long>,
+    val danmuEnabled: Boolean,
+)
+
 /** 播放键 / 时间 / 进度 / 倍速 / 弹幕 / 全屏，从左到右一条主轴线。 */
 @Composable
 private fun ControlRow(
     state: PlayerUiState,
     actions: PlayerActions,
     callbacks: BottomBarCallbacks,
-    danmuEnabled: Boolean,
+    extras: ControlExtras,
 ) {
     val haptics = rememberHaptics()
     Row(
@@ -118,9 +135,10 @@ private fun ControlRow(
             },
             glass = false,
         )
-        TimeText(ms = state.positionMs, color = MaterialTheme.colorScheme.onBackground)
-        PlayerProgressBar(
-            positionMs = state.positionMs,
+        // 位置只在这两个叶子里读：底栏其余控件不跟着 2Hz 位置刷新重组
+        PositionTimeText(position = extras.position, color = MaterialTheme.colorScheme.onBackground)
+        PositionProgressBar(
+            position = extras.position,
             durationMs = state.durationMs,
             contentColor = MaterialTheme.colorScheme.onBackground,
             onSeekTo = {
@@ -138,7 +156,7 @@ private fun ControlRow(
             }
         }
         // 弹幕开关关掉时，发送/设置入口一起收起来：面板改的全是看不见的弹幕，留着只会迷惑
-        if (danmuEnabled) {
+        if (extras.danmuEnabled) {
             ChromeIconButton(
                 icon = PhosphorIcons.Regular.ChatCircle,
                 mirrorRtl = true,
@@ -194,6 +212,30 @@ private fun SpeedChip(speed: Float, onClick: () -> Unit) {
 @Composable
 private fun TimeText(ms: Long, color: Color) {
     Text(text = formatTime(ms), style = MaterialTheme.typography.labelMedium, color = color)
+}
+
+/** 当前播放位置：位置流只在这里读，重组范围就是这一行字。 */
+@Composable
+private fun PositionTimeText(position: State<Long>, color: Color) {
+    TimeText(ms = position.value, color = color)
+}
+
+/** 进度条：同样把位置读取压在叶子这一层，底栏其余控件不受 2Hz 位置刷新影响。 */
+@Composable
+private fun PositionProgressBar(
+    position: State<Long>,
+    durationMs: Long,
+    contentColor: Color,
+    onSeekTo: (Long) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    PlayerProgressBar(
+        positionMs = position.value,
+        durationMs = durationMs,
+        contentColor = contentColor,
+        onSeekTo = onSeekTo,
+        modifier = modifier,
+    )
 }
 
 internal fun speedLabel(speed: Float): String =

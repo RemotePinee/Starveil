@@ -35,7 +35,8 @@ class PlayerResumeTest {
 
         assertTrue(viewModel.state.value.phase is PlaybackPhase.Playing)
         assertEquals(60_000L, viewModel.state.value.pendingSeekMs)
-        assertEquals(60_000L, viewModel.state.value.positionMs)
+        // 位置不在 UiState 里：它是独立一条流（避免播放中整页 2Hz 重组）
+        assertEquals(60_000L, viewModel.position.value)
     }
 
     @Test

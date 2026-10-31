@@ -22,7 +22,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.Spacing
 
@@ -101,11 +100,13 @@ fun StarveilLoadingScreen(
     }
 }
 
-/** 环直径：再大就变成视觉主体，再小又看不出在转。 */
-private val RING_SIZE = 28.dp
+/**
+ * 环直径：`Spacing.xl + Spacing.xs`（24+4=28dp）——再大就变成视觉主体，再小看不出在转。
+ */
+private val RING_SIZE: Dp = Spacing.xl + Spacing.xs
 
-/** 环粗：1.5~3dp 之间最像"细环"，超过 3dp 就变回实心圈。 */
-private val STROKE_WIDTH = 2.5.dp
+/** 环粗：`hairline` 的 2.5 倍（2.5dp）；1.5~3dp 之间最像"细环"，超过 3dp 就变回实心圈。 */
+private val STROKE_WIDTH: Dp = Spacing.hairline * 2.5f
 
 /** 只画 3/4 圈：留缺口才看得出转动的方向。 */
 private const val SWEEP_ANGLE = 270f

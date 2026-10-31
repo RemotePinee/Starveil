@@ -46,7 +46,6 @@ internal fun sessionStateOf(
     qualities = qualitiesOf(vod),
     trySeeNotice = trySeeNoticeOf(session.phase),
     errorMessage = errorMessageOf(session.phase),
-    positionMs = base.positionMs,
     durationMs = base.durationMs,
     speed = base.speed,
     isPlaying = base.isPlaying,

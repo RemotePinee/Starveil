@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.starveil.core.designsystem.token.Motion
@@ -26,6 +27,8 @@ internal fun PlayerChromeOverlay(
     state: PlayerUiState,
     actions: PlayerActions,
     config: ChromeConfig,
+    /** 播放位置：只在底栏的时间与进度条叶子里读，这层本身不跟着 2Hz 重组。 */
+    position: State<Long>,
     modifier: Modifier = Modifier,
 ) {
     val dispatcher = LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
@@ -56,6 +59,7 @@ internal fun PlayerChromeOverlay(
                     onOpenSheet = config.onOpenSheet,
                     onCycleSpeed = config.onCycleSpeed,
                 ),
+                position = position,
                 applyInsets = config.immersive,
                 danmuEnabled = config.danmuEnabled,
                 modifier = Modifier.align(Alignment.BottomCenter),

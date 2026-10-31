@@ -18,6 +18,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,19 +77,32 @@ internal data class GestureCallbacks(
     val onSeekPreview: (Long?) -> Unit = {},
 )
 
+/**
+ * 手势层的环境输入：是否可用、亮度/音量读写器、播放位置。
+ *
+ * 收成 data class 是为了守住 detekt 的 `LongParameterList`（data class 的构造参数不计入）。
+ * 它在 [PlayerStage] 里每次重组都会新建，但只作为参数向下传：`enabled` 由播放状态算出
+ * （相等的值），`levels` 与 `position` 在整个页面生命周期里是同一个实例，
+ * 所以 `pointerInput` 的 key 仍只取 `enabled`，不会因为持有者换实例而打断正在进行的拖动。
+ */
+internal data class GestureExtras(
+    val enabled: Boolean,
+    /** 页面持有的亮度/音量读写器：页面销毁时由它还原窗口亮度，见 [PlayerScreen]。 */
+    val levels: GestureLevels,
+    /** 播放位置：在 pointerInput 里读（回调期），组合期读它会带着整页重组。 */
+    val position: State<Long>,
+)
+
 /** 手势区：单击切显隐，左半屏上下滑调亮度、右半屏调音量、横滑调进度。 */
 @Composable
 internal fun PlayerGestureLayer(
     state: PlayerUiState,
-    enabled: Boolean,
     callbacks: GestureCallbacks,
-    /** 页面持有的亮度/音量读写器：页面销毁时由它还原窗口亮度，见 [PlayerScreen]。 */
-    levels: GestureLevels,
+    extras: GestureExtras,
     modifier: Modifier = Modifier,
 ) {
     var hint by remember { mutableStateOf<HintUi?>(null) }
     var hintVisible by remember { mutableStateOf(false) }
-    val position = rememberUpdatedState(state.positionMs)
     val duration = rememberUpdatedState(state.durationMs)
     val seek = rememberUpdatedState(callbacks.onSeek)
     val seekPreview = rememberUpdatedState(callbacks.onSeekPreview)
@@ -104,8 +118,8 @@ internal fun PlayerGestureLayer(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .pointerInput(enabled) {
-                if (!enabled) return@pointerInput
+            .pointerInput(extras.enabled) {
+                if (!extras.enabled) return@pointerInput
                 // 不用 detectTapGestures：带 onDoubleTap 时它会等双击超时（约 300ms）才回调
                 // onTap，表现就是"点一下，控制层慢半拍才出来"。这里抬手立刻切显隐，
                 // 再在双击超时窗口内看有没有第二下，有就当双击处理。
@@ -122,18 +136,18 @@ internal fun PlayerGestureLayer(
                     doubleTap.value()
                 }
             }
-            .pointerInput(enabled) {
-                if (!enabled) return@pointerInput
+            .pointerInput(extras.enabled) {
+                if (!extras.enabled) return@pointerInput
                 val session = GestureSession()
                 detectDragGestures(
                     onDragStart = { offset ->
-                        val frame = GestureFrame(size.width, size.height, levels)
-                        session.begin(offset.x, position.value, duration.value, frame)
+                        val frame = GestureFrame(size.width, size.height, extras.levels)
+                        session.begin(offset.x, extras.position.value, duration.value, frame)
                         interaction.value()
                     },
                     onDrag = { change, amount ->
                         change.consume()
-                        val frame = GestureFrame(size.width, size.height, levels)
+                        val frame = GestureFrame(size.width, size.height, extras.levels)
                         session.update(amount.x, amount.y, frame)?.let {
                             hint = it
                             hintVisible = true

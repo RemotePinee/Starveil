@@ -7,7 +7,8 @@
  *
  * 与历史插件的差别：
  * - install()/uninstall() 真正干活，不再把逻辑塞在 config.php（历史版本用未定义变量，PHP 8 直接 500）；
- * - 安装器幂等，且没有任何 DROP（旧 mysql.sql 有 18 条 DROP，进一次配置页就清库）；
+ * - 安装/迁移幂等；唯一的 DROP 在 v2.5.4 迁移里（下线两张空表，升级前备份），
+ *   卸载才清自己的表（旧 mysql.sql 有 18 条 DROP，进一次配置页就清库）；
  * - 数据库变更走版本迁移器，不覆盖核心 application/data/update/database.php。
  */
 
@@ -29,8 +30,9 @@ class Starveilapi extends Addons
     public function uninstall()
     {
         $this->boot();
-        // 只删自己的表；显式传 false，后台点一次卸载不会直接清数据
-        return \Starveil\Api\Installer::uninstall(false);
+        // 后台点「卸载」就是卸载：清表、摘快捷菜单、删站点根 icciu_api.php。
+        // 想留数据就不要点卸载，先 mysqldump 导出。
+        return \Starveil\Api\Installer::uninstall(true);
     }
 
     /** 插件类被加载时不一定经过 API 入口，这里自己挂自动加载。 */

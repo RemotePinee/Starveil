@@ -1,34 +1,38 @@
 -- 冒烟测试 / 本地预览用的演示数据（不进生产库）。
--- 用法：mysql -uroot -proot --default-character-set=utf8mb4 maccms < tests/seed_demo.sql
+-- 表前缀统一写成 __PREFIX__ 占位（与 install/schema/*.sql 的写法一致），导入前换成站点实际前缀。
+-- 用法：把下面的 __PREFIX__ 替换成站点的表前缀（默认 mac_）后，
+--       mysql -uroot -proot --default-character-set=utf8mb4 maccms < tests/seed_demo.sql
 
 SET SESSION sql_mode = '';
 
-UPDATE mac_group
+UPDATE __PREFIX__group
 SET group_points_day = 6, group_points_week = 40,
     group_points_month = 150, group_points_year = 1500
 WHERE group_id = 3;
 
-INSERT IGNORE INTO mac_cuican_topic (topic_id, name, pic, blurb, content, status, sort, created_at)
+INSERT IGNORE INTO __PREFIX__cuican_topic (topic_id, name, pic, blurb, content, status, sort, created_at)
 VALUES (1, '嫁金钗', 'https://picsum.photos/seed/topic1/900/500', '2026 年热度最快破万剧集', '<p>古装复仇爽剧合集</p>', 1, 0, UNIX_TIMESTAMP());
 
-INSERT IGNORE INTO mac_cuican_topic_vod (topic_id, vod_id) VALUES (1, 1), (1, 7);
+INSERT IGNORE INTO __PREFIX__cuican_topic_vod (topic_id, vod_id) VALUES (1, 1), (1, 7);
 
-INSERT IGNORE INTO mac_cuican_zhibo (zhibo_id, name, img, url, status, sort)
+INSERT IGNORE INTO __PREFIX__cuican_zhibo (zhibo_id, name, img, url, status, sort)
 VALUES (1, '测试直播', 'https://picsum.photos/seed/live1/600/400', 'https://live.example.com/1.m3u8', 1, 0);
 
-INSERT IGNORE INTO mac_cuican_pay_channel (code, name, status, sort, config)
+-- 测试支付通道：key 是占位符，不是可用密钥。本地跑 tests/notify.sh 时把 KEY 设成与此处一致；
+-- 本文件只用于测试库，不要导入生产。
+INSERT IGNORE INTO __PREFIX__cuican_pay_channel (code, name, status, sort, config)
 VALUES ('epay', '易支付', 1, 0,
-'{"driver":"epay","url":"https://pay.example.com/submit.php","pid":"1000","key":"testkey","type":"alipay"}');
+'{"driver":"epay","url":"https://pay.example.com/submit.php","pid":"1000","key":"<YOUR_EPAY_KEY>","type":"alipay"}');
 
-INSERT IGNORE INTO mac_cuican_setting (k, v) VALUES ('withdraw_min_yuan', '20'), ('gold_per_yuan', '10');
+INSERT IGNORE INTO __PREFIX__cuican_setting (k, v) VALUES ('withdraw_min_yuan', '20'), ('gold_per_yuan', '10');
 
--- 广告 SSV 测试密钥：tests/smoke.sh 按固定口径构造签名（生产在后台「运营设置 → 广告」填）
-INSERT INTO mac_cuican_setting (k, v) VALUES ('ad_ssv_secret', 'smoke-ssv-secret')
-ON DUPLICATE KEY UPDATE v = VALUES(v);
+-- 广告 SSV 测试密钥：同样是占位符，不是可用密钥。tests/smoke.sh 的 SSV_SECRET 要与此处一致。
+-- 用 INSERT IGNORE 而不是 ON DUPLICATE KEY UPDATE：误导入生产时绝不能覆盖线上真实密钥（审计 S21）。
+INSERT IGNORE INTO __PREFIX__cuican_setting (k, v) VALUES ('ad_ssv_secret', '<YOUR_SSV_SECRET>');
 
-DELETE FROM mac_vod;
+DELETE FROM __PREFIX__vod;
 
-INSERT INTO mac_vod
+INSERT INTO __PREFIX__vod
 (vod_id, type_id, type_id_1, group_id, vod_name, vod_status, vod_pic, vod_remarks, vod_year,
  vod_area, vod_score, vod_blurb, vod_time, vod_play_from, vod_play_url, vod_content, vod_level,
  vod_class, vod_hits)
@@ -71,32 +75,32 @@ VALUES
  '第01集$https://cdn.example.com/1.m3u8', '剧情', 1, '1', 3900);
 
 -- 首页内容位（v2.2.0 的 banner / block / link）。固定 id + INSERT IGNORE，可重复执行。
-INSERT IGNORE INTO mac_cuican_banner (id, title, subtitle, pic, vod_id, url, style, sort, status)
+INSERT IGNORE INTO __PREFIX__cuican_banner (id, title, subtitle, pic, vod_id, url, style, sort, status)
 VALUES
 (1, '嫁金钗', '2026 年热度最快破万剧集', 'https://picsum.photos/seed/banner1/1200/600', 7, '', 'default', 0, 1),
 (2, '白夜追凶', '悬疑刑侦 · 全32集', 'https://picsum.photos/seed/banner2/1200/600', 9, '', 'default', 1, 1);
 
-INSERT IGNORE INTO mac_cuican_block (id, title, subtitle, layout, position, sort, status, created_at)
+INSERT IGNORE INTO __PREFIX__cuican_block (id, title, subtitle, layout, position, sort, status, created_at)
 VALUES (1, '热播推荐', '编辑精选', 'row', 'home', 0, 1, UNIX_TIMESTAMP());
 
-INSERT IGNORE INTO mac_cuican_block_vod (id, block_id, vod_id, sort)
+INSERT IGNORE INTO __PREFIX__cuican_block_vod (id, block_id, vod_id, sort)
 VALUES (1, 1, 1, 0), (2, 1, 7, 1);
 
-INSERT IGNORE INTO mac_cuican_link (id, title, icon, target_type, target_id, url, sort, status)
+INSERT IGNORE INTO __PREFIX__cuican_link (id, title, icon, target_type, target_id, url, sort, status)
 VALUES
 (1, '电影', 'movie', 'type', 6, '', 0, 1),
 (2, '榜单', 'rank', 'url', 0, 'https://example.com/rank', 1, 1);
 
 -- 冒烟测试固定卡：会员 7 天。tests/smoke.sh 兑换一次断言 200、再兑断言 409。
 -- 用 ON DUPLICATE KEY 复位，保证 seed 可重复执行、smoke 可反复跑。
-INSERT INTO mac_cuican_card (card_no, card_pwd, card_type, card_value, card_status, used_by, used_time)
+INSERT INTO __PREFIX__cuican_card (card_no, card_pwd, card_type, card_value, card_status, used_by, used_time)
 VALUES ('CARD-TEST-VOID-1', '', 'vip', 7, 0, 0, 0)
 ON DUPLICATE KEY UPDATE card_type = 'vip', card_value = 7, card_status = 0, used_by = 0, used_time = 0;
 
 -- 评论：v1.comment 读写 macCMS 自己的 mac_comment（comment_mid=1 影片，comment_rid=vod_id）。
 -- 固定 id 900001，避开自增段；user_id=0 走"游客 + comment_name"回退分支。
 -- 时间复位成一小时前，重灌 seed 时可重复执行。
-INSERT INTO mac_comment
+INSERT INTO __PREFIX__comment
 (comment_id, comment_mid, comment_rid, comment_pid, user_id, comment_status,
  comment_name, comment_ip, comment_time, comment_content)
 VALUES (900001, 1, 1, 0, 0, 1, '游客', 2130706433, UNIX_TIMESTAMP() - 3600,
@@ -108,6 +112,6 @@ ON DUPLICATE KEY UPDATE comment_mid = 1, comment_rid = 1, comment_status = 1,
 
 -- 发评论有 30 秒冷却（按 user_id），重灌 seed 时清掉测试号的旧评论，
 -- 保证 tests/smoke.sh 的"登录发评论 200"在反复运行时仍然成立。
-DELETE c FROM mac_comment c
-  JOIN mac_user u ON u.user_id = c.user_id
+DELETE c FROM __PREFIX__comment c
+  JOIN __PREFIX__user u ON u.user_id = c.user_id
  WHERE u.user_name = '13900000002';

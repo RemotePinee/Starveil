@@ -6,7 +6,7 @@
  * 出错时 `var_dump` 破坏 JSON。这里全部改掉：
  * - 必须登录；
  * - 只接受图片，扩展名由服务端按 MIME 决定，不吃客户端文件名；
- * - 路径只由「固定子目录 + user_id + 时间戳」拼成，不存在路径穿越面；
+ * - 路径只由「固定子目录 + user_id + 随机串」拼成，不存在路径穿越面；
  * - 失败只回 JSON。
  */
 
@@ -62,7 +62,7 @@ final class UploadController extends BaseController
     }
 
     /**
-     * 两个上传接口共用的落盘逻辑：校验 → 建目录 → `{user_id}_{time}.ext`。
+     * 两个上传接口共用的落盘逻辑：校验 → 建目录 → `{user_id}_{随机串}.ext`。
      *
      * 返回可直接回给客户端的相对路径；校验或落盘失败时已回 JSON 并返回 null，
      * 调用方只要 `if ($relative === null) return;` 即可，不用重复写错误分支。
@@ -92,7 +92,11 @@ final class UploadController extends BaseController
             return null;
         }
 
-        $name = $uid . '_' . time() . $ext;
+        // 文件名不能可猜：/upload/ 是公开可直读的目录，按 uid + 秒级时间戳命名时，
+        // 拿到 user_id（`v1.user/detail` 就有）按十位时间戳枚举就能拉到别人的
+        // 微信/支付宝收款码，同秒两次上传还会互相覆盖（审计 S17）。
+        // 随机段 12 字节 = 96 bit；留着 uid 前缀只为运维按用户找文件。
+        $name = $uid . '_' . bin2hex(random_bytes(12)) . $ext;
         if (!move_uploaded_file((string)$file['tmp_name'], $dir . DIRECTORY_SEPARATOR . $name)) {
             Json::fail(500, '保存失败');
             return null;
