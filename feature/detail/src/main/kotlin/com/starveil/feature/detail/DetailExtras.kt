@@ -22,13 +22,13 @@ import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.TrySeeAccess
+import com.starveil.core.model.TrySeeCopy
 import com.starveil.core.model.TrySeeGate
-import com.starveil.core.model.TrySeeRules
 
 /**
  * 试看提示条（§18.3 的「VIP/试看提示条」）。
  *
- * 判定口径与播放器共用 [TrySeeRules]：免费不显示，需会员/需付费才出现。
+ * 判定口径与播放器共用 `TrySeeRules`：免费不显示，需要解锁才出现。
  * 详情页不自己请求试看接口（那是起播时 `AccessRepository.checkTrySee` 的活），
  * 所以 [trySee] 为 null 时整条不渲染——不猜"可能要收费"吓用户。
  */
@@ -69,17 +69,13 @@ internal fun DetailTrySeeBar(trySee: TrySeeGate?) {
 }
 
 
-/** 提示条文案：先给结论，再给"看多久/怎么解锁"。 */
+/**
+ * 提示条文案：单一开关后会员 / 积分 / 广告三种解锁方式共用一套，不再按 access 分叉。
+ *
+ * `NEED_VIP` / `NEED_PAY` 只是服务端的历史取值，两档文案必须一致。
+ */
 private fun trySeeCopy(gate: TrySeeGate): Pair<String, String> = when (gate.access) {
-    TrySeeAccess.NEED_VIP -> "会员专享" to trialHint(gate.trySeeMinutes, "开通会员可看全集")
-    TrySeeAccess.NEED_PAY -> "需要付费解锁" to trialHint(gate.trySeeMinutes, "解锁后可看全集")
+    TrySeeAccess.NEED_VIP, TrySeeAccess.NEED_PAY -> TrySeeCopy.TITLE to TrySeeCopy.HINT
     TrySeeAccess.FREE -> "" to ""
-}
-
-/** 888 是服务端"直接拦截、不给试看时长"的约定值（`TrySeeRules.BLOCK_IMMEDIATELY_MINUTES`）。 */
-private fun trialHint(minutes: Int, tail: String): String = when {
-    minutes == TrySeeRules.BLOCK_IMMEDIATELY_MINUTES -> "本集不可免费观看，$tail"
-    minutes > 0 -> "可试看 $minutes 分钟，$tail"
-    else -> tail
 }
 

@@ -3,7 +3,6 @@ package com.starveil.core.data
 import com.starveil.core.common.AppError
 import com.starveil.core.common.AppResult
 import com.starveil.core.model.TrySeeAccess
-import com.starveil.core.model.TrySeeRules
 import com.starveil.core.network.dto.ApiEnvelopeDto
 import com.starveil.core.network.dto.TrySeeDto
 import java.io.IOException
@@ -50,7 +49,7 @@ class DefaultAccessRepositoryTest {
             .checkTrySee(vodId = 101, episodeNumber = 9, sourceIndex = 1) as AppResult.Success).value
 
         assertEquals(TrySeeAccess.NEED_PAY, gate.access)
-        assertEquals(TrySeeRules.BLOCK_IMMEDIATELY_MINUTES, gate.trySeeMinutes)
+        assertEquals(888, gate.trySeeMinutes)
     }
 
     @Test

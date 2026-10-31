@@ -301,15 +301,17 @@ final class Vods
     /**
      * 详情。
      *
-     * `$userId` 决定播放地址是否下发：未登录传 null。放行态原样返回直链；
-     * 命中非放行态（需会员 / 需积分 / 未购 / 未广告解锁）时把每条 `urls[].url` 清空，
-     * 只留 `nid` / `name`，并给出 `trysee`（秒）与 `play_locked`。
+     * `$userId` 决定播放地址是否下发：未登录传 null。
+     * 付费墙关（`paywall_enabled = 0`）时这里不做任何置空，所有集都给完整地址；
+     * 打开且命中未解锁态（需会员 / 需积分 / 未购这一集 / 未看完广告）时，把每条
+     * `urls[].url` 清空，只留 `nid` / `name`，并给出 `play_locked = 1`。
+     * 不按集截断——试看集数已下线，付费墙是唯一开关。
      *
      * 为什么不用 CMS 的 `check_user_popedom()`：Kernel 统一按 `new $class(Input, Session)`
      * 建控制器，而 `\app\common\controller\All` 的构造器不收参数，还要 `request()` 与模板
      * 状态（它的子类 `app\api\controller\Base` 甚至会把"站点关闭"直接 503）。继承等于把
      * 每个控制器的入口契约换掉。这里改用与 App 同一套真相：`Service\Playback`，判定细节
-     * 见 [playGate]；集名与 `trysee` 秒数照样下发，客户端据此画"试看 / 解锁"引导。
+     * 见 [playGate]。
      */
     public function detail(int $vodId, ?int $userId = null): ?array
     {
@@ -331,7 +333,8 @@ final class Vods
         }
         $dto['vod_play_list'] = $sources;
         $dto['play_locked'] = $gate['allowed'] ? 0 : 1;
-        $dto['trysee'] = $gate['trysee'];
+        // 试看时长已下线（付费墙是唯一开关）：键位留 0，只为老客户端与 TrySeeDto 不炸。
+        $dto['trysee'] = 0;
 
         return $dto;
     }
@@ -339,31 +342,26 @@ final class Vods
     /**
      * 这行影片这次能不能拿播放地址。
      *
-     * 判定只用**一套真相**：`Service\Playback::trySee()`。它内部依次看免费档、
-     * 广告解锁记录、会员等级、单集已购，与 `v1.user/checkVodTrySee` 下发给客户端的是
-     * 同一个函数——详情页说"能播"，这里就必须放；说"要开通"，这里就不能给地址。
+     * 判定只用**一套真相**：`Service\Playback::trySee()`。它内部看唯一开关
+     * `paywall_enabled`，与 `v1.user/checkVodTrySee` 下发给客户端的是同一个函数——
+     * 详情页说"能播"，这里就必须放；说"要解锁"，这里就不能给地址。
+     *
+     * 关掉付费墙时 `trySee()` 恒返回 status=0，于是这里直接放行，详情一个字节都不置空。
      *
      * 为什么**不**顺手把 `mac_vod.vod_points_play` 也当闸门：那是 macCMS 自己的
      * `mac_ulog` 积分体系，插件没有对应的购买入口（`cuican_order` 与它不互通）。
      * 拿它在这里硬拦，运营只要给影片填过播放积分，App 就会把内容锁死、而客户端连
      * "购买"按钮都渲染不出来（`can_points` 来自插件自己的 `episode_points`）。
-     * 要让 App 也收费，正确做法是后台设 `trysee_status=2` + `episode_points`。
-     *
-     * `trysee` 统一换成秒；`vod_trysee > 0` 时覆盖插件设置，与 CMS `label_vod_play` 同序。
+     * 要让 App 也收费，正确做法是后台开「付费墙」+ 配 `episode_points` 或激励位。
      *
      * @param array<string,mixed> $row
-     * @return array{allowed:bool,trysee:int}
+     * @return array{allowed:bool}
      */
     private function playGate(array $row, ?int $userId): array
     {
         $gate = (new Playback())->trySee($userId, (int)$row['vod_id']);
 
-        $minutes = (int)($row['vod_trysee'] ?? 0);
-        if ($minutes <= 0) {
-            $minutes = (int)$gate['trysee'];
-        }
-
-        return ['allowed' => $gate['status'] === 0, 'trysee' => max($minutes, 0) * 60];
+        return ['allowed' => $gate['status'] === 0];
     }
 
     public function types(): array

@@ -3,6 +3,7 @@ package com.starveil.feature.player
 import androidx.compose.runtime.Immutable
 import com.starveil.core.common.AppError
 import com.starveil.core.model.TrySeeAccess
+import com.starveil.core.model.TrySeeCopy
 
 /**
  * 竖屏播放的一集。
@@ -88,22 +89,14 @@ internal fun verticalErrorMessage(error: AppError): String = when (error) {
     is AppError.Unknown -> "未知错误"
 }
 
-/** 试看覆盖层文案。文案集中在状态层拼，在 Activity 里散着写。 */
-internal fun trySeeNoticeOf(access: TrySeeAccess): String = when (access) {
-    TrySeeAccess.FREE -> ""
-    TrySeeAccess.NEED_VIP -> MSG_TRY_SEE_VIP
-    TrySeeAccess.NEED_PAY -> MSG_TRY_SEE_PAY
-}
-
 /**
- * 试看覆盖层文案（按能力位组合）。
+ * 付费墙覆盖层文案。文案集中在状态层拼，不在 Composable 里散着写。
  *
- * 会员与积分都可用时要说清两个出口，不能只写"开通会员"——
- * 用户会以为必须买会员才能继续看。
+ * 单一开关后不再按出口组合分叉：会员 / 积分 / 广告共用同一句话，
+ * 服务端只回答"要不要解锁"，不回答用户最终会走哪一种。
  */
-internal fun trySeeNoticeOf(access: TrySeeAccess, unlock: UnlockOptions): String = when {
-    unlock.canUpgrade && unlock.canRedeemPoints -> MSG_TRY_SEE_BOTH
-    unlock.canUpgrade -> MSG_TRY_SEE_VIP
-    unlock.canRedeemPoints -> MSG_TRY_SEE_PAY
-    else -> trySeeNoticeOf(access)
+internal fun trySeeNoticeOf(access: TrySeeAccess): String = when (access) {
+    // NEED_VIP / NEED_PAY 只是历史取值，两档文案必须一致
+    TrySeeAccess.NEED_VIP, TrySeeAccess.NEED_PAY -> TrySeeCopy.HINT
+    TrySeeAccess.FREE -> ""
 }

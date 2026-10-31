@@ -31,7 +31,7 @@ import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.PlaybackPhase
-import com.starveil.core.model.TrySeeAccess
+import com.starveil.core.model.TrySeeCopy
 
 /** 解析阶段：还没拿到播放地址，文案是"正在接入线路"。 */
 private const val MSG_LOADING = "正在接入播放线路…"
@@ -53,10 +53,6 @@ private const val MSG_STALLED = "线路没有响应"
 
 private const val STALLED_SCRIM_ALPHA = 0.72f
 
-private const val MSG_PAY_TITLE = "本集需积分兑换"
-
-private const val MSG_VIP_TITLE = "会员专享内容"
-
 /** 主按钮最小宽度：短文案也能撑成一块完整的 CTA。 */
 private val MinActionWidth: Dp = Spacing.xxl * 4
 
@@ -73,13 +69,12 @@ internal fun PlayerOverlay(
     unlock: UnlockOptions = UnlockOptions(),
     onWatchAd: () -> Unit = {},
 ) {
-    when (val phase = state.phase) {
+    when (state.phase) {
         is PlaybackPhase.Parsing, PlaybackPhase.Idle -> PlaybackVeil(label = MSG_LOADING, modifier = modifier)
         is PlaybackPhase.Failed -> FailedOverlay(state.errorMessage.orEmpty(), actions.onRetry, modifier)
         is PlaybackPhase.Blocked -> BlockedOverlay(
             ui = BlockedUi(
                 notice = state.trySeeNotice.orEmpty(),
-                access = phase.access,
                 unlock = unlock,
                 onUpgrade = actions.onUpgrade,
                 onBuy = actions.onBuy,
@@ -152,7 +147,6 @@ private fun FailedOverlay(message: String, onRetry: () -> Unit, modifier: Modifi
 /** 试看拦截的参数包，避免 Composable 超过 5 个参数。 */
 private data class BlockedUi(
     val notice: String,
-    val access: TrySeeAccess,
     val unlock: UnlockOptions,
     val onUpgrade: () -> Unit,
     val onBuy: () -> Unit,
@@ -168,10 +162,9 @@ private data class BlockedUi(
  */
 @Composable
 private fun BlockedOverlay(ui: BlockedUi, modifier: Modifier = Modifier) {
-    val needPay = ui.access == TrySeeAccess.NEED_PAY
     OverlayScaffold(modifier) {
         Text(
-            text = if (needPay) MSG_PAY_TITLE else MSG_VIP_TITLE,
+            text = TrySeeCopy.TITLE,
             style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onBackground,
             textAlign = TextAlign.Center,
@@ -229,13 +222,11 @@ private fun UnlockButton(label: String, onClick: () -> Unit, modifier: Modifier 
     }
 }
 
-/** 说明文案按"能走哪些出口"拼，不读单一路径的固定文案。 */
-private fun noticeOf(ui: BlockedUi): String = when {
-    ui.unlock.canUpgrade && ui.unlock.canRedeemPoints -> MSG_TRY_SEE_BOTH
-    ui.unlock.canUpgrade -> MSG_TRY_SEE_VIP
-    ui.unlock.canRedeemPoints -> MSG_TRY_SEE_PAY
-    else -> ui.notice.ifBlank { MSG_TRY_SEE_VIP }
-}
+/**
+ * 说明文案：单一开关后会员 / 积分 / 广告共用一套，不再按"能走哪些出口"拼。
+ * `ui.notice` 优先（状态层已经算好），空串时回落到统一文案。
+ */
+private fun noticeOf(ui: BlockedUi): String = ui.notice.ifBlank { TrySeeCopy.HINT }
 
 /** 有价显示数字，没配价退回通用文案。 */
 private fun redeemLabel(points: Int): String =

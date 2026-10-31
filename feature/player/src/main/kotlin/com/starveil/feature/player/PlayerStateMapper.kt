@@ -5,6 +5,7 @@ import com.starveil.core.model.PlaybackSession
 import com.starveil.core.model.PlaySource
 import com.starveil.core.model.PlayUrl
 import com.starveil.core.model.TrySeeAccess
+import com.starveil.core.model.TrySeeCopy
 import com.starveil.core.model.Vod
 
 /**
@@ -13,11 +14,6 @@ import com.starveil.core.model.Vod
  * 单独成文件有两个原因：ViewModel 的类行数上限（detekt LargeClass 200 行），
  * 以及"展示文案只在这里拼"——把提示语散在 Activity 里，改一句要全局搜。
  */
-
-internal const val MSG_TRY_SEE_VIP = "试看已结束，开通会员后可继续观看"
-
-internal const val MSG_TRY_SEE_PAY = "试看已结束，积分兑换本集后可继续观看"
-internal const val MSG_TRY_SEE_BOTH = "试看已结束，开通会员或积分兑换本集后可继续观看"
 
 /** 初始会话。集数越界时夹到最后一集；解析线路来自 PlayerInfo.parseTargets。 */
 internal fun initialSessionOf(vod: Vod, sourceIndex: Int, episodeIndex: Int): PlaybackSession {
@@ -84,14 +80,10 @@ internal fun episodeIndexFor(vod: Vod, session: PlaybackSession, source: PlaySou
     return session.episodeIndex.coerceIn(0, (source.episodes.size - 1).coerceAtLeast(0))
 }
 
-/** 试看提示文案（TrySeeRules 判定后的展示层）。 */
+/** 付费墙说明文案（TrySeeRules 判定后的展示层）。 */
 internal fun trySeeNoticeOf(phase: PlaybackPhase): String? = when (phase) {
-    is PlaybackPhase.Blocked -> when (phase.access) {
-        TrySeeAccess.FREE -> null
-        TrySeeAccess.NEED_VIP -> MSG_TRY_SEE_VIP
-        TrySeeAccess.NEED_PAY -> MSG_TRY_SEE_PAY
-    }
-
+    // NEED_VIP / NEED_PAY 只是历史取值：服务端已改成单开关，两档共用一套文案
+    is PlaybackPhase.Blocked -> if (phase.access == TrySeeAccess.FREE) null else TrySeeCopy.HINT
     else -> null
 }
 

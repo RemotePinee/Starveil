@@ -19,7 +19,7 @@ use think\Db;
 class Installer
 {
     /** 与 info.ini 的 version 保持一致（升级时 upgradeIfNeeded 靠它触发迁移）。 */
-    public const VERSION = '2.6.0';
+    public const VERSION = '2.6.2';
 
     /**
      * 左侧快捷菜单的标签。
@@ -538,8 +538,14 @@ return " . var_export(array_values($lines), true) . ";
             'shortplay_search_type_id' => '0',
             'shortplay_tab_type_ids' => '',
             'member_enabled' => '1',
-            'trysee_status' => '0',
-            'trysee_minutes' => '6',
+            // 付费墙是唯一的收费开关：关 = 全部免费（默认）；开 = 未解锁用户拿不到播放地址，
+            // 按会员 / 看广告 / 积分兑换解锁（三种同时生效）。老库里的 trysee_* 旧值由
+            // v2.6.2 迁移折算成这个键，这里不再写它们的默认值。
+            'paywall_enabled' => '0',
+            // CDN 签名预留：域名与密钥留空即回退原始地址，不影响未接 CDN 的站点
+            'cdn_enabled' => '0',
+            'cdn_domain' => '',
+            'cdn_sign_key' => '',
             'episode_points' => '0',
             'register_require_sms' => '1',
             'sms_daily_limit' => '10',

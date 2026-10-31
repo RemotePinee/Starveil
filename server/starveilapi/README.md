@@ -19,8 +19,7 @@ macCMS V10 插件。**不改 macCMS 核心文件**，所有表带 `cuican_` 前�
 | `ui_home_data` | 3 | 首页卡片列数（2 或 3） |
 | `app_ui_tab_fun` | 0 | 第二个 tab：1 专题 / 其它直播 |
 | `vip_group_id` | 3 | 会员组 id（对应 `mac_group`） |
-| `trysee_status` | 0 | 0 免费 / 1 需会员 / 2 需单集付费 |
-| `trysee_minutes` | 6 | 试看时长（分钟） |
+| `paywall_enabled` | 0 | 付费墙：0 = 全部免费；1 = 未解锁用户拿不到播放地址（按会员 / 看广告 / 积分兑换解锁，三种同时生效） |
 | `episode_points` | 0 | 单集购买所需积分 |
 | `register_require_sms` | 1 | 注册是否必须验证码 |
 | `sms_http_url` | 空 | 短信网关模板，支持 `{phone}` `{code}` `{purpose}` 占位 |
@@ -98,7 +97,7 @@ macCMS V10 插件。**不改 macCMS 核心文件**，所有表带 `cuican_` 前�
 | `GET v1.user/favs` · `POST/DELETE v1.user/ulog` | 收藏列表与增删 |
 | `POST v1.user/viewSeconds` | 观看时长上报 |
 | `GET v1.user/videoProgressList` | 首页「继续观看」最近 10 条 |
-| `GET v1.user/checkVodTrySee` | 试看闸门 |
+| `GET v1.user/checkVodTrySee` | 付费墙闸门（`status` 只发 0/1，`trysee` 恒 0 已废弃） |
 | `GET/POST v1.user/sign` · `v1.user/task` | 签到 / 任务 |
 | `GET v1.user/groups` · `POST v1.user/group` | 价目表 / 会员兑换 |
 | `GET/POST v1.user/order` | 下单 / 查单，同一路径两种语义 |
@@ -358,7 +357,7 @@ SET @p = 'mac_';  -- 换成真实前缀
 | 启动配置、价目表、影片列表/详情/分类/单榜/聚合榜 | 通过 |
 | 专题列表/详情（含内嵌影片）、直播列表 | 通过 |
 | 注册、登录、cookie 会话、用户详情、资料更新、**越权字段被忽略** | 通过 |
-| 收藏增/查/删、试看、观看时长、播放记录 | 通过 |
+| 收藏增/查/删、付费墙、观看时长、播放记录 | 通过 |
 | 弹幕发送（含 10 秒冷却）/拉取 | 通过 |
 | 充值提示、金币提示、下单、查单 | 通过 |
 | 支付页 `/v1.user/pay` 302 跳网关（已支付订单返回 409） | 通过 |
@@ -366,7 +365,7 @@ SET @p = 'mac_';  -- 换成真实前缀
 | 会员到账：`mac_user.group_id` 变为 `1,3` 且 `user_end_time` 顺延 30 天 | 通过 |
 | 金币提现：足额提交成功、低于门槛被拒 | 通过 |
 | 卡密：首次兑换成功、重复使用被拒 | 通过 |
-| 单集购买：购买成功、试看接口随之放行 | 通过 |
+| 单集购买：购买成功、付费墙接口随之放行 | 通过 |
 | 短剧 SSV：未登录 401、错签/过期 403、成功换签、重复 `trans_id` 幂等、缺集 404 | 通过 |
 
 `tests/smoke.sh` 最终 **PASS=70 FAIL=0**（在容器内用 `sh tests/smoke.sh` 执行）。
@@ -450,7 +449,7 @@ php addons/starveilapi/tools/install.php
 | 页面 | 能做什么 |
 |---|---|
 | 概览 | 注册用户、已支付订单、待审核提现、未使用卡密、弹幕数 |
-| 运营设置 | 皮肤、首页列数、试看、积分、提现门槛、短信网关、CORS、套餐、解析站、代理等级、热词、广告（含 SSV 密钥，密码框不回显） |
+| 运营设置 | 皮肤、首页列数、付费墙、积分、提现门槛、短信网关、CORS、套餐、解析站、代理等级、热词、广告（含 SSV 密钥，密码框不回显） |
 | 轮播 | 增删改首页轮播：标题/副标题/图片、影片 ID 或外链、排序、启停（`?a=banner`） |
 | 编辑精选 | 维护唯一一组 `position='featured'`：标题/副标题/启停、按影片 ID 批量加入、上移/下移/移除（`?a=featured`） |
 | 热度榜 | 维护 `position='hot'` 的卡片组：标题/副标题/启停、按影片 ID 批量加入、上移/下移/移除（`?a=hot`） |

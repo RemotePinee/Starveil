@@ -321,7 +321,7 @@ internal fun Context.showPlayerEvent(event: PlayerEvent) {
     val message = when (event) {
         is PlayerEvent.DanmuFailed -> event.message
         is PlayerEvent.AutoPlayNext -> "正在播放 ${event.episodeTitle}"
-        is PlayerEvent.TrySeeBlocked -> "试看已结束"
+        is PlayerEvent.TrySeeBlocked -> "本集需要解锁"
         // 不把 errorCodeName（ERROR_CODE_IO_BAD_HTTP_STATUS 之类）甩给用户
         is PlayerEvent.PlaybackFailed -> "播放中断，请重试"
         PlayerEvent.RequestUpgrade -> "开通会员"

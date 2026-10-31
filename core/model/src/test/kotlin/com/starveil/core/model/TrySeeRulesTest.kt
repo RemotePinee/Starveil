@@ -52,13 +52,15 @@ class TrySeeRulesTest {
     }
 
     @Test
-    fun `sentinel 888 blocks immediately`() {
-        assertTrue(TrySeeRules.isExceeded(positionMs = 0, trySeeMinutes = 888))
+    fun `sentinel 888 is just a long window after the single switch`() {
+        // 888 不再有"直接拦截"的语义：服务端已改成单一付费墙开关
+        assertFalse(TrySeeRules.isExceeded(positionMs = 0, trySeeMinutes = 888))
     }
 
     @Test
-    fun `zero or negative minutes never block`() {
-        assertFalse(TrySeeRules.isExceeded(positionMs = 10_000_000, trySeeMinutes = 0))
-        assertFalse(TrySeeRules.isExceeded(positionMs = 10_000_000, trySeeMinutes = -1))
+    fun `no trial minutes blocks right away`() {
+        // 服务端不再下发有效秒数（恒 0），需解锁的集一开始就拦
+        assertTrue(TrySeeRules.isExceeded(positionMs = 0, trySeeMinutes = 0))
+        assertTrue(TrySeeRules.isExceeded(positionMs = 10_000_000, trySeeMinutes = -1))
     }
 }

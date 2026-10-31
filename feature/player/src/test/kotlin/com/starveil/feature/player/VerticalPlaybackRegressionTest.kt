@@ -6,7 +6,6 @@ import com.starveil.core.data.VodRepository
 import com.starveil.core.model.PlayUrl
 import com.starveil.core.model.TrySeeAccess
 import com.starveil.core.model.TrySeeGate
-import com.starveil.core.model.TrySeeRules
 import com.starveil.core.model.Vod
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.TestScope
@@ -132,7 +131,7 @@ class VerticalPlaybackRegressionTest {
     @Test
     fun `current episode gates ignore stale results and keep progress, pause and same episode retry`() = runTest {
         val viewModel = regressionViewModel()
-        val paid = TrySeeGate(TrySeeAccess.NEED_PAY, TrySeeRules.BLOCK_IMMEDIATELY_MINUTES)
+        val paid = TrySeeGate(TrySeeAccess.NEED_PAY, 0)
         viewModel.updateTrySee(1, paid)
         assertTrue(viewModel.state.value.isBlocked)
         viewModel.onPageChanged(1)

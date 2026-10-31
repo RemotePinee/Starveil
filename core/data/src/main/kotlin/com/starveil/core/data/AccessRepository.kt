@@ -7,10 +7,11 @@ import com.starveil.core.network.StarveilApi
 import com.starveil.core.network.mapper.toDomain
 
 /**
- * 试看判定（调用点 ）。
+ * 付费墙判定（调用点 ）。
  *
- * 服务端只回答三件事：试看分钟数、权限状态、剩余免费次数；[TrySeeGate.access]
- * 由 `TrySeeRules.access` 统一折算，播放器不要再自己写一套判定。
+ * 服务端已改成单一开关：只回答"要不要解锁"（`status`）与剩余免费次数，
+ * `trysee` 秒数已废弃。[TrySeeGate.access] 由 `TrySeeRules.access` 统一折算，
+ * 播放器不要再自己写一套判定。
  */
 interface AccessRepository {
 

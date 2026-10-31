@@ -1,9 +1,10 @@
 <?php
 /**
- * 试看与观看数据。
+ * 付费墙与观看数据。
  *
- * 试看判定由服务端给结论（客户端只负责"何时算看超"），与旧接口
- * `v1.user/checkVodTrySee` 的字段保持一致：`status` / `trysee` / `user_video`。
+ * 闸门只有一个开关 `paywall_enabled`。下发给客户端的字段与旧接口
+ * `v1.user/checkVodTrySee` 保持一致：`status` / `trysee` / `user_video`，
+ * 其中 `trysee` 已废弃（恒 0），保留键位只是因为客户端还在读它。
  */
 
 declare(strict_types=1);
@@ -26,63 +27,72 @@ final class Playback
     }
 
     /**
-     * 试看闸门。
+     * 付费墙闸门。
      *
-     * status：0 免费 / 1 需会员 / 2 需积分兑换本集；trysee 单位分钟。
-     * 会员或已兑换该片时按免费处理，客户端不用自己拼判断。
+     * 只有一个开关：`paywall_enabled`。
+     * - 关：一律 status=0，任何登录状态都拿完整播放地址，下面三处出口都不参与判定。
+     * - 开：未解锁用户 status=1。解锁出口由三处**已有**配置分别决定，同时生效——
+     *   会员（`member_enabled` + `vip_group_id`，见 [isVip]）、
+     *   广告（激励位已配，见 [rewardAdConfigured]）、积分（`episode_points > 0`）。
      *
-     * 会员体系关闭只是停止售卖，**历史会员仍按到期时间继续享受权益**：
-     * 先走 isVip 分支，再按下面的折算返回 status。
+     * 已解锁的用户（会员 / 已购这一集 / 看完广告）不管开关怎么设都是 status=0。
      *
-     * 返回的 `can_vip` / `can_points` / `can_ad` 是给播放器浮层的按钮能力位，
-     * 客户端按它们渲染"开通会员 / 积分兑换 / 看广告"三种出口，不再自己猜。
+     * status 只发 0 / 1：客户端 `TrySeeRules.access()` 把 1 当"需 VIP"、2 当"需单集付费"，
+     * 而"能走哪几种解锁方式"现在由 `can_vip` / `can_points` / `can_ad` 三个能力位回答，
+     * 客户端按位画按钮，不靠 status 区分。2 因此不再下发。
      *
-     * `$episodeNumber` 只用来查广告解锁记录：解锁按「用户 + 剧 + 集」生效，
-     * 传 0 表示调用方不知道第几集，此时只按会员/积分的旧口径判定。
+     * 试看时长与试看集数已下线：`trysee` 恒 0（客户端 `TrySeeDto.trySeeMinutes` 仍在读这个键，
+     * 删键会让它走解析默认值之外的路径，故保留键、值恒 0）。
+     *
+     * 会员体系关闭只是停止售卖，**历史会员仍按到期时间继续享受权益**：先走 isVip 分支。
+     * 三种解锁方式一个都没配时，开关一开就是全站锁死——后台分组说明已写明要至少配一种，
+     * 这里不做"没配就自动免费"的隐藏兜底，否则运营会以为关掉会员就等于免费。
+     *
+     * `$episodeNumber` 只用来查广告解锁与单集购买：解锁按「用户 + 剧 + 集」生效，
+     * 传 0 表示调用方不知道第几集，此时只按会员口径判定。
      */
     public function trySee(?int $userId, int $vodId, int $episodeNumber = 0): array
     {
-        $status = Setting::int('trysee_status', 0);
-        $minutes = Setting::int('trysee_minutes', 6);
+        $paywall = Setting::int('paywall_enabled', 0) === 1;
         $memberEnabled = Setting::int('member_enabled', 1) === 1;
         $pointsPrice = max(Setting::int('episode_points', 0), 0);
 
-        // 会员关闭后，"需会员"不能再把用户卡死：配了积分价就改成积分兑换，没配价直接免费。
-        if (!$memberEnabled && $status === 1) {
-            $status = $pointsPrice > 0 ? 2 : 0;
+        if (!$paywall) {
+            return $this->gate(0, $pointsPrice, $memberEnabled);
         }
 
         // 广告解锁（平台 SSV 回调 / 直投看完）已经把这一集写进解锁表：先放行，再谈会员与积分。
-        // 少了这一步，用户看完广告重查闸门时服务端仍答"需会员"，这次广告就白看了。
+        // 少了这一步，用户看完广告重查闸门时服务端仍答"需解锁"，这次广告就白看了。
         if ($episodeNumber > 0 && $this->unlocked($userId, $vodId, $episodeNumber)) {
-            return $this->gate(0, $minutes, $pointsPrice, $memberEnabled);
+            return $this->gate(0, $pointsPrice, $memberEnabled);
         }
 
-        if ($status === 0) {
-            return $this->gate(0, $minutes, $pointsPrice, $memberEnabled);
+        if ($this->isVip($userId)
+            || ($userId !== null && $this->orders->hasPaidEpisode($userId, $vodId, $episodeNumber))) {
+            return $this->gate(0, $pointsPrice, $memberEnabled);
         }
 
-        $isVip = $this->isVip($userId);
-        if ($isVip || ($userId !== null && $this->orders->hasPaidEpisode($userId, $vodId, $episodeNumber))) {
-            return $this->gate(0, $minutes, $pointsPrice, $memberEnabled);
-        }
-
-        return $this->gate($status, $minutes, $pointsPrice, $memberEnabled);
+        return $this->gate(1, $pointsPrice, $memberEnabled);
     }
 
     /**
-     * 试看结果。`can_ad` 只表示"后台配了激励位"，与客户端的 `AdSlotDto.isEnabled` 同口径：
+     * 闸门结果。`can_vip` / `can_points` / `can_ad` 是给播放器浮层的按钮能力位，
+     * 客户端按它们渲染"开通会员 / 积分兑换 / 看广告"三种出口，不再自己猜。
+     *
+     * `can_ad` 只表示"后台配了激励位"，与客户端的 `AdSlotDto.isEnabled` 同口径：
      * 总开关开，且位 ID 或素材非空。是否放行不由这里决定——广告解锁走 [unlocked]，
      * 解锁成功时上游已经用 status=0 调进来，`can_ad` 因而自然为 0。
      *
+     * `trysee` 恒 0：试看时长已下线，键位留着只为客户端仍在读。
+     *
      * @return array{status:int,trysee:int,user_video:int,member_enabled:int,points_price:int,can_vip:int,can_points:int,can_ad:int}
      */
-    private function gate(int $status, int $minutes, int $pointsPrice, bool $memberEnabled): array
+    private function gate(int $status, int $pointsPrice, bool $memberEnabled): array
     {
         $blocked = $status !== 0;
         return [
             'status' => $status,
-            'trysee' => $minutes,
+            'trysee' => 0,
             'user_video' => 0,
             'member_enabled' => $memberEnabled ? 1 : 0,
             'points_price' => $pointsPrice,

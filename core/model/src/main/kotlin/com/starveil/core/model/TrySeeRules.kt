@@ -1,21 +1,15 @@
 package com.starveil.core.model
 
 /**
- * 试看/付费闸门。
+ * 付费墙闸门。
  *
- * 提取自 与
- * 判定完全由服务端下发，
- * 客户端只负责"何时算超时"和"超时后显示哪一种浮层"。
+ * 提取自旧播放页与竖屏页：判定完全由服务端下发，
+ * 客户端只负责"什么时候拦"和"拦下来显示哪一套文案"。
  *
- * 与的差别：
- * - 历史版本 `setProgress` 每个 tick 都 `pause()` 一次，
- * 只返回判定结果，节流由调用方负责，避免重复暂停。
- * - 魔法值 888 保留原语义（服务端用它表示"直接拦截"），但改名成常量。
+ * 服务端已把「试看状态 0/1/2」改成**单一付费墙开关**：`status` 只会是 0（免费）
+ * 或 1（需解锁），`trysee` 秒数废弃，888 哨兵随之下线。
  */
 object TrySeeRules {
-
-    /** 服务端用 888 表示"不看时长，直接拦截"。 */
-    const val BLOCK_IMMEDIATELY_MINUTES = 888
 
     /** 免费观看，不弹闸门。 */
     const val STATUS_FREE = 0
@@ -29,8 +23,9 @@ object TrySeeRules {
     /**
      * 服务端 `status` + `user_video`（剩余免费次数）→ 观看权限。
      *
-     * `status == 0` 免费；剩余免费次数 > 0 也免费；
-     * 未知 status 按免费处理（只写了 1 和 2 两个分支）。
+     * 单一开关后 `status` 只会是 0（免费）或 1（需解锁）；
+     * 剩余免费次数 > 0 也免费；未知 status 按免费处理。
+     * `STATUS_NEED_PAY`（2）只是历史取值，服务端不会再下发。
      */
     fun access(status: Int, freeCount: Int): TrySeeAccess = when {
         status == STATUS_FREE -> TrySeeAccess.FREE
@@ -41,18 +36,23 @@ object TrySeeRules {
     }
 
     /**
-     * 播放进度是否已越过试看时长。
+     * 播放进度是否已越过允许的可看时长。
      *
-     * 用 `position / 1000f > trySeeTime * 60`（float 比较，有精度误差），
-     * 换成整数毫秒比较，边界更明确。
+     * 服务端不再下发有效秒数（`trysee` 恒 0 / 缺省），所以 [trySeeMinutes] <= 0
+     * 视为"没有可看窗口"：需解锁的集一开始就拦。历史哨兵 888 已随单开关下线，
+     * 现在只是普通的 888 分钟，没有特殊含义。
      */
-    fun isExceeded(positionMs: Long, trySeeMinutes: Int): Boolean {
-        if (trySeeMinutes == BLOCK_IMMEDIATELY_MINUTES) return true
-        return trySeeMinutes > 0 && positionMs > trySeeMinutes.toLong() * 60_000
-    }
+    fun isExceeded(positionMs: Long, trySeeMinutes: Int): Boolean =
+        trySeeMinutes <= 0 || positionMs > trySeeMinutes.toLong() * 60_000
 }
 
-/** 试看结束后的三种出路。 */
+/**
+ * 拦截后的三种取值。
+ *
+ * 服务端已改成单开关，`NEED_VIP` / `NEED_PAY` 只是历史取值（status 1 / 2），
+ * **两档文案必须一致**：不要在展示层再按枚举分叉出两套说辞。解锁方式可能是会员、
+ * 积分或广告，客户端不从 status 反推。文案见 [TrySeeCopy]。
+ */
 enum class TrySeeAccess {
     FREE,
     NEED_VIP,
@@ -60,11 +60,11 @@ enum class TrySeeAccess {
 }
 
 /**
- * 试看接口的一次判定结果。
+ * 付费墙接口的一次判定结果。
  *
- * [access] 必须由 [TrySeeRules.access] 算出，与播放器 tick 的判定共用同一口径；
- * [trySeeMinutes] 是服务端下发的分钟数，值为 888 表示不看时长直接拦截
- * （见 [TrySeeRules.BLOCK_IMMEDIATELY_MINUTES]）。
+ * [access] 必须由 [TrySeeRules.access] 算出，与播放器 tick 的判定共用同一口径。
+ * [trySeeMinutes] **已废弃**：服务端不再下发有效秒数，客户端也不再拿它拼文案；
+ * 字段与解析保留只为兼容旧响应，新代码不要读它做展示。
  *
  * 后四个字段是浮层按钮能力位，由服务端下发：
  * - [canUpgrade]：会员体系开启且当前被拦时才有"开通会员"；
@@ -82,3 +82,15 @@ data class TrySeeGate(
     val canWatchAd: Boolean = false,
     val pointsPrice: Int = 0,
 )
+
+/**
+ * 付费墙文案：**一套覆盖三种解锁方式**。
+ *
+ * 服务端已改成单一开关，`status` 只回答"要不要解锁"，不回答"怎么解锁"——
+ * 会员、积分兑换、看广告都可能放行，所以文案必须并列三种出口，
+ * 不能只写"开通会员"。详情页提示条、播放器浮层、竖屏剧集页共用这一份，别再各写一句。
+ */
+object TrySeeCopy {
+    const val TITLE = "需要解锁"
+    const val HINT = "开通会员、积分兑换或看广告解锁后可看全集"
+}

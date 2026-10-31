@@ -1,7 +1,6 @@
 package com.starveil.core.network
 
 import com.starveil.core.model.TrySeeAccess
-import com.starveil.core.model.TrySeeRules
 import com.starveil.core.network.mapper.toDomain
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
@@ -69,13 +68,13 @@ class TrySeeContractTest {
     }
 
     @Test
-    fun `blocked fixture keeps the 888 sentinel`() = runTest {
+    fun `blocked fixture keeps the raw trysee value`() = runTest {
         server.enqueue(jsonResponse(fixture("v1_user_checkVodTrySee_blocked.json")))
 
         val gate = requireNotNull(api.checkVodTrySee("101", "9").data).toDomain()
 
         assertEquals(TrySeeAccess.NEED_PAY, gate.access)
-        assertEquals(TrySeeRules.BLOCK_IMMEDIATELY_MINUTES, gate.trySeeMinutes)
+        assertEquals(888, gate.trySeeMinutes)
     }
 
     @Test

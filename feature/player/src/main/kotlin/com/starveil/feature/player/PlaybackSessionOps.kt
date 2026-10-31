@@ -28,7 +28,12 @@ internal class PlaybackActions(
     val triggers: PlaybackTriggers,
 )
 
-/** 试看参数：权限类型 + 可看分钟数。 */
+/**
+ * 付费墙参数：权限类型 + 可看分钟数。
+ *
+ * [minutes] 已废弃（服务端不再下发有效秒数），只为兼容既有调用保留；
+ * 取 0 表示"没有可看窗口"，需解锁的集一开始就拦。
+ */
 internal class TrySeeConfig(
     val access: TrySeeAccess,
     val minutes: Int,

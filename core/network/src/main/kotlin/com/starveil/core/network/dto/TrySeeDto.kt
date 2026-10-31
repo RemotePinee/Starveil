@@ -11,8 +11,9 @@ import kotlinx.serialization.Serializable
  * 且旧样例是 `code:1` / `msg:"开启试看模式"`，
  * 说明内层 code 是播放页提示码，不是成功判定，别拿来判 `== 200`。
  *
- * - `trysee`：试看分钟数，888 表示不看时长直接拦截（`TrySeeRules.BLOCK_IMMEDIATELY_MINUTES`）；
- * - `status`：0 免费 / 1 需要会员 / 2 需要积分兑换本集（`TrySeeRules.access`）；
+ * - `trysee`：**已废弃**。服务端已改成单一付费墙开关，不再下发有效秒数；
+ *   字段保留只为兼容旧响应，客户端不拿它拼文案、也不当作放行时长；
+ * - `status`：单一开关，0 免费 / 1 需解锁（2 是历史取值，服务端不再下发）；
  * - `user_video`：剩余免费次数，> 0 时即使 status 是 1 也放行；
  * - `member_enabled` / `can_vip` / `can_points` / `can_ad` / `points_price`：
  * 服务端给播放器浮层的**按钮能力位**。会员关闭时 `can_vip=0`，客户端据此少渲染一个按钮，

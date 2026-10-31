@@ -116,8 +116,8 @@ object SystemPlayerClock : PlayerClock {
  * ViewModel 依赖。
  *
  * [scope] 为 null 时用 viewModelScope；测试注入 TestScope 以便控制虚拟时间。
- * [trySeeAccess] / [trySeeMinutes] 来自服务端下发（TrySeeRules.access），
- * 客户端只负责判定"何时算看完了试看时长"。
+ * [trySeeAccess] 来自服务端下发（`TrySeeRules.access`）；[trySeeMinutes] 已废弃
+ * （服务端不再下发有效秒数），只为兼容旧调用保留，不参与任何文案。
  */
 data class PlayerDeps(
     val probe: LineProbe,

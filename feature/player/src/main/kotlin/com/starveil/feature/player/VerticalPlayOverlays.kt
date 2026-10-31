@@ -139,7 +139,7 @@ internal fun TrySeeOverlay(
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = trySeeNoticeOf(access ?: TrySeeAccess.FREE, unlock),
+                text = trySeeNoticeOf(access ?: TrySeeAccess.FREE),
                 style = MaterialTheme.typography.titleMedium,
                 textAlign = TextAlign.Center,
                 color = starveilExtraColors.onImage,
