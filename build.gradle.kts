@@ -236,8 +236,9 @@ val verifySecurityBaseline by tasks.registering {
     )
 
     val forbiddenPatterns = linkedMapOf(
-        // 变量名必须是这些词本身（排除 KEY_TOKEN 这类键名常量）；PHP 惯用单引号
-        "硬编码密钥" to Regex("""(?i)(?<![A-Za-z_])(password|apikey|secret|token)\s*=\s*['"][^'"]{4,}['"]"""),
+        // 不设变量名边界：PHP 的 $api_secret / $app_token 必须命中（加环视会把它们漏掉）；
+        // 「键名常量」如 KEY_TOKEN 的误报用行内 security-baseline-allow 豁免，别靠削正则
+        "硬编码密钥" to Regex("""(?i)(password|apikey|secret|token)\s*=\s*['"][^'"]{4,}['"]"""),
         "明文 URL" to Regex("""http://(?!127\.0\.0\.1|localhost|schemas\.android\.com|www\.w3\.org)[^\s"']+"""),
     )
 

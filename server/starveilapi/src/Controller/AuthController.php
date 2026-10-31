@@ -39,7 +39,11 @@ final class AuthController extends BaseController
             return;
         }
         $user = $result['user'] ?? [];
-        (new Session(null))->issue($user);
+        // 待审核（user_status != 1）的账号没有 user，只回提示串、不下发会话；
+        // 否则进 "{}" 会给 user_id=0 发一份 cookie。
+        if ($user !== []) {
+            (new Session(null))->issue($user);
+        }
         // 同上：注册的 data 也只回提示串
         Json::ok($result['msg'], $result['msg']);
     }
@@ -107,7 +111,7 @@ final class AuthController extends BaseController
             'user_name' => (string)($user['user_name'] ?? ''),
             'user_nick_name' => (string)($user['user_nick_name'] ?? ''),
             'user_portrait' => (string)($user['user_portrait'] ?? ''),
-            'group_id' => (int)($user['group_id'] ?? 1),
+            'group_id' => (int)($user['group_id'] ?? 2),
             'group_name' => (string)($user['group_name'] ?? ''),
             'user_end_time' => (int)($user['user_end_time'] ?? 0),
         ];

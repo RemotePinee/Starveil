@@ -12,6 +12,7 @@ namespace Starveil\Api\Controller;
 
 use Starveil\Api\Http\Json;
 use Starveil\Api\Installer;
+use Starveil\Api\Repo\Plog;
 use Starveil\Api\Repo\Users;
 use Starveil\Api\Repo\Vods;
 use Starveil\Api\Service\Payment;
@@ -471,7 +472,7 @@ final class UserController extends BaseController
             Json::ok(['score' => '0'], '今天已经签到过了');
             return;
         }
-        (new Users())->addPoints($uid, $points);
+        (new Users())->addPoints($uid, $points, Plog::TYPE_TASK, '每日签到');
         Json::ok(['score' => (string)$points], '签到成功，获得' . $points . '积分');
     }
 
@@ -512,14 +513,20 @@ final class UserController extends BaseController
         $key = trim($this->input->str('key'));
         // 客户端传的是短 key，先还原成 macCMS 的 task_action 再查任务行
         $action = self::TASK_KEYS[$key] ?? $key;
+        // 一条都没命中时 $task 必须先是 null，否则下面的 $task['...'] 会炸成 500
+        $task = null;
         foreach ($this->dailyTaskRows() as $row) {
             if ((string)$row['task_action'] === $action) {
                 $task = $row;
                 break;
             }
         }
+        if ($task === null) {
+            Json::fail(400, '任务不存在或已下线');
+            return;
+        }
         // 签到/分享的奖在 postSign、postSharescore 里已经发过，这里再来一次就是重复加积分
-        if ($task === null || in_array($action, self::AUTO_CLAIM_ACTIONS, true)) {
+        if (in_array($action, self::AUTO_CLAIM_ACTIONS, true)) {
             Json::fail(400, '该任务无需手动领取');
             return;
         }
@@ -542,7 +549,7 @@ final class UserController extends BaseController
         }
         $points = (int)$task['task_points'];
         if ($points > 0) {
-            (new Users())->addPoints($uid, $points);
+            (new Users())->addPoints($uid, $points, Plog::TYPE_TASK, '任务奖励：' . (string)($task['task_name'] ?? $action));
         }
         Json::ok(['score' => (string)$points], '领取成功');
     }
@@ -708,7 +715,7 @@ final class UserController extends BaseController
             Json::ok(['score' => '0'], '今天已经领过分享奖励');
             return;
         }
-        (new Users())->addPoints($uid, $points);
+        (new Users())->addPoints($uid, $points, Plog::TYPE_TASK, '分享奖励');
         Json::ok(['score' => (string)$points], '分享成功，获得' . $points . '积分');
     }
 

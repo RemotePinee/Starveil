@@ -7,6 +7,7 @@ declare(strict_types=1);
 
 namespace Starveil\Api\Admin\Page;
 
+use Starveil\Api\Repo\Plog;
 use Starveil\Api\Repo\Users;
 use think\Db;
 
@@ -73,7 +74,8 @@ final class UsersPage extends BasePage
         $points = (int)($post['points'] ?? 0);
         $gold = (int)($post['gold'] ?? 0);
         if ($points !== 0) {
-            $users->addPoints($userId, $points);
+            // 加分归「积分充值」、扣分归「积分消费」，后台按收入/支出筛选才分得开
+            $users->addPoints($userId, $points, $points > 0 ? Plog::TYPE_RECHARGE : Plog::TYPE_CONSUME, '后台调整');
         }
         if ($gold !== 0) {
             $users->addGold($userId, $gold);

@@ -14,6 +14,7 @@ namespace Starveil\Api\Service;
 
 use Starveil\Api\Installer;
 use Starveil\Api\Repo\Orders;
+use Starveil\Api\Repo\Plog;
 use Starveil\Api\Repo\Users;
 use Starveil\Api\Support\AdReward;
 use Starveil\Api\Support\CdnUrlSigner;
@@ -274,20 +275,68 @@ final class Playback
         return $this->vipCache[$userId] = $level >= $vipGroupId && $endTime > time();
     }
 
-    /** 观看时长累加（秒）。按 2 倍上报，这里只记真实值。 */
+    /** 每天最多计入的观看秒数。客户端自报时长，不封顶就是一个刷积分入口。 */
+    private const MAX_VIEW_SECONDS_PER_DAY = 86400;
+
+    /**
+     * 观看时长累加（秒）。按 2 倍上报，这里只记真实值。
+     *
+     * `view_seconds_award_step` 的语义是「看满多少秒奖励 1 积分」的步长（0 = 不发，默认）。
+     * 旧实现把配置值原样回给客户端当积分，却既不写 `user_points` 也不写 `mac_plog`：
+     * 客户端以为拿到积分，库里一分没有。现在按跨过的完整步数真实入账并记日志。
+     *
+     * @return int 本次实际发放的积分
+     */
     public function addViewSeconds(int $userId, int $seconds): int
     {
         if ($userId <= 0 || $seconds <= 0) {
             return 0;
         }
-        $seconds = min($seconds, 3600);
-        $this->users->ensureExt($userId);
+        $seconds = $this->countableViewSeconds($userId, $seconds);
+        if ($seconds <= 0) {
+            return 0;
+        }
+        $ext = $this->users->ensureExt($userId);
+        $before = (int)($ext['view_seconds'] ?? 0);
         Db::table(Installer::prefix() . 'cuican_user_ext')
             ->where('user_id', $userId)
             ->inc('view_seconds', $seconds)
             ->update(['updated_at' => time()]);
 
-        return (int)Setting::int('view_seconds_award_step', 0);
+        return $this->awardViewSeconds($userId, $before, $before + $seconds);
+    }
+
+    /** 截到今日剩余额度并回写当日计数；额度用完返回 0（当天不再累加也不再发奖）。 */
+    private function countableViewSeconds(int $userId, int $seconds): int
+    {
+        $key = 'view_seconds_' . $userId . '_' . date('Ymd');
+        $used = (int)Setting::get($key, '0');
+        $allow = min($seconds, 3600, self::MAX_VIEW_SECONDS_PER_DAY - $used);
+        if ($allow <= 0) {
+            return 0;
+        }
+        Setting::set($key, (string)($used + $allow));
+        return $allow;
+    }
+
+    /**
+     * 每跨过一个完整步长发 1 分。
+     *
+     * 用「前后各取一次整除再相减」，而不是「本次秒数 / 步长」：后者把同一段时长拆成
+     * 多次上报时会反复发奖（每次都不满一步，但每次都算一次）。
+     */
+    private function awardViewSeconds(int $userId, int $before, int $after): int
+    {
+        $step = Setting::int('view_seconds_award_step', 0);
+        if ($step <= 0) {
+            return 0;
+        }
+        $earned = intdiv($after, $step) - intdiv($before, $step);
+        if ($earned <= 0) {
+            return 0;
+        }
+        $this->users->addPoints($userId, $earned, Plog::TYPE_TASK, '观看时长奖励');
+        return $earned;
     }
 
     /** 播放记录。同一部片只保留一条，进度覆盖，便于"继续观看"。 */

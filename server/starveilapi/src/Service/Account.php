@@ -12,6 +12,7 @@ declare(strict_types=1);
 
 namespace Starveil\Api\Service;
 
+use Starveil\Api\Auth\Session;
 use Starveil\Api\Installer;
 use Starveil\Api\Repo\Users;
 use Starveil\Api\Support\Setting;
@@ -123,7 +124,13 @@ final class Account
 
         $inviterId = $inviteCode === '' ? 0 : (int)Db::name('user')->where('user_id', (int)$inviteCode)->value('user_id');
         $userId = $this->users->create($userName, $password, $inviterId);
-        return ['code' => 200, 'msg' => '注册成功', 'user' => $this->users->findById($userId) ?? []];
+        $user = $this->users->findById($userId) ?? [];
+        if ((int)($user['user_status'] ?? 0) !== 1) {
+            // 核心把 reg_status 原样写进 user_status：0 = 待审核。这种账号不给会话，
+            // 否则「禁用」只挡了登录接口，已经发出去的 cookie 照样能用满 30 天。
+            return ['code' => 200, 'msg' => '注册成功，请等待管理员审核', 'user' => []];
+        }
+        return ['code' => 200, 'msg' => '注册成功', 'user' => $user];
     }
 
     /**
@@ -226,6 +233,11 @@ final class Account
         $userName = $this->deviceUserName($deviceHash);
         $userId = $this->users->create($userName, bin2hex(random_bytes(16)), 0);
         $this->users->ensureExt($userId);
+        // 设备建号同样受核心 reg_status 管：状态不是 1 时账号建出来也用不了，
+        // 不如当场回业务错误，别下发一份注定被登录接口拒绝的会话。
+        if ((int)($this->users->findById($userId)['user_status'] ?? 0) !== 1) {
+            return ['code' => 403, 'msg' => '当前未开放注册，请稍后再试'];
+        }
 
         $patch = ['device_hash' => $deviceHash, 'device_name' => $deviceName, 'updated_at' => time()];
         if ($anchor !== '') {
@@ -338,6 +350,9 @@ final class Account
             return ['code' => 400, 'msg' => '验证码错误或已过期'];
         }
         $this->users->updatePasswordHash((int)$user['user_id'], password_hash($password, PASSWORD_DEFAULT));
+        // 改密后轮换 user_random：旧 cookie 里的 user_check 立刻作废。
+        // 核心自己改密不轮换，被盗 cookie 能用满会话有效期（30 天），这里补上。
+        (new Session($user))->revoke();
         return ['code' => 200, 'msg' => '密码已重置'];
     }
 

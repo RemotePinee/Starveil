@@ -99,7 +99,8 @@ final class Session
             self::COOKIE_USER_ID => (string)$uid,
             self::COOKIE_USER_NAME => (string)($user['user_name'] ?? ''),
             self::COOKIE_NICK_NAME => (string)($user['user_nick_name'] ?? ''),
-            self::COOKIE_GROUP_ID => (string)($user['group_id'] ?? 1),
+            // 默认组回落 2：1 是「游客」，新注册用户归 2（与 Repo\Users::create 同口径）
+            self::COOKIE_GROUP_ID => (string)($user['group_id'] ?? 2),
             self::COOKIE_GROUP_NAME => (string)($user['group_name'] ?? ''),
             self::COOKIE_CHECK => self::checkOf($user),
             self::COOKIE_PORTRAIT => (string)($user['user_portrait'] ?? ''),

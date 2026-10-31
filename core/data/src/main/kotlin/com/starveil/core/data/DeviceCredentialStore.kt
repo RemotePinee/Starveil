@@ -148,7 +148,8 @@ class DeviceCredentialStore(private val context: Context) {
 
     private companion object {
         const val PREFS_NAME = "starveil_device_credential"
-        const val KEY_TOKEN = "device_token"
+        // SharedPreferences 的键名，值也只是键名，不是密钥
+        const val KEY_TOKEN = "device_token" // security-baseline-allow: 键名非密钥
         const val KEY_FALLBACK_ID = "fallback_recovery_id"
         const val KEY_SUPPRESSED = "device_login_suppressed"
         const val ANDROID_KEYSTORE = "AndroidKeyStore"

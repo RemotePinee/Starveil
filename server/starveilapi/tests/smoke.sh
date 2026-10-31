@@ -113,7 +113,7 @@ check "登录" '"code":200' "$LOGIN"
 check "用户详情" '"user_id"' "$(curl -s -b "$JAR" "$BASE/v1.user/detail")"
 check "资料更新" '"code":200' "$(curl -s -b "$JAR" -X POST "$BASE/v1.user" -d 'user_nick_name=测试昵称')"
 curl -s -b "$JAR" -X POST "$BASE/v1.user" -d 'group_id=999&user_nick_name=测试昵称' >/dev/null
-check "越权字段被忽略（group_id 仍为 1）" '"group_id":1' "$(curl -s -b "$JAR" "$BASE/v1.user/detail")"
+check "越权字段被忽略（group_id 仍为 2）" '"group_id":2' "$(curl -s -b "$JAR" "$BASE/v1.user/detail")"
 
 echo "== 收藏 =="
 check "收藏" '"code":200' "$(curl -s -b "$JAR" -X POST "$BASE/v1.user/ulog" -d 'id=1')"
