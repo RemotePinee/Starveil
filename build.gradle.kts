@@ -195,9 +195,9 @@ val verifySecurityBaseline by tasks.registering {
         "android.permission.WAKE_LOCK",
     )
 
-    // 只扫 kt/java/xml 会漏掉 build.gradle.kts 里的签名口令与 gradle.properties 里的
-    // 明文流量开关，这两种恰恰是出过事的地方，所以扩到 kts/properties/toml。
-    val scannedExtensions = setOf("kt", "java", "xml", "kts", "properties", "toml")
+    // 扫描范围：kt/java/xml/kts/properties/toml 之外还要算上 php —— 插件服务端在
+    // server/ 下，明文 URL 与写死的密钥和客户端是同一类风险，之前完全在闸门之外。
+    val scannedExtensions = setOf("kt", "java", "xml", "kts", "properties", "toml", "php")
 
     // 放行范围只到"必须写下这些字符串才能检查/说明的地方"：
     // docs 要拿它们当反面例子，本文件要拿它们当规则，README / AGENTS 同理。
@@ -205,7 +205,9 @@ val verifySecurityBaseline by tasks.registering {
         relative == "build.gradle.kts" ||
             relative == "AGENTS.md" ||
             relative.startsWith("README") ||
-            relative.startsWith("docs/")
+            relative.startsWith("docs/") ||
+            // 测试脚本里的 localhost / 占位密钥是给本地跑的，不参与生产风险
+            relative.startsWith("server/starveilapi/tests/")
     }
 
     // 行级例外必须带上理由：`// security-baseline-allow: <为什么这样写是安全的>`
@@ -234,8 +236,9 @@ val verifySecurityBaseline by tasks.registering {
     )
 
     val forbiddenPatterns = linkedMapOf(
-        "硬编码密钥" to Regex("""(password|apiKey|secret|token)\s*=\s*"[^"]{4,}""""),
-        "明文 URL" to Regex("""http://(?!127\.0\.0\.1|localhost|schemas\.android\.com|www\.w3\.org)[^\s"]+"""),
+        // 变量名必须是这些词本身（排除 KEY_TOKEN 这类键名常量）；PHP 惯用单引号
+        "硬编码密钥" to Regex("""(?i)(?<![A-Za-z_])(password|apikey|secret|token)\s*=\s*['"][^'"]{4,}['"]"""),
+        "明文 URL" to Regex("""http://(?!127\.0\.0\.1|localhost|schemas\.android\.com|www\.w3\.org)[^\s"']+"""),
     )
 
     doLast {
@@ -252,6 +255,13 @@ val verifySecurityBaseline by tasks.registering {
                 val relative = file.relativeTo(rootDirFile.asFile).invariantSeparatorsPath
                 file.readLines().forEachIndexed { index, line ->
                     // 行级例外只对"禁片段/禁模式"生效，权限白名单照查
+                    // 注释里出现 URL / 变量名是说明而不是配置，跳过整行
+                    val trimmed = line.trimStart()
+                    if (trimmed.startsWith("//") || trimmed.startsWith("*") ||
+                        trimmed.startsWith("/*") || trimmed.startsWith("#")
+                    ) {
+                        return@forEachIndexed
+                    }
                     if (!line.contains(allowMarker)) {
                         forbiddenSnippets.forEach { (name, needles) ->
                             if (needles.any { line.contains(it) }) {
