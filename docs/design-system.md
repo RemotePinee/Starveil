@@ -1,7 +1,8 @@
 # 设计令牌与视觉规范
 
 硬规则：**颜色、间距、圆角、字号、动效时长只允许来自本文件的令牌**。
-颜色字面量出现在令牌目录之外会被 `verifyNoHardcodedColors` 拦截，构建失败。
+颜色字面量与裸 dp 出现在令牌目录之外，会被 detekt 的 `starveil` 规则集
+（`NoHardcodedColor` / `NoBareDp`，见 `tools/detekt-rules`）拦截，构建失败。
 
 令牌目录：`core/designsystem/src/main/kotlin/com/starveil/core/designsystem/token/`
 
@@ -65,6 +66,13 @@ Text(color = Color.parseColor("#999999"))
 | `Spacing.xl` | 24.dp | 区块间距 |
 | `Spacing.xxl` | 32.dp | 页面大分隔 |
 | `Spacing.rowHeight` | 52.dp | 列表行高（图标 + 文案 + 箭头） |
+| `Spacing.control` | 56.dp | 表单控件高度（输入框 / 主按钮） |
+| `Spacing.tabBarHeightIcons` / `tabBarHeightText` | 64 / 44.dp | 底栏两种模式的高度 |
+| `Spacing.splashAnimation` / `splashLogoWidth` / `splashLogoHeight` | 168 / 160 / 69.dp | 开屏动画与底部 lockup（与 `splash_window.xml` 对齐） |
+| `Spacing.searchBarExpandedWidth` | 208.dp | 剧场页搜索胶囊展开宽度 |
+| `Spacing.livePickerGroupWidth` | 96.dp | 全屏选台面板左栏宽度 |
+| `Spacing.danmuLineHeight` / `danmuLineGap` | 24 / 6.dp | 弹幕行高与行间距 |
+| `Spacing.none` / `hairline` | 0 / 1.dp | 零间距 / 1dp 描边 |
 
 页面级横向边距统一 `Spacing.lg`，列表项纵向 `Spacing.md`。
 
@@ -106,7 +114,8 @@ Text(color = Color.parseColor("#999999"))
 
 ## 6. 图标
 
-- 尺寸只用 `IconSize.sm = 16.dp`、`IconSize.item = 20.dp`（列表行）、`md = 24.dp`、`lg = 32.dp`。
+- 尺寸只用 `IconSize.sm = 16.dp`、`IconSize.item = 20.dp`（列表行）、`IconSize.tab = 22.dp`（底栏）、
+  `md = 24.dp`、`lg = 32.dp`、`xl = 36.dp`。
 - 图标资源放 `core/designsystem/src/main/res/drawable/`，命名 `ic_starveil_<name>`。
 - 禁止拉伸位图当图标。
 

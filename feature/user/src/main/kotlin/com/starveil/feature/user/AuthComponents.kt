@@ -49,7 +49,6 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ArrowLeft
@@ -65,11 +64,8 @@ import com.starveil.core.designsystem.token.Spacing
  * 登录 / 注册 / 找回密码三页共用的版式与控件。
  *
  * 三页必须长得一样，所以输入框、主按钮、验证码行、协议行都收在这里，页面只负责排列字段。
- * 颜色只取 `MaterialTheme.colorScheme` 与 [starveilExtraColors]；间距取令牌，
- * 控件高度 56dp 收成文件内常量——`Spacing` 里没有同值档位，等 designsystem
- * 补 `Spacing.control` 再迁过去。
+ * 颜色只取 `MaterialTheme.colorScheme` 与 [starveilExtraColors]；间距与控件高度都取令牌。
  */
-private val controlHeight = 56.dp
 
 /** 聚焦描边的不透明度：再淡看不出框是活的，再浓就盖过输入内容。 */
 private const val FOCUS_OUTLINE_ALPHA = 0.45f
@@ -185,10 +181,10 @@ internal fun AuthTextField(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(controlHeight)
+                .height(Spacing.control)
                 .clip(AppShape.extraLarge)
                 .background(
-                    Color.White.copy(
+                    starveilExtraColors.onImage.copy(
                         alpha = if (focused) FIELD_FOCUSED_ALPHA else FIELD_ALPHA,
                     ),
                 )
@@ -261,7 +257,7 @@ internal fun AuthPrimaryButton(
         contentPadding = PaddingValues(horizontal = Spacing.sm, vertical = Spacing.xs),
         modifier = modifier
             .fillMaxWidth()
-            .height(controlHeight),
+            .height(Spacing.control),
     ) {
         if (isSubmitting) {
             CircularProgressIndicator(
@@ -301,7 +297,7 @@ internal fun AuthHeroButton(
         contentPadding = PaddingValues(horizontal = Spacing.sm, vertical = Spacing.xs),
         modifier = modifier
             .fillMaxWidth()
-            .height(controlHeight),
+            .height(Spacing.control),
     ) {
         Text(
             text = if (busy) "登录中…" else text,
@@ -335,7 +331,7 @@ internal fun AuthSecondaryButton(
         contentPadding = PaddingValues(horizontal = Spacing.sm, vertical = Spacing.xs),
         modifier = modifier
             .fillMaxWidth()
-            .height(controlHeight),
+            .height(Spacing.control),
     ) {
         Text(text = text, style = MaterialTheme.typography.titleMedium)
     }

@@ -1,8 +1,9 @@
 # Starveil — 工程硬约束（AI 与人类共同遵守）
 
 > 本文件是**规则**，不是介绍。凡与本文件冲突的临时想法、示例代码、第三方教程，一律以本文件为准。
-> 可执行部分已落到 Gradle 任务（`verifyFileLength`、`verifyNoHardcodedColors`、`verifyModuleGraph`、
-> `verifySecurityBaseline`），违反会在 `./gradlew check` 阶段直接失败。
+> 可执行部分已落到 Gradle 任务（`verifyFileLength`、`verifyModuleGraph`、`verifySecurityBaseline`）
+> 与 detekt 自定义规则集（ruleset id `starveil`，实现见 `tools/detekt-rules`），
+> 违反会在 `./gradlew check` 阶段直接失败。
 > 文档没写但检查器能查的，以检查器为准。
 
 ## 0. 提交前唯一闸门
@@ -11,18 +12,18 @@
 ./gradlew check
 ```
 
-必须全绿。它聚合：编译、单元测试、Android Lint、detekt，以及四个规范闸门
-（文件行数、颜色令牌、依赖方向、安全基线），共五道。任何一项红，视为未完成。
+必须全绿。它聚合：编译、单元测试、Android Lint、detekt，以及三个 Gradle 规范闸门
+（文件行数、依赖方向、安全基线），共五道。任何一项红，视为未完成。
 
 五道闸门的实现：
 
 | 闸门 | 任务 | 配置 |
 |---|---|---|
 | 文件行数 450（目标 400） | `verifyFileLength` | 根 `build.gradle.kts` |
-| 颜色令牌 | `verifyNoHardcodedColors` | 根 `build.gradle.kts` |
+| 颜色令牌 / 裸 dp | detekt `starveil.NoHardcodedColor` / `starveil.NoBareDp` | `config/detekt/detekt.yml` + `tools/detekt-rules` |
 | 依赖方向 | `verifyModuleGraph` | 根 `build.gradle.kts` |
 | 安全基线 | `verifySecurityBaseline` | 根 `build.gradle.kts` |
-| 类/函数/复杂度 | detekt | `config/detekt/detekt.yml` |
+| 类/函数/复杂度 | detekt 内置规则集 | `config/detekt/detekt.yml` |
 
 ## 1. 模块与依赖方向（机器校验）
 
@@ -74,11 +75,21 @@
 
 ## 3. 颜色与视觉令牌（机器校验）
 
-- 颜色字面量 `Color(0x...)`、`#RRGGBB` **只允许**出现在
-  `core/designsystem/src/main/kotlin/com/starveil/core/designsystem/token/` 下。
-- 业务与页面代码只能用 `MaterialTheme.colorScheme.*` 或 `StarveilTheme.colors.*`。
+两条 detekt 自定义规则（`:tools:detekt-rules`，ruleset id `starveil`）负责这一节：
+
+- `NoHardcodedColor`：`Color(0x...)`、`Color(0x....toInt())`、`Color.Black` 这一组命名颜色、
+  `android.graphics.Color.parseColor(...)`、`"#RRGGBB"` 字符串字面量，全部命中；
+  **`Color.Transparent` 放行**——语义是"无背景"，不是颜色。
+- `NoBareDp`：数值字面量直接接 `.dp`（`24.dp`、`1.5.dp`）命中；`Spacing.xl` /
+  `IconSize.md` 这类令牌引用不算，`Spacing.xl + 4.dp` 里的 `4.dp` 照报。
+- 颜色字面量与裸 dp **只允许**出现在
+  `core/designsystem/src/main/kotlin/com/starveil/core/designsystem/token/` 下（两条规则按路径豁免该目录）；
+  测试源码同样豁免（断言里的期望值不是页面上的设计常量）。
+- 业务与页面代码只能用 `MaterialTheme.colorScheme.*` 或 `starveilExtraColors.*`；
+  压在海报 / 视频画面上的纯白用 `starveilExtraColors.onImage`。
 - 间距、圆角、字号、动效时长同样走令牌，见 `docs/design-system.md`。
-- 禁止 `android.graphics.Color.parseColor`。
+  确实没有对应令牌的一次性尺寸，在 `Spacing` 里加语义化常量，别在页面里硬写。
+- 禁止 `android.graphics.Color.parseColor`（后端下发色的场景用 token 包的 `parseArgbHexOrNull`）。
 - 禁止在 `res/values/colors.xml` 里新增颜色（Android 侧仅保留启动主题必需项）。
 
 ## 4. 网络与数据契约

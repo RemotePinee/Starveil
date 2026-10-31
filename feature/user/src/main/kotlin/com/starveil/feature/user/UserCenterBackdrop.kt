@@ -36,13 +36,15 @@ internal fun Modifier.fogBackdrop(): Modifier {
     val badge = starveilExtraColors.badge
     val base = MaterialTheme.colorScheme.surface
     val grain = rememberGrain()
+    // 高光压在彩雾上：固定白色，不跟主题（浅色主题会被雾吃掉）
+    val sheen = starveilExtraColors.onImage
     return drawBehind {
         drawRect(color = base)
         glow(lerp(accent, badge, MIX_FAR), GLOW_FAR)
         glow(accent, GLOW_MAIN)
         glow(badge, GLOW_ALT)
         glow(lerp(accent, badge, MIX_LOW), GLOW_LOW)
-        glow(Color.White, GLOW_SHEEN)
+        glow(sheen, GLOW_SHEEN)
         // 下沿压一层底：数值和标签压在颗粒上也要看得清
         drawRect(
             brush = Brush.verticalGradient(

@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
@@ -23,6 +22,7 @@ import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.starveil.app.AppContainer
+import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.ShortPlay
 import com.starveil.feature.player.FIRST_EPISODE_NUMBER
 import com.starveil.feature.shortplay.SHORT_PLAY_ROUTE
@@ -147,7 +147,7 @@ private fun <T> rememberStableWhileCurrent(value: T, isCurrent: Boolean): T {
  * 越界的一段正好落在 dock 底下被它盖住，所以视觉与"整页铺到屏幕底"一致；
  * 关键是测量高度不再随路由变化，贴底那组（标题 / 右栏 / 观看完整短剧条）不会先往上跳。
  */
-private fun Modifier.bleedBottom(inset: Dp): Modifier = if (inset <= 0.dp) {
+private fun Modifier.bleedBottom(inset: Dp): Modifier = if (inset <= Spacing.none) {
     this
 } else {
     layout { measurable, constraints ->

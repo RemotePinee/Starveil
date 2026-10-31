@@ -87,7 +87,7 @@ internal fun PlaybackVeil(label: String, modifier: Modifier = Modifier) {
         ),
         label = "segments",
     )
-    val glow = Color.White.copy(alpha = GLOW_ALPHA)
+    val glow = starveilExtraColors.onImage.copy(alpha = GLOW_ALPHA)
     Box(
         modifier = modifier
             .fillMaxSize()

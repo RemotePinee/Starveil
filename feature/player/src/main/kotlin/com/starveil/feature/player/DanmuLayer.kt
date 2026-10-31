@@ -18,7 +18,6 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Constraints
-import androidx.compose.ui.unit.dp
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.designsystem.token.parseArgbHexOrNull
@@ -37,9 +36,9 @@ private const val TRAVEL_SECONDS = 1f / SPEED_SCREEN_PER_SECOND
  * 行高与行间距：优酷 `lineHeight = 24 × density`、`lineSpace = lineHeight + 6 × density`，
  * y 直接取 `行号 × 行间距`，第 0 行就贴画面顶部。
  */
-private val LINE_HEIGHT_DP = 24.dp
+private val LINE_HEIGHT_DP = Spacing.danmuLineHeight
 
-private val LINE_SPACE_DP = 6.dp
+private val LINE_SPACE_DP = Spacing.danmuLineGap
 
 /**
  * 同轨最小间隙（像素）：优酷用固定 40px 判断
@@ -74,7 +73,7 @@ internal const val DANMU_DEFAULT_LANES = 3
 internal const val DANMU_DEFAULT_AREA = 0.45f
 
 /** 顶部起点：优酷第 0 行 y=0，弹幕直接贴画面顶部。 */
-private val TOP_INSET_DP = 0.dp
+private val TOP_INSET_DP = Spacing.none
 
 /** 绘制几何：行数、字号、区域比例、横向速度、顶部边距。 */
 private class DanmuMotionGeometry(

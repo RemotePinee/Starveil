@@ -46,7 +46,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ArrowLeft
@@ -78,7 +77,7 @@ internal fun LivePlayerTopBar(
             Icon(
                 imageVector = PhosphorIcons.Regular.ArrowLeft,
                 contentDescription = "退出全屏",
-                tint = Color.White,
+                tint = starveilExtraColors.onImage,
                 modifier = Modifier.mirrorInRtl(),
             )
         }
@@ -86,7 +85,7 @@ internal fun LivePlayerTopBar(
             Text(
                 text = name,
                 style = MaterialTheme.typography.titleMedium,
-                color = Color.White,
+                color = starveilExtraColors.onImage,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -101,7 +100,7 @@ internal fun LivePlayerTopBar(
             Icon(
                 imageVector = PhosphorIcons.Regular.ListBullets,
                 contentDescription = "选台",
-                tint = Color.White,
+                tint = starveilExtraColors.onImage,
                 modifier = Modifier.mirrorInRtl(),
             )
         }
@@ -124,7 +123,10 @@ internal fun LivePlayerStatus(loading: Boolean, error: String?) {
     }
     if (loading) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(Spacing.xxl))
+            CircularProgressIndicator(
+                color = starveilExtraColors.onImage,
+                modifier = Modifier.size(Spacing.xxl),
+            )
         }
     }
 }
@@ -141,21 +143,21 @@ internal fun BoxScope.LivePlayerHint(visible: Boolean) {
         Row(
             modifier = Modifier
                 .clip(AppShape.full)
-                .background(Color.Black.copy(alpha = 0.55f))
+                .background(starveilExtraColors.scrimStrong.copy(alpha = 0.55f))
                 .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
                 imageVector = PhosphorIcons.Regular.ArrowsLeftRight,
                 contentDescription = null,
-                tint = Color.White,
+                tint = starveilExtraColors.onImage,
                 modifier = Modifier.size(IconSize.item),
             )
             Spacer(Modifier.width(Spacing.xs))
             Text(
                 text = "左右滑动切换频道",
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.White,
+                color = starveilExtraColors.onImage,
             )
         }
     }
@@ -195,7 +197,7 @@ internal fun BoxScope.LiveChannelPicker(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black.copy(alpha = 0.35f))
+            .background(starveilExtraColors.scrimStrong.copy(alpha = 0.35f))
             .clickable(onClick = onDismiss),
     )
     // 从右侧滑出的半透明面板：左分类、右频道，叠在画面上而不是占掉下半屏
@@ -209,7 +211,7 @@ internal fun BoxScope.LiveChannelPicker(
             modifier = Modifier
                 .fillMaxHeight()
                 .fillMaxWidth(PICKER_WIDTH_FRACTION)
-                .background(Color.Black.copy(alpha = 0.82f))
+                .background(starveilExtraColors.scrimStrong.copy(alpha = 0.82f))
                 .navigationBarsPadding()
                 .statusBarsPadding()
                 .clickable(enabled = false) { /* 吃掉内部点击，避免穿透到遮罩 */ },
@@ -242,9 +244,9 @@ private fun LivePickerGroups(
 ) {
     LazyColumn(
         modifier = Modifier
-            .width(PICKER_GROUP_WIDTH)
+            .width(Spacing.livePickerGroupWidth)
             .fillMaxHeight()
-            .background(Color.White.copy(alpha = 0.06f))
+            .background(starveilExtraColors.onImage.copy(alpha = 0.06f))
             .padding(vertical = Spacing.sm),
     ) {
         items(items = groups, key = { it.name }) { group ->
@@ -323,7 +325,7 @@ private fun androidx.compose.foundation.layout.RowScope.LivePickerChannels(
                     onTextLayout = { result -> nameOverflowed = result.hasVisualOverflow },
                     modifier = Modifier
                         .weight(1f)
-                        .then(if (nameOverflowed) Modifier.fadeEnd() else Modifier),
+                        .then(if (nameOverflowed) Modifier.fadeEnd(starveilExtraColors.fadeMask) else Modifier),
                 )
                 if (entry.index == current) {
                     Text(
@@ -339,23 +341,20 @@ private fun androidx.compose.foundation.layout.RowScope.LivePickerChannels(
 
 /** 侧边面板宽度占屏幕的比例：收窄到三分之一出头，画面留得多，频道名靠渐隐兜住。 */
 private const val PICKER_WIDTH_FRACTION = 0.36f
-
-/** 左侧分类栏宽度：分组名本来就短，再窄会挤掉每组数量。 */
-private val PICKER_GROUP_WIDTH = 96.dp
-
 /** 渐隐从这一比例开始，前面保持完全不透明。 */
+
 private const val FADE_SOLID_UNTIL = 0.72f
 
 /**
  * 文字右端渐隐：只在真溢出时用（调用方按 `hasVisualOverflow` 判断），
  * 短名字不会被啃掉结尾，长名字也不会切出硬边。
  */
-private fun Modifier.fadeEnd(): Modifier = drawWithContent {
+private fun Modifier.fadeEnd(mask: Color): Modifier = drawWithContent {
     drawContent()
     drawRect(
         brush = Brush.horizontalGradient(
-            0f to Color.Black,
-            FADE_SOLID_UNTIL to Color.Black,
+            0f to mask,
+            FADE_SOLID_UNTIL to mask,
             1f to Color.Transparent,
             endX = size.width,
         ),

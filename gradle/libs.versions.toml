@@ -101,6 +101,10 @@ junit = { module = "junit:junit", version.ref = "junit" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
 turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
 
+# detekt 自定义规则集的编译期 API（:tools:detekt-rules 用 compileOnly 引用，
+# 版本必须与上面的 detekt 插件一致，故共用同一个 version.ref）。
+detekt-api = { module = "io.gitlab.arturbosch.detekt:detekt-api", version.ref = "detekt" }
+
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }

@@ -100,3 +100,24 @@ exceptions:
 
 potential-bugs:
   active: true
+
+# ---------------------------------------------------------------------------
+# starveil：项目自定义规则集（实现见 tools/detekt-rules）
+#
+# 替代原来根 build.gradle.kts 里 `verifyNoHardcodedColors` 的行级正则：
+# 判 PSI 不看文本，注释不会误报，`Color.Black` 与 `Color(0x...toInt())` 不会漏检。
+# 两条规则都按路径豁免 token 包与测试源码。
+# ---------------------------------------------------------------------------
+starveil:
+  active: true
+
+  # 颜色字面量：Color(0x..) / Color.Black / parseColor / "#RRGGBB"
+  # Color.Transparent 放行（语义是"无背景"，不是颜色）
+  NoHardcodedColor:
+    active: true
+    severity: error
+
+  # 裸尺寸：24.dp 这类字面量，换 Spacing / IconSize 令牌
+  NoBareDp:
+    active: true
+    severity: error

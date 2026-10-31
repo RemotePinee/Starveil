@@ -13,17 +13,16 @@ plugins {
 // ---------------------------------------------------------------------------
 // 工程规范强制检查
 //
-// 1) 单文件行数上限
-// 2) 颜色字面量只能出现在设计令牌目录
+// 单文件行数上限。这条是"规范写在文档里但没人遵守"的典型场景，因此落到 Gradle
+// 任务里，由 `check` 任务统一触发，CI 与本地行为一致。
 //
-// 这两条是"规范写在文档里但没人遵守"的典型场景，因此落到 Gradle 任务里，
-// 由 `check` 任务统一触发，CI 与本地行为一致。
+// 颜色字面量 / 裸 dp 已从本文件的行级正则搬进 detekt 自定义规则集
+// （tools/detekt-rules，见 config/detekt/detekt.yml 的 starveil 段）。
 // ---------------------------------------------------------------------------
 
 // 目标 400 行，允许到 450：超几行就强行拆开，往往是为了省十行把内聚的逻辑切成
 // 几个单行函数、或者把参数搬运到别处，读起来比原来更绕。超过 450 才算真失控。
 val maxSourceFileLines = 450
-val colorTokenDir = "core/designsystem/src/main/kotlin/com/starveil/core/designsystem/token/"
 
 val verifyFileLength by tasks.registering {
     group = "verification"
@@ -60,52 +59,6 @@ val verifyFileLength by tasks.registering {
     }
 }
 
-val verifyNoHardcodedColors by tasks.registering {
-    group = "verification"
-    description = "Fails when a color literal appears outside the design-token package."
-
-    val rootDirFile = layout.projectDirectory
-    val allowedPrefix = colorTokenDir
-    // Color(0xAARRGGBB) / Color(0xFF...) / Color(0x80...)
-    val colorLiteral = Regex("""Color\(\s*0x[0-9a-fA-F]{8}\s*\)""")
-    val hexComment = Regex("""#[0-9a-fA-F]{6,8}\b""")
-    // res 里唯一放行的是"系统绘制阶段必需"的静态色：splash_ 与 ic_launcher_ 前缀。
-    // 整个 app/src/main/res/ 被豁免时，往 colors.xml 里加任何裸色值都不报。
-    val splashColorFiles = setOf(
-        "app/src/main/res/values/colors.xml",
-        "app/src/main/res/values-night/colors.xml",
-    )
-    val systemColorLine =
-        Regex("""<color\s+name="(?:splash|ic_launcher)_[a-z0-9_]*"\s*>\s*#[0-9a-fA-F]{6,8}\s*</color>""")
-
-    doLast {
-        val offenders = mutableListOf<String>()
-        rootDirFile.asFile.walkTopDown()
-            .onEnter { dir -> dir.name !in setOf("build", ".gradle", ".idea") }
-            .filter { it.isFile && (it.extension == "kt" || it.extension == "xml") }
-            .forEach { file ->
-                val relative = file.relativeTo(rootDirFile.asFile).invariantSeparatorsPath
-                if (relative.startsWith(allowedPrefix)) return@forEach
-                val splashFile = relative in splashColorFiles
-                file.readLines().forEachIndexed { index, line ->
-                    // 只跳过这两类定义行：同一文件里的注释、别的 <color> 照样要报
-                    if (splashFile && systemColorLine.containsMatchIn(line)) return@forEachIndexed
-                    if (colorLiteral.containsMatchIn(line) || hexComment.containsMatchIn(line)) {
-                        offenders += "$relative:${index + 1}  ${line.trim().take(80)}"
-                    }
-                }
-            }
-        if (offenders.isNotEmpty()) {
-            throw GradleException(
-                "颜色字面量只能定义在 $allowedPrefix 下；res 里只放行 " +
-                    splashColorFiles.sorted().joinToString(" 与 ") +
-                    " 中 name=\"splash_\" / \"ic_launcher_\" 开头的色值定义行，" +
-                    "其余请改用 DesignTokens 的语义色或 @color 引用：\n" +
-                    offenders.joinToString("\n") { "  - $it" },
-            )
-        }
-    }
-}
 // ---------------------------------------------------------------------------
 // 模块依赖方向检查
 //
@@ -136,6 +89,9 @@ val verifyModuleGraph by tasks.registering {
         // CENC 分片解密。不碰 Android SDK，也不碰网络与 UI，只被 :feature:player 使用，
         // 因此只允许依赖 :core:common（AppResult / 调度器这些纯 Kotlin 设施）。
         ":core:hongguo" to setOf(":core:common"),
+        // 构建期工具模块：只被 detektPlugins 配置消费，不进 app 依赖图，允许空依赖
+        // （规则实现只引 detekt-api 与 Kotlin 标准库，这里不能有 project(...)）。
+        ":tools:detekt-rules" to emptySet(),
     )
     // feature 只允许这四个 core，与 AGENTS.md 第 1 节矩阵原文一致。
     // 特意不含 :core:network：页面层拿不到 Retrofit 接口与 DTO，换实现不用改页面。
@@ -329,10 +285,10 @@ val verifySecurityBaseline by tasks.registering {
 }
 
 subprojects {
-    // 所有模块的 check 都会先跑根项目的规范闸门：文件行数、颜色令牌、依赖方向、安全基线。
+    // 所有模块的 check 都会先跑根项目的规范闸门：文件行数、依赖方向、安全基线。
+    // 颜色令牌与裸 dp 已由 detekt 的 starveil 规则集接管，不在这里。
     tasks.matching { it.name == "check" }.configureEach {
         dependsOn(rootProject.tasks.named("verifyFileLength"))
-        dependsOn(rootProject.tasks.named("verifyNoHardcodedColors"))
         dependsOn(rootProject.tasks.named("verifyModuleGraph"))
         dependsOn(rootProject.tasks.named("verifySecurityBaseline"))
     }
@@ -343,11 +299,18 @@ subprojects {
     // AGENTS.md 第 2 节的规模阈值只有落进 check 才算约束。配置文件在
     // config/detekt/detekt.yml，只覆盖阈值，其余沿用 detekt 默认集。
     // -----------------------------------------------------------------------
-    // 纯 Kotlin 模块（:core:common / :core:model）用 kotlin.jvm，Android 模块用
-    // kotlin.android。两边都要挂 detekt，否则纯 Kotlin 模块等于没约束。
+    // 纯 Kotlin 模块（:core:common / :core:model / :tools:detekt-rules）用 kotlin.jvm，
+    // Android 模块用 kotlin.android。两边都要挂 detekt，否则纯 Kotlin 模块等于没约束。
+    //
+    // 同时给每个模块挂上自定义规则集（颜色字面量 / 裸 dp）。走 detektPlugins 配置，
+    // 由 detekt 自己的 classloader 加载，不进编译期与运行期 classpath。
     listOf("org.jetbrains.kotlin.android", "org.jetbrains.kotlin.jvm").forEach { pluginId ->
         pluginManager.withPlugin(pluginId) {
             pluginManager.apply("io.gitlab.arturbosch.detekt")
+
+            dependencies {
+                add("detektPlugins", rootProject.project(":tools:detekt-rules"))
+            }
 
             tasks.withType<Detekt>().configureEach {
                 buildUponDefaultConfig = true

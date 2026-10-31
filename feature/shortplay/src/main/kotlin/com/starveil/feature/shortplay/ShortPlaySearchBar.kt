@@ -42,7 +42,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.request.transformations
@@ -65,10 +64,11 @@ internal val SearchBarHeight = Spacing.rowHeight - Spacing.sm
 /**
  * 展开后的宽度。
  *
- * 刻意不铺满：它是从图标里长出来的一段，不是页面的第二根标题栏。208dp 在 411dp
- * 的机身上占一半，右侧图标位置固定，视觉上整个胶囊是从图标左缘延伸出去的。
+ * 刻意不铺满：它是从图标里长出来的一段，不是页面的第二根标题栏。411dp 的机身上占一半，
+ * 右侧图标位置固定，视觉上整个胶囊是从图标左缘延伸出去的。值在
+ * [Spacing.searchBarExpandedWidth]，这里留模块内别名是因为页面与浮层三处都要引它。
  */
-internal val SearchBarExpandedWidth = 208.dp
+internal val SearchBarExpandedWidth = Spacing.searchBarExpandedWidth
 
 /**
  * 剧场页的内联搜索。

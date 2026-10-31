@@ -39,3 +39,7 @@ include(":feature:live")
 include(":feature:rank")
 include(":feature:pay")
 include(":feature:detail")
+
+// 构建期工具模块，不是 app 的依赖：只被 detektPlugins 配置消费，产物进 detekt 的
+// 独立 classloader。放 tools/ 下是为了和 :core 的业务模块区分开。
+include(":tools:detekt-rules")

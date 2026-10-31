@@ -79,6 +79,8 @@ fun CategoryChips(
         animationSpec = tween(Motion.MediumMs),
         label = "chip-fade-end",
     )
+    // DstOut 只吃 alpha 通道，颜色本身不参与画面；取令牌里的遮罩色，别再写字面量
+    val fadeMask = starveilExtraColors.fadeMask
     Box(
         modifier = modifier
             .height(CHIP_HEIGHT)
@@ -88,7 +90,7 @@ fun CategoryChips(
                 if (fadeStart > 0f) {
                     drawRect(
                         brush = Brush.horizontalGradient(
-                            listOf(Color.Black.copy(alpha = fadeStart), Color.Transparent),
+                            listOf(fadeMask.copy(alpha = fadeStart), Color.Transparent),
                             startX = 0f,
                             endX = edgePx,
                         ),
@@ -99,7 +101,7 @@ fun CategoryChips(
                 if (fadeEnd > 0f) {
                     drawRect(
                         brush = Brush.horizontalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = fadeEnd)),
+                            listOf(Color.Transparent, fadeMask.copy(alpha = fadeEnd)),
                             startX = size.width - edgePx,
                             endX = size.width,
                         ),

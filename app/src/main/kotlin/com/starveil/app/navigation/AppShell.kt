@@ -45,9 +45,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.WindowCompat
 import androidx.navigation.NavHostController
@@ -55,6 +53,7 @@ import com.starveil.core.designsystem.LocalIsDarkTheme
 import com.starveil.core.designsystem.interaction.HapticKind
 import com.starveil.core.designsystem.interaction.rememberHaptics
 import com.starveil.core.designsystem.starveilExtraColors
+import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Motion
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.feature.player.VERTICAL_PLAY_ROUTE
@@ -127,7 +126,7 @@ internal fun AppScaffold(
 private fun playerForegroundPadding(state: AppShellState): PaddingValues = when {
     !state.isShortPlayPage() -> PaddingValues()
     state.currentRoute == SHORT_PLAY_ROUTE && state.isTabPage() -> PaddingValues(
-        bottom = if (state.showTabIcons) TabBarHeightIcon else TabBarHeightText,
+        bottom = if (state.showTabIcons) Spacing.tabBarHeightIcons else Spacing.tabBarHeightText,
     )
     else -> PaddingValues()
 }
@@ -205,7 +204,7 @@ private fun InlineShortPlayBottomBar(
             showIcons = state.showTabIcons,
             // 小数像素边界会露出 1px 底色；重叠量在两端归零，避免 dock 收尾时跳 1dp。
             modifier = Modifier.graphicsLayer {
-                translationY = dockTranslationY(size.height, expansion, 1.dp.toPx())
+                translationY = dockTranslationY(size.height, expansion, Spacing.hairline.toPx())
             },
         )
     }
@@ -270,7 +269,7 @@ private fun BottomBar(
             .fillMaxWidth()
             .background(starveilExtraColors.surfaceElevated)
             .windowInsetsPadding(WindowInsets.navigationBars)
-            .height(if (showIcons) TabBarHeightIcon else TabBarHeightText),
+            .height(if (showIcons) Spacing.tabBarHeightIcons else Spacing.tabBarHeightText),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         tabs.forEach { tab ->
@@ -327,7 +326,7 @@ private fun RowScope.TabItem(visual: TabVisual, onClick: () -> Unit) {
                     imageVector = visual.icon,
                     contentDescription = null,
                     tint = color,
-                    modifier = Modifier.size(TabIconSize),
+                    modifier = Modifier.size(IconSize.tab),
                 )
                 Spacer(Modifier.height(Spacing.xxs))
                 Text(text = visual.label, style = visual.style, color = color, maxLines = 1)
@@ -358,11 +357,6 @@ private fun tabLabelStyle(count: Int, showIcons: Boolean): TextStyle {
         else -> type.bodyMedium.copy(fontWeight = FontWeight.Medium)
     }
 }
-private val TabIconSize: Dp = 22.dp
-
-/** 图标模式 64dp（图标 22 + 行高 21 + 间距）；纯文字没有图标占位，收到 44dp。 */
-private val TabBarHeightIcon: Dp = 64.dp
-private val TabBarHeightText: Dp = 44.dp
 
 /**
  * 吞掉落在本节点上的所有指针事件。

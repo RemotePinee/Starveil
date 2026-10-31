@@ -42,7 +42,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.Stable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -129,7 +128,7 @@ internal fun LiveFullscreenPlayer(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(Color.Black),
+                .background(starveilExtraColors.scrimStrong),
         ) {
             // 按视频原始比例居中：多余区域留黑边，不做任何拉伸。
             // matchHeightConstraintsFirst=true 让它在横屏下先吃满高度，再按比例算宽度。
@@ -372,7 +371,7 @@ private fun SwitchCurtain(visible: Boolean) {
         modifier = Modifier
             .fillMaxSize()
             .alpha(alpha)
-            .background(Color.Black),
+            .background(starveilExtraColors.scrimStrong),
     )
 }
 

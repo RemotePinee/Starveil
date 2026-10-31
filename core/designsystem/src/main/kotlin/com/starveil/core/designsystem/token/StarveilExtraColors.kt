@@ -59,6 +59,13 @@ data class StarveilExtraColors(
     val onImageSubtle: Color = Palette.White90,
     /** 视频上圆形播放控件的半透明底色；不随页面明暗改变。 */
     val playerControlBackground: Color = Palette.ScrimMid,
+    /**
+     * 横向渐隐的遮罩色。
+     *
+     * DstOut / DstIn 混合只吃 alpha 通道，颜色本身不参与画面，因此固定取最深的中性色、
+     * 不跟主题：跟成浅色会在内容边缘留一圈白边。
+     */
+    val fadeMask: Color = Palette.Void,
 )
 
 internal fun defaultExtraColors(accent: Color, badge: Color): StarveilExtraColors = StarveilExtraColors(

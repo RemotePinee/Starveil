@@ -29,7 +29,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
-import androidx.compose.ui.unit.dp
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
@@ -53,15 +52,6 @@ private const val BRAND_FADE_MS = 320
 /** 等首页/开屏图就绪的轮询间隔。 */
 private const val POLL_MS = 40L
 
-/** 中间动画的显示尺寸。素材是 468×468，等比缩到 168dp。 */
-private val ANIMATION_SIZE = 168.dp
-
-/**
- * 底部 lockup 的尺寸，必须与 `splash_window.xml` 里 `<item>` 的
- * `android:width` / `android:height` 逐字相同。
- */
-private val LOGO_WIDTH = 160.dp
-private val LOGO_HEIGHT = 69.dp
 
 /**
  * 第二屏：系统启动屏退场后的品牌等待层。
@@ -94,7 +84,7 @@ internal fun SplashBrandLayer() {
             iterations = LottieConstants.IterateForever,
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(ANIMATION_SIZE),
+                .size(Spacing.splashAnimation),
         )
         Image(
             bitmap = lockup,
@@ -107,7 +97,7 @@ internal fun SplashBrandLayer() {
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .padding(bottom = Spacing.xxl)
-                .size(width = LOGO_WIDTH, height = LOGO_HEIGHT),
+                .size(width = Spacing.splashLogoWidth, height = Spacing.splashLogoHeight),
         )
     }
 }
