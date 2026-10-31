@@ -4,6 +4,7 @@ import com.starveil.core.common.AppResult
 import com.starveil.core.hongguo.HongguoConfig
 import com.starveil.core.model.ParseRules
 import com.starveil.core.model.PlayerInfo
+import com.starveil.core.model.TrySeeGate
 import com.starveil.core.model.Vod
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.update
@@ -75,27 +76,57 @@ internal fun VerticalPlayViewModel.playEpisode(
     positionMs: Long = 0L,
 ) {
     val episode = base.episodes.getOrNull(index) ?: return
+    // 付费墙打开时服务端把这一集的地址置空：那不是"没有可播放地址"的故障，是"需要解锁"。
+    // 没有可看窗口就连引擎都不进，直接给解锁覆盖层。
+    val locked = trySee.prePlayBlock(episode.number)
     val url = preloader.take(index) ?: ParseRules.normalizePlayUrl(episode.url)
+    val playable = url != null && locked == null
     reporter.reset()
-    reporter.onPlaybackStarted()
+    if (playable) reporter.onPlaybackStarted()
     danmuController.reset()
     stateFlow.value = base.copy(
         currentIndex = index,
-        playingUrl = url,
+        playingUrl = url.takeIf { playable },
         headers = verticalHeadersOf(url, playerInfo),
         audioUrl = null,
-        positionMs = if (url != null) positionMs else 0L,
+        positionMs = if (playable) positionMs else 0L,
         durationMs = 0L,
-        blockedAccess = null,
-        isPlaying = url != null,
-        isBuffering = url != null,
-        errorMessage = if (url == null) MSG_NO_PLAY_URL else null,
+        blockedAccess = locked,
+        isPlaying = playable,
+        isBuffering = playable,
+        errorMessage = if (url == null && locked == null) MSG_NO_PLAY_URL else null,
     )
     preloader.prefetchNext(base.episodes, index)
     // 短剧是下滑连着看的，红果自己也有一发就是预取好几集（preload/v1）。
     // 材料便宜（几百字节）、头部贵（800KB），两者分开备：
     // 材料往前备 5 集，头部只备 2 集，避免预取把播放带宽吃光。
     prefetchAhead(base.episodes, index, playerInfo)
+}
+
+/**
+ * app 同步权限后的落地。
+ *
+ * 付费墙打开时服务端把 `urls[].url` 全置空，[playEpisode] 只能落 [MSG_NO_PLAY_URL]；
+ * 权限一到就要把"没有可播地址"的故障文案换成解锁覆盖层，否则用户看到的是故障而不是付费墙。
+ *
+ * 起播前就被拦下的集 `playingUrl` 是空的（地址根本没装过），
+ * `VerticalTrySeeContext.update` 的"有地址才续播"不成立——解锁后要把这一集重新装上，
+ * 否则解锁完成还是黑屏。
+ */
+internal fun VerticalPlayViewModel.applyGateUpdate(episodeNumber: Int, gate: TrySeeGate, token: Any) {
+    if (!ownsPlayback(token)) return
+    val before = stateFlow.value
+    val updated = trySee.update(before, episodeNumber, gate)
+    stateFlow.value = if (updated.isBlocked && updated.errorMessage != null) {
+        updated.copy(errorMessage = null, isBuffering = false)
+    } else {
+        updated
+    }
+    // 解除拦截的那一帧要把地址重新装上，否则解锁完是黑屏（起播时被拦，从没装过地址）
+    val unlocked = before.isBlocked && !updated.isBlocked
+    if (unlocked && updated.playingUrl == null) {
+        playEpisode(updated, updated.currentIndex, before.positionMs)
+    }
 }
 
 /** 从预览返回：把交接出去的那份状态原样装回来。 */

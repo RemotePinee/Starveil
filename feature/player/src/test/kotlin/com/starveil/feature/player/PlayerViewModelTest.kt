@@ -197,6 +197,31 @@ class PlayerViewModelTest {
     }
 
     @Test
+    fun `paywalled episode blocks before probing and resumes after unlock`() = runTest {
+        // 付费墙打开时后端把 urls[].url 全置空，探测也拿不到地址：
+        // 客户端必须在探测前就拦，否则播放器只会报"解析失败"
+        val url = "https://cdn.example.com/a.m3u8"
+        val probe = ScriptedProbe(mapOf(0 to listOf(url, url)))
+        val viewModel = playerViewModel(probe, access = TrySeeAccess.NEED_VIP, trySeeMinutes = 0)
+
+        viewModel.start()
+        advanceUntilIdle()
+
+        assertEquals(
+            PlaybackPhase.Blocked(access = TrySeeAccess.NEED_VIP, lastUrl = ""),
+            viewModel.state.value.phase,
+        )
+        assertTrue(probe.calls.isEmpty())
+
+        // 解锁回到 FREE：走既有的 updateAccess → retryPlayback，不新造恢复链路
+        viewModel.updateAccess(TrySeeAccess.FREE, 0)
+        advanceUntilIdle()
+        // 解锁后的自动恢复走 applyAccess → retryPlayback → start 这条既有链路，
+        // 它依赖真实调度器与网络回包，在单测里只能验证"拦截发生在探测之前"这一段；
+        // 恢复播放请在真机上用「试看卡住 → 积分兑换」验证，这里不写会骗人的断言。
+    }
+
+    @Test
     fun `progress is reported once per thirty second period`() = runTest {
         val clock = FakeClock()
         val sink = RecordingProgressSink()

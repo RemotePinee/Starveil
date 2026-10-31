@@ -94,6 +94,32 @@ object PlaybackMachine {
     fun beginDirect(session: PlaybackSession, url: String): PlaybackSession =
         onParsed(session, 0, PlayStream(url = url))
 
+    /**
+     * 起播前的付费墙判定。
+     *
+     * 服务端付费墙打开时会把这一集所有 `urls[].url` 置空、只留 `play_locked`。
+     * 空地址送进播放器只会得到"解析失败"，把"需要解锁"说成了源站故障——
+     * 所以没有可看窗口时连探测都不做，直接落 [PlaybackPhase.Blocked]。
+     *
+     * 口径与播放中的 [gate] 一致，只是位置按 0 算：[TrySeeRules.isExceeded] 为真即拦
+     * （服务端 `trysee` 已废弃，`trySeeMinutes <= 0` 恒成立，需解锁的集一开始就拦）。
+     * 解锁后 `PlayerUiHost.applyAccess` → `retryPlayback` 会重走起播，那时 access 已是 FREE。
+     *
+     * [PlaybackPhase.Blocked.lastUrl] 记空串：这一集没拿到过地址，没有可续播的东西。
+     */
+    fun blockBeforePlay(
+        session: PlaybackSession,
+        access: TrySeeAccess,
+        trySeeMinutes: Int,
+    ): PlaybackSession {
+        val blocked = access != TrySeeAccess.FREE && TrySeeRules.isExceeded(0L, trySeeMinutes)
+        if (!blocked) return session
+        return session.copy(
+            phase = PlaybackPhase.Blocked(access = access, lastUrl = ""),
+            failedTargets = emptySet(),
+        )
+    }
+
     /** 某条线路探测失败（ 的 `onError` 分支）。 */
     fun recordFailure(session: PlaybackSession, targetIndex: Int): PlaybackSession {
         val failed = session.failedTargets + targetIndex

@@ -143,6 +143,30 @@ class VerticalPlayViewModelTest {
     }
 
     @Test
+    fun `withheld episode address shows unlock layer and plays after unlock`() = runTest {
+        val viewModel = verticalViewModel()
+        advanceUntilIdle()
+        // 付费墙打开时后端把 url 置空：这时客户端只可能落到"没有可播放地址"的故障文案
+        viewModel.stateFlow.value = viewModel.state.value.copy(
+            playingUrl = null,
+            isPlaying = false,
+            errorMessage = MSG_NO_PLAY_URL,
+        )
+
+        viewModel.updateTrySee(1, TrySeeGate(TrySeeAccess.NEED_PAY, 0))
+
+        // 权限一到就该是"需要解锁"，故障文案必须让位
+        assertTrue(viewModel.state.value.isBlocked)
+        assertNull(viewModel.state.value.errorMessage)
+
+        viewModel.updateTrySee(1, TrySeeGate(TrySeeAccess.FREE, 0))
+
+        assertEquals("https://cdn.example.com/dj-1.m3u8", viewModel.state.value.playingUrl)
+        assertNull(viewModel.state.value.blockedAccess)
+        assertTrue(viewModel.state.value.isPlaying)
+    }
+
+    @Test
     fun `play pause is ignored while blocked`() = runTest {
         val viewModel = verticalViewModel(
             deps = playerDeps(trySeeAccess = TrySeeAccess.NEED_PAY, trySeeMinutes = 1),

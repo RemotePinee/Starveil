@@ -242,4 +242,21 @@ class PlaybackMachineTest {
             PlaybackMachine.gate(idle, positionMs = 10_000_000, access = TrySeeAccess.NEED_PAY, trySeeMinutes = 1),
         )
     }
+
+    @Test
+    fun `paywall blocks before probing when there is no free window`() {
+        // 付费墙打开时服务端把地址全置空：拦截必须发生在探测之前，不能靠空地址失败兜底
+        val next = PlaybackMachine.blockBeforePlay(session(), TrySeeAccess.NEED_VIP, trySeeMinutes = 0)
+
+        assertEquals(PlaybackPhase.Blocked(access = TrySeeAccess.NEED_VIP, lastUrl = ""), next.phase)
+    }
+
+    @Test
+    fun `paywall leaves free access and open trials on the normal path`() {
+        val free = PlaybackMachine.blockBeforePlay(session(), TrySeeAccess.FREE, trySeeMinutes = 0)
+        val trial = PlaybackMachine.blockBeforePlay(session(), TrySeeAccess.NEED_PAY, trySeeMinutes = 3)
+
+        assertEquals(PlaybackPhase.Idle, free.phase)
+        assertEquals(PlaybackPhase.Idle, trial.phase)
+    }
 }

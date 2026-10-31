@@ -155,6 +155,10 @@ class PlayerViewModel(
                 if (it.hongguoEnabled) 1 else 0, it.hongguoMatch
             )
         }
+
+        // 付费墙打开时服务端把这一集的地址全置空：探测前先看权限，非免费集直接落解锁态，
+        // 否则空地址进引擎只会报"解析失败"，把付费墙说成了故障（见 blockOnPaywall）。
+        if (blockOnPaywall()) return
         // 命中「直链正则」就直接起播，不送解析站（原因见 ParseRules.isDirectLink）
         val vodUrl = episodeOf(vod, session)?.url.orEmpty()
         if (ParseRules.isDirectLink(vodUrl, session.playerInfo?.directLinkPatterns.orEmpty())) {

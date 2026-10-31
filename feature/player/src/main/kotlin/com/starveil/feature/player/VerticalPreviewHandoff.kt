@@ -98,6 +98,13 @@ internal class VerticalTrySeeContext(var gate: TrySeeGate) {
             state
         }
 
+    /** 起播前判定：这一集一开始就不能播。口径同 [expired]，位置按 0 算。 */
+    fun prePlayBlock(episodeNumber: Int?): TrySeeAccess? {
+        val sameEpisode = this.episodeNumber == null || this.episodeNumber == episodeNumber
+        val locked = gate.access != TrySeeAccess.FREE && TrySeeRules.isExceeded(0L, gate.trySeeMinutes)
+        return gate.access.takeIf { sameEpisode && locked }
+    }
+
     private fun expired(state: VerticalPlayUiState, positionMs: Long): Boolean {
         val sameEpisode = episodeNumber == null || episodeNumber == state.current?.number
         return sameEpisode && gate.access != TrySeeAccess.FREE &&

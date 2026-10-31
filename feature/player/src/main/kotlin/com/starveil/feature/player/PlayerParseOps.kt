@@ -65,6 +65,29 @@ internal fun PlayerViewModel.settleParse() {
     start()
 }
 
+/**
+ * 起播前的付费墙拦截。
+ *
+ * 付费墙打开时服务端把这一集的 `urls[].url` 全部置空、只留 `play_locked`。空地址送进
+ * 引擎只会得到"解析失败"——用户看到的是故障，实际语义是"需要解锁"。所以在探测之前
+ * 就落 [PlaybackPhase.Blocked]：线路一条都不探，引擎拿不到 url 也就不会 prepare。
+ *
+ * 解锁后不新造链路：app 的 `GateRefresh`（广告 / 积分 / 支付回来）与前台重查都会
+ * `updateAccess` → [applyAccess] → [retryPlayback]，从 [PlayerViewModel.start] 重新走一遍，
+ * 那时 access 已是 FREE。
+ *
+ * @return true 表示已拦下，调用方不要再探测
+ */
+internal fun PlayerViewModel.blockOnPaywall(): Boolean {
+    val next = PlaybackMachine.blockBeforePlay(readSession(), trySeeAccess, trySeeMinutes)
+    if (next.phase !is PlaybackPhase.Blocked) return false
+    writeSession(next)
+    // 覆盖层要的是"需要解锁"而不是转圈：把上一个状态留下的缓冲标记清掉
+    edit { it.copy(isBuffering = false) }
+    publish()
+    return true
+}
+
 internal fun PlayerViewModel.onPlaybackStarted() {
     reporter.onPlaybackStarted()
     // 回页续接优先用 VM 里留的上次位置：否则 UI 先显示 0（进度条停在开头），

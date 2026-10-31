@@ -174,8 +174,7 @@ class VerticalPlayViewModel(
 
     /** 仅接收当前集的权限结果；app 同步权限期间用 options.active 阻止播放。 */
     fun updateTrySee(episodeNumber: Int, gate: TrySeeGate, token: Any = defaultPlaybackToken) {
-        if (!ownsPlayback(token)) return
-        _state.update { trySee.update(it, episodeNumber, gate) }
+        applyGateUpdate(episodeNumber, gate, token)
     }
 
     /**
