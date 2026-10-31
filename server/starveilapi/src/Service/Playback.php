@@ -61,6 +61,13 @@ final class Playback
             return $this->gate(0, $pointsPrice, $memberEnabled);
         }
 
+        // 会员体系关闭只是"停止售卖"，不是取消会员：在期会员由下面的 isVip() 照常放行。
+        // 但如果既没配积分也没配广告位，非会员就一个解锁入口都没有——锁死没有意义，
+        // 按免费处理。对应旧 trysee_status 时代那条"会员关闭 + 需会员 → 转免费/积分"。
+        if (!$memberEnabled && $pointsPrice === 0 && !$this->rewardAdConfigured()) {
+            return $this->gate(0, $pointsPrice, $memberEnabled);
+        }
+
         // 广告解锁（平台 SSV 回调 / 直投看完）已经把这一集写进解锁表：先放行，再谈会员与积分。
         // 少了这一步，用户看完广告重查闸门时服务端仍答"需解锁"，这次广告就白看了。
         if ($episodeNumber > 0 && $this->unlocked($userId, $vodId, $episodeNumber)) {
