@@ -1,5 +1,10 @@
 package com.starveil.feature.player
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -26,12 +32,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.IconSize
+import com.starveil.core.designsystem.token.Motion
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.PlaybackPhase
 import com.starveil.core.model.TrySeeCopy
+import kotlin.math.roundToInt
 
 /** 解析阶段：还没拿到播放地址，文案是"正在接入线路"。 */
 private const val MSG_LOADING = "正在接入播放线路…"
@@ -59,7 +68,8 @@ private val MinActionWidth: Dp = Spacing.xxl * 4
 /**
  * 三态覆盖层：解析中 / 全部线路失败 / 试看拦截。播放中不覆盖，避免挡住画面。
  *
- * 试看拦截的判定与文案来自 TrySeeRules 与 PlayerStateMapper，这里只负责显示。
+ * 试看拦截的判定与文案来自 TrySeeRules 与 PlayerStateMapper，这里只负责显示；
+ * 它的入场过渡见 [BlockedLayer]——常驻在树上跑 transition，不在状态切换的那一帧硬切。
  */
 @Composable
 internal fun PlayerOverlay(
@@ -72,22 +82,51 @@ internal fun PlayerOverlay(
     when (state.phase) {
         is PlaybackPhase.Parsing, PlaybackPhase.Idle -> PlaybackVeil(label = MSG_LOADING, modifier = modifier)
         is PlaybackPhase.Failed -> FailedOverlay(state.errorMessage.orEmpty(), actions.onRetry, modifier)
-        is PlaybackPhase.Blocked -> BlockedOverlay(
-            ui = BlockedUi(
-                notice = state.trySeeNotice.orEmpty(),
-                unlock = unlock,
-                onUpgrade = actions.onUpgrade,
-                onBuy = actions.onBuy,
-                onWatchAd = onWatchAd,
-            ),
-            modifier = modifier,
-        )
-
+        // 拦截层不在这里画：它要常驻到树上才跑得了入场动画（见 BlockedLayer）
+        is PlaybackPhase.Blocked -> Unit
         is PlaybackPhase.Playing -> when {
             state.errorMessage != null -> FailedOverlay(state.errorMessage.orEmpty(), actions.onRetry, modifier)
             state.isBuffering -> PlaybackVeil(label = MSG_BUFFERING, modifier = modifier)
             else -> Unit
         }
+    }
+    BlockedLayer(
+        visible = state.phase is PlaybackPhase.Blocked,
+        ui = BlockedUi(
+            notice = state.trySeeNotice.orEmpty(),
+            unlock = unlock,
+            onUpgrade = actions.onUpgrade,
+            onBuy = actions.onBuy,
+            onWatchAd = onWatchAd,
+        ),
+        modifier = modifier,
+    )
+}
+
+/**
+ * 付费墙浮层：常驻在树上，靠 [AnimatedVisibility] 淡入 + 轻微上移入场。
+ *
+ * 以前这里就是 `when (phase) { is Blocked -> BlockedOverlay(...) }`：浮层在状态切换的那一帧
+ * 直接以不透明的 `surface` 铺满画面，等于硬切——压在亮的视频画面上就是"闪一下"。
+ * 常驻之后，`visible` 由 false 变 true 的那一帧走的是 transition 首帧（alpha = 0、
+ * 整体下沉一个 [Spacing.sm]，200ms 内淡入并升到位），第一帧没有任何不透明色块落到画面上；
+ * 解锁成功、phase 离开 Blocked 时同样淡出，不是啪一下消失。
+ *
+ * 只动 alpha 与一个固定的纵向位移：`scaleIn` / `expandIn` 那类尺寸动画的首帧尺寸是按
+ * 0 算的，一帧量错就又变成新的"闪一下"。时长取 [Motion.MediumMs]（200ms）。
+ */
+@Composable
+private fun BlockedLayer(visible: Boolean, ui: BlockedUi, modifier: Modifier = Modifier) {
+    // 位移只借 Spacing 令牌换算成 px，不写裸 dp（detekt 的 NoBareDp 会拦）
+    val risePx = with(LocalDensity.current) { Spacing.sm.toPx().roundToInt() }
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(tween(Motion.MediumMs, easing = Motion.standard)) +
+            slideInVertically(tween(Motion.MediumMs, easing = Motion.standard)) { risePx },
+        exit = fadeOut(tween(Motion.ShortMs, easing = Motion.standard)),
+        modifier = modifier,
+    ) {
+        BlockedOverlay(ui = ui, modifier = Modifier.fillMaxSize())
     }
 }
 

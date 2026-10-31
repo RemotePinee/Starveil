@@ -7,17 +7,22 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.style.TextAlign
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ChatCircle
@@ -120,6 +125,7 @@ private fun ControlRow(
     extras: ControlExtras,
 ) {
     val haptics = rememberHaptics()
+    val timeSlot = rememberTimeSlotWidth()
     Row(
         modifier = Modifier.fillMaxWidth().height(ControlRowHeight),
         verticalAlignment = Alignment.CenterVertically,
@@ -136,7 +142,11 @@ private fun ControlRow(
             glass = false,
         )
         // 位置只在这两个叶子里读：底栏其余控件不跟着 2Hz 位置刷新重组
-        PositionTimeText(position = extras.position, color = MaterialTheme.colorScheme.onBackground)
+        PositionTimeText(
+            position = extras.position,
+            color = MaterialTheme.colorScheme.onBackground,
+            slot = timeSlot,
+        )
         PositionProgressBar(
             position = extras.position,
             durationMs = state.durationMs,
@@ -147,7 +157,12 @@ private fun ControlRow(
             },
             modifier = Modifier.weight(1f),
         )
-        TimeText(ms = state.durationMs, color = starveilExtraColors.textMuted)
+        TimeText(
+            ms = state.durationMs,
+            color = starveilExtraColors.textMuted,
+            slot = timeSlot,
+            align = TextAlign.Start,
+        )
         if (state.isFullscreen) {
             SpeedChip(speed = state.speed) {
                 haptics(HapticKind.Tick)
@@ -209,15 +224,54 @@ private fun SpeedChip(speed: Float, onClick: () -> Unit) {
     }
 }
 
+/**
+ * 时间文字最宽的一档：一位数小时 + 两位分秒（`1:36:30`），量槽宽用它。
+ */
+private const val WIDEST_TIME = "8:88:88"
+
+/**
+ * 时间文字的固定槽宽：按最宽的一档量一次，之后不再随文字内容变化。
+ *
+ * 进度条在 [ControlRow] 里是 `weight(1f)`，槽宽 = 行宽 − 两侧控件宽；而圆点的横坐标是
+ * `半径 + (槽宽 − 两倍半径) × 已播比例`（见 PlayerProgressBar 的 drawProgress）。
+ * 也就是说**槽宽是圆点位置的一个乘数**：这一行只要重新量一次、槽宽变一点，圆点就被按
+ * 新槽宽重新投影一次，看起来就是"被推了一下"。
+ *
+ * 起播时正好会撞上这一下：时长没回来前右侧文字是 `00:00`（5 字），第一个 500ms 采样
+ * 把它换成 `1:36:30`（7 字），同一帧里槽宽少掉两个字宽，圆点因此被重新投影一次；
+ * 位置文字每秒刷新时也有同一类问题（非等宽字体里 `1` 比 `0` 窄）。
+ * 两侧时间文字都改成固定宽度后，这一行的几何从第一帧起就是常量，不再有这次重投影。
+ */
 @Composable
-private fun TimeText(ms: Long, color: Color) {
-    Text(text = formatTime(ms), style = MaterialTheme.typography.labelMedium, color = color)
+private fun rememberTimeSlotWidth(): Dp {
+    val measurer = rememberTextMeasurer()
+    val density = LocalDensity.current
+    val style = MaterialTheme.typography.labelMedium
+    return remember(measurer, density, style) {
+        // 再留一根 hairline：量到的宽度是 px 取整值，回算 dp 时不吃亚像素舍入，
+        // 最宽的那一档（1:36:30）也不会被裁掉最后一位
+        with(density) { measurer.measure(text = WIDEST_TIME, style = style).size.width.toDp() } +
+            Spacing.hairline
+    }
+}
+
+/** 时间文字：宽度锁在槽宽上，内容贴向进度条那一侧（[align]），内容变化不再改行宽。 */
+@Composable
+private fun TimeText(ms: Long, color: Color, slot: Dp, align: TextAlign) {
+    Text(
+        text = formatTime(ms),
+        style = MaterialTheme.typography.labelMedium,
+        color = color,
+        maxLines = 1,
+        textAlign = align,
+        modifier = Modifier.width(slot),
+    )
 }
 
 /** 当前播放位置：位置流只在这里读，重组范围就是这一行字。 */
 @Composable
-private fun PositionTimeText(position: State<Long>, color: Color) {
-    TimeText(ms = position.value, color = color)
+private fun PositionTimeText(position: State<Long>, color: Color, slot: Dp) {
+    TimeText(ms = position.value, color = color, slot = slot, align = TextAlign.End)
 }
 
 /** 进度条：同样把位置读取压在叶子这一层，底栏其余控件不受 2Hz 位置刷新影响。 */
