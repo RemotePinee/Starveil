@@ -19,7 +19,7 @@ use think\Db;
 class Installer
 {
     /** 与 info.ini 的 version 保持一致（升级时 upgradeIfNeeded 靠它触发迁移）。 */
-    public const VERSION = '2.6.3';
+    public const VERSION = '2.6.4';
 
     /**
      * 左侧快捷菜单的标签。
@@ -545,6 +545,9 @@ return " . var_export(array_values($lines), true) . ";
             // CDN 签名：域名与密钥都填了才算接通。未接的站点保持原始地址；付费墙开着时不给地址。
             // 试看只在 CDN 接通时存在（cdn_trysee_minutes × 60，0 = 不给试看，v2.6.3）
             'cdn_enabled' => '0',
+            // 签名模式：tencent = 腾讯云 Key 防盗链（URL 不带源站，默认，行为与 v2.6.3 一致）；
+            // self = 自建媒体服务（URL 带 src 并把它并入签名，v2.6.4）
+            'cdn_sign_type' => 'tencent',
             'cdn_domain' => '',
             'cdn_sign_key' => '',
             'cdn_trysee_minutes' => '0',
