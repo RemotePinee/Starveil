@@ -6,6 +6,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.cache.CacheKeyFactory
 import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import java.io.IOException
@@ -107,6 +108,9 @@ internal class VideoHttp(private val context: Context) {
         return CacheDataSource.Factory()
             .setCache(VideoCache.get(context))
             .setUpstreamDataSourceFactory(gated)
+            // 缓存键必须剥掉 CDN 签名参数：完整 URL 每次下发都不同（us 随机、t 滚 6 小时），
+            // 拿它当键等于同一集每次都是新资源，永远命中不了。名单与理由见 [videoCacheKey]。
+            .setCacheKeyFactory(CacheKeyFactory { spec -> videoCacheKey(spec.uri.toString()) })
             // 缓存读坏了就退回网络，不让一个坏分片把整集卡死
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }
@@ -146,7 +150,9 @@ internal class VideoHttp(private val context: Context) {
             upstream.createDataSource(),
             CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR,
         )
-        val spec = DataSpec.Builder().setUri(Uri.parse(url)).build()
+        // 键必须与 Factory 里的 CacheKeyFactory 算出同一个（[videoCacheKey]）：预热写进去的
+        // span，起播时 CacheDataSource 才找得到。漏了这句，预热就只是白下一遍。
+        val spec = DataSpec.Builder().setUri(Uri.parse(url)).setKey(videoCacheKey(url)).build()
         runCatching { CacheWriter(source, spec, ByteArray(0), null).cache() }
     }
 

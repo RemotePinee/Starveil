@@ -73,6 +73,9 @@ private class PlayerBridge(private val viewModel: PlayerViewModel) : Media3Playe
     override fun onEnded() = viewModel.onPlaybackEnded()
 
     override fun onError(message: String) = viewModel.onPlaybackError(message)
+
+    /** 403 = 签名地址过期：重拉一次地址，成功了就不落错误态（见 [PlayerViewModel.onPlaybackAuthExpired]）。 */
+    override fun onAuthExpired(): Boolean = viewModel.onPlaybackAuthExpired()
 }
 
 /** 回调集合 → ViewModel；拖动进度必须同时写页面状态与播放器位置。 */

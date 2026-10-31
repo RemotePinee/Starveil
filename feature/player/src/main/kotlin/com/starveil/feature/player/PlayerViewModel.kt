@@ -62,6 +62,15 @@ class PlayerViewModel(
     /** 上次落库的位置（秒）；换集/重来时重置。 */
     private var lastSavedSec = 0
 
+    /**
+     * 签名地址过期后已经重拉过几次地址。
+     *
+     * 地址真失效（不是过期）时重拉也没用：每次起播（[start]，换集/换线/手动重试都走它）
+     * 只给一次机会，用完就按原来的错误态处理。不按"出流成功"清零——某个分片本身一直
+     * 403 时会变成 READY→403→重拉→READY 的死循环，那比停在错误态更糟。
+     */
+    internal var urlRefreshAttempts = 0
+
     private val danmuDispatcher = PlayerDanmuDispatcher(
         source = deps.danmuSource,
         scope = scope,
@@ -135,6 +144,7 @@ class PlayerViewModel(
         reporter.reset()
         danmuDispatcher.reset()
         lastSavedSec = 0
+        urlRefreshAttempts = 0
         currentPositionMs = 0L
         edit { it.copy(durationMs = 0L, isPlaying = false) }
         // 红果解密开关随片源下发，默认关；写进运行时供 DataSource 层读取
@@ -227,6 +237,16 @@ class PlayerViewModel(
         danmuDispatcher.reset()
         handlePlaybackError(port(), actions(), message)
     }
+
+    /**
+     * CDN 返回 403：签名播放地址过期（`t` 只有 6 小时）。
+     *
+     * 重拉一次当前线路的地址并原地换源，不落错误态、不从头播；
+     * 实现在 [refreshExpiredUrl]，走的是探测同一条解析链路。
+     *
+     * @return true 表示已经发起重拉，播放器不必报错。
+     */
+    fun onPlaybackAuthExpired(): Boolean = refreshExpiredUrl()
 
     fun onEpisodeSelected(episodeIndex: Int) = selectEpisode(episodeIndex)
 

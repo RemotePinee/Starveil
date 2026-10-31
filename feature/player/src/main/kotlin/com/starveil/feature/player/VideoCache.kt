@@ -31,6 +31,14 @@ internal object VideoCache {
     @Volatile
     private var instance: SimpleCache? = null
 
+    /**
+     * 计算缓存键时**必须**剥掉的 CDN 签名参数。
+     *
+     * 服务端接通 CDN 播放后，每次下发的地址都带这一组：`us` 随机、`t` 每 6 小时滚动，
+     * 其余三个跟着一起变。它们只证明"这次请求签过名"，不参与资源标识。
+     */
+    val SIGNATURE_PARAMS: Set<String> = setOf("t", "exper", "rlimit", "us", "sign")
+
     @OptIn(UnstableApi::class)
     fun get(context: Context): Cache = instance ?: synchronized(this) {
         instance ?: SimpleCache(
@@ -38,4 +46,30 @@ internal object VideoCache {
             LeastRecentlyUsedCacheEvictor(MAX_BYTES),
         ).also { instance = it }
     }
+}
+
+/**
+ * 把一条播放地址规范化成 [VideoCache] 的键。
+ *
+ * **为什么不能直接用完整 URL**：`SimpleCache` 默认拿 `DataSpec` 里的完整 URL 当键，
+ * 而签名地址每次下发都不同（见 [VideoCache.SIGNATURE_PARAMS]）。同一集、同一片，
+ * 只要签名换了就是一条"新资源"：缓存永远命不中，磁盘只增不减，
+ * 300MB 的 LRU 被逼着不停淘汰——缓存等于白做，还白写 300MB。
+ *
+ * **只剥签名那几个参数**，其它 query 原样保留：源站用 query 区分文件的情况
+ * （`?id=`、`?token=`）是真的资源标识，粗暴 `substringBefore('?')` 会把不同分片
+ * 并成同一份缓存，那是错数据，比缓存不命中严重得多。
+ *
+ * 参数名按大小写敏感比对：多剥一个认不出的参数就等于把两份内容并成一份，宁可少剥。
+ */
+internal fun videoCacheKey(url: String): String {
+    val queryStart = url.indexOf('?')
+    if (queryStart < 0) return url
+    val fragmentStart = url.indexOf('#', queryStart).let { if (it < 0) url.length else it }
+    val kept = url.substring(queryStart + 1, fragmentStart)
+        .split('&')
+        .filter { it.isNotEmpty() && it.substringBefore('=') !in VideoCache.SIGNATURE_PARAMS }
+    val base = url.substring(0, queryStart)
+    val fragment = url.substring(fragmentStart)
+    return if (kept.isEmpty()) base + fragment else base + "?" + kept.joinToString("&") + fragment
 }

@@ -22,6 +22,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
+import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
@@ -53,6 +54,15 @@ class Media3Player(context: Context) {
         fun onPlaybackStateChanged(isBuffering: Boolean)
         fun onEnded()
         fun onError(message: String)
+
+        /**
+         * 拉流被拒（CDN 返回 403）。CDN 签名地址的 `t` 只有 6 小时有效期，
+         * 挂后台过夜回来就是这一路——地址过期，不是资源没了。
+         *
+         * @return true 表示调用方已经重新拉地址、并会重建 source，本次错误不必落错误态；
+         *   false（默认）表示按普通错误处理。
+         */
+        fun onAuthExpired(): Boolean = false
     }
 
     private val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext)
@@ -124,6 +134,10 @@ class Media3Player(context: Context) {
 
         override fun onPlayerError(error: PlaybackException) {
             errored = true
+            // 403 多半是签名地址过期（`t` 六小时滚动）：先问状态层要不要重拉一次地址。
+            // 它返回 true 说明新地址已排上，此时不该再挂错误覆盖层；返回 false
+            // （重试用尽 / 地址是真坏）才走原来的错误处理。
+            if (isHttpForbidden(error) && listener?.onAuthExpired() == true) return
             listener?.onError(error.errorCodeName)
         }
     }
@@ -288,6 +302,26 @@ class Media3Player(context: Context) {
     private fun isHls(url: String): Boolean =
         url.substringBefore('?').endsWith(HLS_SUFFIX, ignoreCase = true)
 
+    /**
+     * 沿异常链找 CDN 的 403。
+     *
+     * 状态码只有 [HttpDataSource.InvalidResponseCodeException] 这一层带着，而 Media3 会把上游
+     * 的 IOException 包进 [PlaybackException] 的 cause 里（HLS 还可能再套一层 Loader 异常），
+     * 所以逐层往下看，但限深——真正的死循环风险是 cause 自引用，不在这里赌。
+     */
+    private fun isHttpForbidden(error: PlaybackException): Boolean {
+        var cause: Throwable? = error.cause
+        var depth = 0
+        while (cause != null && depth < CAUSE_CHAIN_DEPTH) {
+            if (cause is HttpDataSource.InvalidResponseCodeException) {
+                return cause.responseCode == HTTP_FORBIDDEN
+            }
+            cause = cause.cause
+            depth += 1
+        }
+        return false
+    }
+
 
     /**
      *
@@ -300,6 +334,12 @@ class Media3Player(context: Context) {
 
     private companion object {
         const val HLS_SUFFIX = ".m3u8"
+
+        /** CDN 拒绝访问。签名地址过了 `t` 的 6 小时 TTL 就是这个状态码。 */
+        const val HTTP_FORBIDDEN = 403
+
+        /** 找状态码时最多往下翻几层 cause：Media3 正常最多套两层。 */
+        const val CAUSE_CHAIN_DEPTH = 4
 
 
 
