@@ -1,0 +1,24 @@
+# 统一换行符：仓库内一律 LF。
+# Windows 上 core.autocrlf=true 会让 git 在检出时把文件转成 CRLF，再改回来时就会报
+# "LF will be replaced by CRLF"，而且跨平台 diff 全是整文件变化。这里显式指定 eol=lf，
+# 优先级高于 core.autocrlf，Windows / macOS / Linux 检出结果一致。
+* text=auto eol=lf
+
+# 二进制：不要做任何换行转换
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.ttf binary
+*.otf binary
+*.so binary
+*.jar binary
+*.apk binary
+*.aab binary
+*.zip binary
+*.jks binary
+*.keystore binary
+*.sqlite binary
+*.db binary
