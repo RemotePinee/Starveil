@@ -38,12 +38,13 @@ object TrySeeRules {
     /**
      * 播放进度是否已越过允许的可看时长。
      *
-     * 服务端不再下发有效秒数（`trysee` 恒 0 / 缺省），所以 [trySeeMinutes] <= 0
-     * 视为"没有可看窗口"：需解锁的集一开始就拦。历史哨兵 888 已随单开关下线，
-     * 现在只是普通的 888 分钟，没有特殊含义。
+     * 口径是**秒**，与服务端 `trysee_seconds` 同单位（后端按 `cdn_trysee_minutes × 60` 下发）：
+     * `600` 就是"前 10 分钟可看，之后拦"。`<= 0` 表示**没有可看窗口**——CDN 没接通、
+     * 后台没配试看、或用户已解锁，服务端都发 0，需解锁的集一开始就拦。
+     * 早期 888 哨兵已随单开关下线，现在只是普通的 888 秒。
      */
-    fun isExceeded(positionMs: Long, trySeeMinutes: Int): Boolean =
-        trySeeMinutes <= 0 || positionMs > trySeeMinutes.toLong() * 60_000
+    fun isExceeded(positionMs: Long, trySeeSeconds: Int): Boolean =
+        trySeeSeconds <= 0 || positionMs > trySeeSeconds.toLong() * MILLIS_PER_SECOND
 }
 
 /**
@@ -63,8 +64,8 @@ enum class TrySeeAccess {
  * 付费墙接口的一次判定结果。
  *
  * [access] 必须由 [TrySeeRules.access] 算出，与播放器 tick 的判定共用同一口径。
- * [trySeeMinutes] **已废弃**：服务端不再下发有效秒数，客户端也不再拿它拼文案；
- * 字段与解析保留只为兼容旧响应，新代码不要读它做展示。
+ * [trySeeSeconds] 是服务端 `trysee_seconds` 原值（秒），与 [TrySeeRules.isExceeded]
+ * 的入参同单位；0 表示没有可看窗口。旧的 `trysee`（分钟）服务端恒发 0，客户端已不读。
  *
  * 后四个字段是浮层按钮能力位，由服务端下发：
  * - [canUpgrade]：会员体系开启且当前被拦时才有"开通会员"；
@@ -76,7 +77,7 @@ enum class TrySeeAccess {
  */
 data class TrySeeGate(
     val access: TrySeeAccess,
-    val trySeeMinutes: Int,
+    val trySeeSeconds: Int,
     val canUpgrade: Boolean = access == TrySeeAccess.NEED_VIP,
     val canRedeemPoints: Boolean = access == TrySeeAccess.NEED_PAY,
     val canWatchAd: Boolean = false,
@@ -94,3 +95,6 @@ object TrySeeCopy {
     const val TITLE = "需要解锁"
     const val HINT = "开通会员、积分兑换或看广告解锁后可看全集"
 }
+
+/** 毫秒/秒换算：试看口径是秒，播放位置是毫秒。 */
+private const val MILLIS_PER_SECOND = 1_000L

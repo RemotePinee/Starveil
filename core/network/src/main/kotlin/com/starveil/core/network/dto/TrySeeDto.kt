@@ -11,8 +11,9 @@ import kotlinx.serialization.Serializable
  * 且旧样例是 `code:1` / `msg:"开启试看模式"`，
  * 说明内层 code 是播放页提示码，不是成功判定，别拿来判 `== 200`。
  *
- * - `trysee`：**已废弃**。服务端已改成单一付费墙开关，不再下发有效秒数；
- *   字段保留只为兼容旧响应，客户端不拿它拼文案、也不当作放行时长；
+ * - `trysee_seconds`：可看时长**秒数**，后端按 `cdn_trysee_minutes × 60` 算；CDN 没接通、
+ *   后台没配试看、用户已解锁，服务端都发 0（= 没有可看窗口），客户端据此判定放行；
+ * - `trysee`：**已废弃**，服务端恒发 0，只为老客户端的键位兼容留着，这里不读它；
  * - `status`：单一开关，0 免费 / 1 需解锁（2 是历史取值，服务端不再下发）；
  * - `user_video`：剩余免费次数，> 0 时即使 status 是 1 也放行；
  * - `member_enabled` / `can_vip` / `can_points` / `can_ad` / `points_price`：
@@ -26,7 +27,11 @@ import kotlinx.serialization.Serializable
 data class TrySeeDto(
     @SerialName("code") val code: Int = 0,
     @SerialName("msg") val msg: String? = null,
-    @SerialName("trysee") val trySeeMinutes: Int = 0,
+    /**
+     * 已废弃：服务端恒发 0，分钟口径作废。时长一律读 [trySeeSeconds]，别让两条路并存。
+     */
+    @SerialName("trysee") val legacyTrySee: Int = 0,
+    @SerialName("trysee_seconds") val trySeeSeconds: Int = 0,
     @SerialName("status") val status: Int = 0,
     @SerialName("user_video") val freeCount: Int = 0,
     @SerialName("member_enabled") val memberEnabled: Int? = null,

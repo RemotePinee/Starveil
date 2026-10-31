@@ -80,6 +80,8 @@ class DefaultPayRepositoryTest {
 
         val payOrder = (result as AppResult.Success).value
         assertEquals("30", api.lastPrice)
+        // 支付通道必须随建单上报：只拿去拼支付页地址等于没传给服务端
+        assertEquals("alipay", api.lastPayment)
         assertEquals("PAY1", payOrder.orderCode)
         assertEquals(
             "$TEST_HOST/icciu_api.php/v1.user/pay?payment=alipay&order_code=PAY1",
@@ -159,14 +161,16 @@ private class FakePayApi(
 ) : StubStarveilApi() {
 
     var lastPrice: String? = null
+    var lastPayment: String? = null
     var lastOrderCode: String? = null
     var lastPeriodCode: String? = null
     var lastGroupId: String? = null
 
     override suspend fun memberGroups(): ApiEnvelopeDto<MemberGroupCatalogDto> = groups()
 
-    override suspend fun createOrder(price: String): ApiEnvelopeDto<OrderDto> {
+    override suspend fun createOrder(price: String, payment: String): ApiEnvelopeDto<OrderDto> {
         lastPrice = price
+        lastPayment = payment
         return order()
     }
 

@@ -48,7 +48,7 @@ class VerticalPlayViewModel(
     internal val reporter = ProgressReporter(deps.clock, deps.progressSink, scope)
     internal var pendingResumeMs: Long? = resumeMs.coerceAtLeast(0L)
     internal var loadJob: Job? = null
-    internal val trySee = VerticalTrySeeContext(TrySeeGate(deps.trySeeAccess, deps.trySeeMinutes))
+    internal val trySee = VerticalTrySeeContext(TrySeeGate(deps.trySeeAccess, deps.trySeeSeconds))
 
     /**
      * 弹幕时间轴。关闭时给控制器传 null：不拉取、不上屏，[danmu] 恒为空，

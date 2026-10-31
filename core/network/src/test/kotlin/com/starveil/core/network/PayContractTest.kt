@@ -62,16 +62,16 @@ class PayContractTest {
     }
 
     @Test
-    fun `create order posts price form and maps order code`() = runTest {
+    fun `create order posts price and payment form and maps order code`() = runTest {
         server.enqueue(jsonResponse(fixture("v1_user_order.json")))
 
         val payUrl = server.url("/pay").toString()
-        val order = requireNotNull(api.createOrder("30").data).toDomain(payUrl)
+        val order = requireNotNull(api.createOrder("30", "alipay").data).toDomain(payUrl)
 
         val request = server.takeRequest()
         assertEquals("POST", request.method)
         assertEquals("/icciu_api.php/v1.user/order", pathOf(request))
-        assertEquals("price=30", request.body.readUtf8())
+        assertEquals("price=30&payment=alipay", request.body.readUtf8())
         assertEquals("PAY20191120011606512230", order.orderCode)
         assertEquals("30", order.priceYuan)
         assertEquals(300, order.points)

@@ -1,8 +1,10 @@
 package com.starveil.feature.player
 
+import com.starveil.core.common.getOrNull
 import com.starveil.core.model.PlaybackMachine
 import com.starveil.core.model.PlaybackPhase
 import com.starveil.core.model.PlayStream
+import com.starveil.core.model.Vod
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -79,8 +81,11 @@ internal fun PlayerViewModel.settleParse() {
  * @return true 表示已拦下，调用方不要再探测
  */
 internal fun PlayerViewModel.blockOnPaywall(): Boolean {
-    val next = PlaybackMachine.blockBeforePlay(readSession(), trySeeAccess, trySeeMinutes)
-    if (next.phase !is PlaybackPhase.Blocked) return false
+    val session = readSession()
+    val next = PlaybackMachine.blockBeforePlay(session, trySeeAccess, trySeeSeconds)
+    // 按"这次是否真拦下"判定，不看 phase：解锁后用旧详情重来时 phase 还停在上一轮的
+    // Blocked，看 phase 会误报已拦下，start() 直接返回，解锁后的重试永远起不来
+    if (next === session) return false
     writeSession(next)
     // 覆盖层要的是"需要解锁"而不是转圈：把上一个状态留下的缓冲标记清掉
     edit { it.copy(isBuffering = false) }
@@ -176,4 +181,52 @@ private fun PlayerViewModel.applyRefreshedStream(
     edit { it.copy(pendingSeekMs = resumeMs, isBuffering = true) }
     publish()
     return true
+}
+
+/**
+ * 解锁后重取详情，把新地址换进来再重走一遍起播。
+ *
+ * 付费墙打开时服务端把这一集的 `urls[].url` 全置空（`mode=none`）：进入页面拿到的那份
+ * 详情里地址是空的，[retryPlayback] 拿它重试只会立刻"全线解析失败"。所以非 FREE → FREE
+ * 的那一次先重取详情。调用点只有 [PlayerViewModel.updateAccess]：重组与进度 tick 都到不了这里。
+ *
+ * 位置不丢：[retryPlayback] → [PlayerViewModel.start] 之后，[onPlaybackStarted] 用
+ * `lastKnownPositionMs` 把播放点定回原位，与回页续播走同一条 pendingSeek 路径。
+ */
+internal fun PlayerViewModel.reloadDetailAfterUnlock() {
+    // 只有"被付费墙拦下"需要换地址：正在播的集本来就有地址，已失败的重取也救不回来
+    if (readSession().phase !is PlaybackPhase.Blocked) return
+    val loader = deps.detailLoader
+    if (loader == null) {
+        // 没注入详情入口（测试与旧装配）：保持原来的"直接重试"
+        retryPlayback()
+        return
+    }
+    scope.launch {
+        val fresh = loader.load(vod.id).getOrNull()
+        if (fresh == null) {
+            // 网络错不卡死：退回原来的错误态，用户还能点「重试」
+            retryPlayback()
+            return@launch
+        }
+        adoptDetail(fresh)
+        retryPlayback()
+    }
+}
+
+/**
+ * 把重取的详情换进 VM。
+ *
+ * 整份 `vod` 换新（起播读的是它里面的地址）；当前源同时换成新详情里的同一源——
+ * 解析线路与红果开关都在 `playerInfo` 里，只换 vod 不换它会拿旧线路解析新地址。
+ */
+private fun PlayerViewModel.adoptDetail(fresh: Vod) {
+    vod = fresh
+    val source = fresh.playSources.getOrNull(readSession().sourceIndex) ?: return
+    writeSession(
+        readSession().copy(
+            parseTargets = source.playerInfo.parseTargets,
+            playerInfo = source.playerInfo,
+        ),
+    )
 }

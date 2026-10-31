@@ -159,7 +159,7 @@ class VerticalPlaybackRegressionTest {
         assertEquals(retried, viewModel.state.value)
         viewModel.onProgress(20_000L, 90_000L, isPlaying = false)
         assertNull(viewModel.state.value.blockedAccess)
-        viewModel.updateTrySee(2, TrySeeGate(TrySeeAccess.NEED_PAY, 1))
+        viewModel.updateTrySee(2, TrySeeGate(TrySeeAccess.NEED_PAY, 60))
         val revision = viewModel.state.value.seekRevision
         viewModel.onSeekTo(61_000L)
         assertTrue(viewModel.state.value.isBlocked)
@@ -350,7 +350,7 @@ class VerticalPreviewHandoffRegressionTest {
     fun `different episode navigation return restores preview pause position and gate`() = runTest {
         val viewModel = regressionViewModel()
         viewModel.onProgress(20_000L, 90_000L, isPlaying = true)
-        viewModel.updateTrySee(1, TrySeeGate(TrySeeAccess.NEED_PAY, 1))
+        viewModel.updateTrySee(1, TrySeeGate(TrySeeAccess.NEED_PAY, 60))
         viewModel.onPlayPauseClick()
         val preview = viewModel.state.value
         val (output, session) = regressionPlayback(viewModel::ownsPlayback)

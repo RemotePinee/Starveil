@@ -5,6 +5,7 @@
     "code": 1,
     "msg": "开启试看模式",
     "trysee": 6,
+    "trysee_seconds": 360,
     "status": 1,
     "user_video": 5
   }

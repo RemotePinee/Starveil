@@ -8,8 +8,9 @@
  * 3. 回调按 `order_status=0 → 1` 单向迁移，重复回调幂等，且校验回调金额；
  * 4. 会员开通只认「已支付 + 未开通」的订单：天数据订单快照，`opened_at` 决定谁开，
  * 回调与客户端各调一次也只延长一次；
- * 5. 回调只认「下单时那个通道」的密钥：`order_pay_type` 与传入通道不一致直接拒绝，
- * 否则知道弱通道密钥就能给强通道的订单伪造成功回调。
+ * 5. 回调与支付页都只认「下单时那个通道」：`order_pay_type` 与传入通道不一致直接拒绝，
+ * 否则知道弱通道密钥就能给强通道的订单伪造成功回调；支付页也一律按订单字段签名，
+ * 请求里的 `payment` 可伪造，换通道会把钱收进别的商户号而回调按原通道验签、恒 400。
  */
 
 declare(strict_types=1);
@@ -69,7 +70,25 @@ final class Payment
             return ['code' => 400, 'msg' => '套餐不存在'];
         }
 
-        $channelRow = $this->channelRow($channel);
+        // 老客户端下单只送 price，`postOrder` 拿到的 payment 是空串；硬要通道会让它们
+        // 彻底下不了单。空串只在「恰好一条启用通道」时替用户选（没有歧义），
+        // 零条或多条都不猜——猜错等于把这笔钱收进别的商户号。
+        $channel = trim($channel);
+        $channelRow = null;
+        if ($channel === '') {
+            $usable = $this->enabledChannels();
+            if ($usable === []) {
+                return ['code' => 400, 'msg' => '未配置支付通道'];
+            }
+            if (count($usable) > 1) {
+                // Json::fail 的 data 固定为 null，可用通道列表塞不进返回体，只给文案
+                return ['code' => 400, 'msg' => '请选择支付方式'];
+            }
+            $channelRow = $usable[0];
+            $channel = (string)$channelRow['code'];
+        } else {
+            $channelRow = $this->channelRow($channel);
+        }
         if (!$channelRow) {
             return ['code' => 400, 'msg' => '支付方式未开启'];
         }
@@ -105,8 +124,14 @@ final class Payment
      * 支付页跳转地址。
      *
      * 客户端在系统浏览器里打开 `/icciu_api.php/v1.user/pay?payment=..&order_code=..`
-     * （`PayRepository.payPageUrl`），这一步没有会话 cookie，所以只凭订单号 + 通道查：
+     * （`PayRepository.payPageUrl`），这一步没有会话 cookie，所以只凭订单号查——
      * 订单号是随机串，且只用于拼网关地址，不泄露用户信息。
+     *
+     * 通道**只取订单里的 `order_pay_type`**，请求里的 `payment` 一律不看：那个参数
+     * 客户端随手能改，下单选 A、支付页改成 B 会把钱收进 B 的商户号，而回调按订单的
+     * A 验签 → 恒 400，钱收了会员没开。下单时落库的字段不会骗人，只能信它。
+     *
+     * @param string $channel 已废弃：保留只为不改调用方，实现里完全忽略
      *
      * @return array{code:int,msg:string,url?:string}
      */
@@ -119,9 +144,11 @@ final class Payment
         if ((int)$order['order_status'] !== 0) {
             return ['code' => 409, 'msg' => '订单已支付'];
         }
-        $row = $this->channelRow($channel);
+        // 停用的通道照查：订单已经落库，运营中途关掉通道不能把已下的单卡死在这里
+        $row = $this->channelRow((string)($order['order_pay_type'] ?? ''), true);
         if (!$row) {
-            return ['code' => 404, 'msg' => '支付方式未开启'];
+            // 绝不回退到请求参数：那等于把上面那个洞重新打开
+            return ['code' => 409, 'msg' => '订单支付方式异常，请联系客服'];
         }
         $url = $this->payUrl($row, $orderCode, (float)$order['order_price'], '会员开通');
         if ($url === '') {
@@ -247,13 +274,14 @@ final class Payment
      * 老调用方的退路，此时退回整部判定（与加列前一致）。
      *
      * 扣分与建单在同一事务里：条件扣减扣不动就回滚，绝不留一条没扣到积分的已付订单。
+     * 并发双击由两个闸挡住（事务内的用户行锁 + 唯一键兜底），见方法内注释。
      */
     public function buyEpisode(int $userId, int $vodId, int $payType, int $episodeNumber = 0): array
     {
         if ($vodId <= 0) {
             return ['code' => 400, 'msg' => '影片不存在'];
         }
-        // 幂等前置：已买过就直接放行，不重复扣分
+        // 幂等快路径：已买过就直接放行，连事务都不开
         if ($this->orders->hasPaidEpisode($userId, $vodId, $episodeNumber)) {
             return ['code' => 200, 'msg' => '已购买，可直接观看'];
         }
@@ -262,17 +290,31 @@ final class Payment
         $code = 'EP' . date('YmdHis') . random_int(1000, 9999);
         Db::startTrans();
         try {
+            // 上面那次查询在事务外：并发双击的两个请求都会查到"没买过"，然后各扣一次
+            // 积分、各建一张已付单。锁住用户行把「再查一次 → 扣分 → 建单」串行化：
+            // 后到的请求在这里等前一个提交，重新查到刚建的已付订单就退出，不扣第二遍。
+            Db::name('user')->where('user_id', $userId)->lock(true)->find();
+            if ($this->orders->hasPaidEpisode($userId, $vodId, $episodeNumber)) {
+                Db::commit();
+                return ['code' => 200, 'msg' => '已购买，可直接观看'];
+            }
             // 条件扣减：「余额够」与「扣掉」是一条 UPDATE，并发下不会扣成负数
             if ($price > 0 && !$this->users->deductPoints($userId, $price)) {
                 Db::rollback();
                 return ['code' => 400, 'msg' => '积分不足'];
             }
-            $this->orders->create($userId, $code, 0.0, 'points', 'episode', $vodId, [
+            // 第二道闸：库里若加了 (user_id,target_type,target_id,episode_number) 唯一键，
+            // 撞 1062 说明这集已被并发的另一个请求写进订单，回滚掉刚扣的积分按"已购买"返回
+            $orderId = $this->orders->createOnce($userId, $code, 0.0, 'points', 'episode', $vodId, [
                 'pay_type' => $payType,
                 'points' => $price,
                 // 快照进 ulog_data：事后查"这单买的是哪一集"不用猜
                 'nid' => max($episodeNumber, 0),
             ], $episodeNumber);
+            if ($orderId === null) {
+                Db::rollback();
+                return ['code' => 200, 'msg' => '已购买，可直接观看'];
+            }
             Db::table(Installer::prefix() . 'cuican_order')
                 ->where('order_code', $code)
                 ->update(['order_status' => 1, 'order_pay_time' => time()]);
@@ -294,9 +336,10 @@ final class Payment
      */
     public function notify(string $channel, array $params): array
     {
-        $row = $this->channelRow($channel);
+        // 不看 status：运营可以在用户下单后停用通道，已经付掉的这一笔必须还能走完
+        $row = $this->channelRow($channel, true);
         if (!$row) {
-            return ['code' => 404, 'msg' => '通道未开启'];
+            return ['code' => 404, 'msg' => '通道不存在'];
         }
         $config = json_decode((string)($row['config'] ?? '{}'), true);
         if (!is_array($config) || ($config['driver'] ?? '') !== 'epay') {
@@ -353,14 +396,14 @@ final class Payment
     {
         foreach ($candidates as $candidate) {
             $code = trim((string)$candidate);
-            if ($code !== '' && $this->channelRow($code) !== null) {
+            if ($code !== '' && $this->channelRow($code, true) !== null) {
                 return $code;
             }
         }
         if ($orderCode !== '') {
             $order = $this->orders->byCode($orderCode);
             $code = trim((string)($order['order_pay_type'] ?? ''));
-            if ($code !== '' && $this->channelRow($code) !== null) {
+            if ($code !== '' && $this->channelRow($code, true) !== null) {
                 return $code;
             }
         }
@@ -401,18 +444,49 @@ final class Payment
 
     /**
      * 取通道：先查插件自己的表（可覆盖 macCMS 配置），没有则回退到 macCMS 的 Epay 配置。
+     *
+     * `$includeDisabled = true` 给「订单已经落库」的场景用：回调和支付页必须认已停用的
+     * 通道，否则运营在下单后关掉通道，这笔钱付了也永远开不了会员（回调恒 404）。
+     * 下单走默认的 false：停用的通道不该再接新单。
      */
-    private function channelRow(string $code): ?array
+    private function channelRow(string $code, bool $includeDisabled = false): ?array
     {
-        $row = Db::table(Installer::prefix() . 'cuican_pay_channel')
-            ->where('code', $code)
-            ->where('status', 1)
-            ->find();
+        $code = trim($code);
+        if ($code === '') {
+            return null;
+        }
+        $query = Db::table(Installer::prefix() . 'cuican_pay_channel')->where('code', $code);
+        if (!$includeDisabled) {
+            $query->where('status', 1);
+        }
+        $row = $query->find();
         if ($row) {
             return $row;
         }
         $mac = MacPay::epayChannel();
         return ($mac !== null && $mac['code'] === $code) ? $mac : null;
+    }
+
+    /**
+     * 全部启用中的通道，排序与 startup 下发的一致（后台 `sort` 升序）。
+     *
+     * 插件表里一条都没配时复用 macCMS「在线支付配置」里的 Epay——与 `Startup::payload`
+     * 同一口径，否则客户端看到的支付方式和下单能用的通道会对不上。
+     *
+     * @return array<int,array<string,mixed>>
+     */
+    private function enabledChannels(): array
+    {
+        $rows = Db::table(Installer::prefix() . 'cuican_pay_channel')
+            ->where('status', 1)
+            ->order('sort asc, code asc')
+            ->select();
+        $rows = is_array($rows) ? array_values($rows) : [];
+        if ($rows !== []) {
+            return $rows;
+        }
+        $mac = MacPay::epayChannel();
+        return $mac === null ? [] : [$mac];
     }
 
     /**

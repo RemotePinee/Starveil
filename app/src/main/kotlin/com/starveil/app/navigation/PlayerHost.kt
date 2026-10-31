@@ -68,9 +68,10 @@ internal fun sourceSidOf(vod: Vod, sourceIndex: Int): Int =
 /**
  * 先取详情与试看闸门，再建 [PlayerViewModel]。
  *
- * 试看参数必须在建 ViewModel 之前拿到：`PlayerDeps.trySeeAccess/trySeeMinutes`
+ * 试看参数必须在建 ViewModel 之前拿到：`PlayerDeps.trySeeAccess/trySeeSeconds`
  * 是构造期注入的，晚一步就只能在播放中途重建 VM。取不到（网络失败）按 FREE 处理，
- * 由播放页的付费入口兜底，而不是把整个页面卡在加载态。
+ * 由播放页的付费入口兜底，而不是把整个页面卡在加载态。解锁后的地址变化不走这里，
+ * 由 `PlayerViewModel.updateAccess` 重取详情补上（见 `PlayerParseOps`）。
  */
 @Composable
 internal fun rememberGate(container: AppContainer, request: PlayerRequest): GateLoad {

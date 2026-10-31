@@ -29,7 +29,7 @@ internal fun rememberGateRefresh(
             sourceIndex = current.sourceIndex,
         )
         (result as? AppResult.Success)?.value?.let { gate ->
-            viewModel.updateAccess(gate.access, gate.trySeeMinutes)
+            viewModel.updateAccess(gate.access, gate.trySeeSeconds)
         }
     }
 }

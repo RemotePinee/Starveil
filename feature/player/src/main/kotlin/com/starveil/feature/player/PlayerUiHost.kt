@@ -16,14 +16,19 @@ import com.starveil.core.model.Vod
  */
 internal interface PlayerUiHost {
 
-    val vod: Vod
+    /**
+     * 当前影片详情。**可变**：付费墙打开时这一集的地址是空的，解锁后重取的那份才带真实
+     * 地址，起播读的就是这里（见 `PlayerParseOps.reloadDetailAfterUnlock`）。
+     */
+    var vod: Vod
 
     val uiState: PlayerUiState
 
     /** 试看参数可变：买断/开会员回来后权限会变，而 VM 不能重建。 */
     var trySeeAccess: TrySeeAccess
 
-    var trySeeMinutes: Int
+    /** 可看窗口（秒），服务端 `trysee_seconds` 原值；0 表示没有可看窗口。 */
+    var trySeeSeconds: Int
 
     fun edit(transform: (PlayerUiState) -> PlayerUiState)
 
@@ -103,15 +108,22 @@ internal fun PlayerUiHost.selectSource(sourceIndex: Int) {
 }
 
 /**
- * 更新试看权限（购买单集 / 开通会员回来后调用）。
+ * 更新试看权限（购买单集 / 开通会员 / 看完广告回来后调用）。
  *
  * 权限放宽且当前正被拦截时直接重来一遍解析，用户不用手动再点一次。
+ * **解锁那一次（非 FREE → FREE）不在这里重试**：付费墙打开时服务端把这一集的地址
+ * 全部置空，拿旧详情重试只会立刻"全线解析失败"，所以只回报 true，交给
+ * `PlayerViewModel.updateAccess` 先重取详情（`PlayerParseOps.reloadDetailAfterUnlock`）。
+ *
+ * @return true 表示这是一次解锁，调用方需要先把详情里的地址换成新的
  */
-internal fun PlayerUiHost.applyAccess(access: TrySeeAccess, minutes: Int) {
-    if (access == trySeeAccess && minutes == trySeeMinutes) return
+internal fun PlayerUiHost.applyAccess(access: TrySeeAccess, seconds: Int): Boolean {
+    if (access == trySeeAccess && seconds == trySeeSeconds) return false
+    val unlocked = access == TrySeeAccess.FREE && trySeeAccess != TrySeeAccess.FREE
     trySeeAccess = access
-    trySeeMinutes = minutes
-    if (readSession().phase is PlaybackPhase.Blocked) retryPlayback()
+    trySeeSeconds = seconds
+    if (!unlocked && readSession().phase is PlaybackPhase.Blocked) retryPlayback()
+    return unlocked
 }
 
 /** 失败覆盖层的「重试」：清空失败集合重来（用户主动，不是自动重试）。 */

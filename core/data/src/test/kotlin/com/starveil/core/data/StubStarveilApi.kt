@@ -118,7 +118,7 @@ open class StubStarveilApi : StarveilApi {
 
     override suspend fun memberGroups(): ApiEnvelopeDto<MemberGroupCatalogDto> = unused()
 
-    override suspend fun createOrder(price: String): ApiEnvelopeDto<OrderDto> = unused()
+    override suspend fun createOrder(price: String, payment: String): ApiEnvelopeDto<OrderDto> = unused()
 
     override suspend fun payTip(): ApiEnvelopeDto<PayTipDto> = unused()
 

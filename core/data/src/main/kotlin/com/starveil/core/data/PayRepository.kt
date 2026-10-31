@@ -229,7 +229,8 @@ class DefaultPayRepository(
         }
 
     private suspend fun createOrder(price: String, paymentCode: String): AppResult<PayOrder> =
-        apiCall { api.createOrder(price) }
+        // payment 随建单上报：服务端按它记订单通道，支付页地址只是另一处用法
+        apiCall { api.createOrder(price, paymentCode) }
             .requireData()
             .map { order -> order.toDomain(payPageUrl(order.orderCode, paymentCode)) }
 

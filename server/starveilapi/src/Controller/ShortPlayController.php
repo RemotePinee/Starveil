@@ -3,8 +3,8 @@
  * 短剧广告解锁（SSV）。
  *
  * 客户端看完激励视频后来这里换播放地址。校验**优先看服务端自己的解锁记录**
- * （平台 SSV 回调写入），客户端自签只是待废弃的兼容路径（见 [LEGACY_SIGN_SETTING]），
- * 客户端不缓存未解锁集的可播地址。
+ * （平台 SSV 回调写入）；客户端自签是历史兼容路径，**默认关闭**（见 [LEGACY_SIGN_SETTING]），
+ * 现行客户端已没有任何 `shortplay/unlock` 调用。客户端不缓存未解锁集的可播地址。
  * 规则见 `docs/shortplay-ads-plan.md` §5 P4 / §6.4。
  */
 
@@ -14,7 +14,7 @@ namespace Starveil\Api\Controller;
 
 use Starveil\Api\Http\Json;
 use Starveil\Api\Installer;
-use Starveil\Api\Support\CdnUrlSigner;
+use Starveil\Api\Repo\Vods;
 use Starveil\Api\Support\Setting;
 use think\Db;
 
@@ -24,16 +24,26 @@ final class ShortPlayController extends BaseController
     private const SIGN_WINDOW_SECONDS = 600;
 
     /**
-     * 客户端本地验签开关（`shortplay_legacy_client_sign`），默认 1 = 仍放行。
+     * 客户端自签路径的开关（`shortplay_legacy_client_sign`），**默认 0 = 关闭**。
      *
-     * **这条路径待废弃，它不构成任何证明**：`ad_ssv_secret` 必须编进 APK，而客户端又
-     * 自己算签名 —— 反编译拿到密钥就能给任意 `vod_id` / `episode_number` 自签，
-     * 完全不用看广告。默认保持 1 只为不打断已发布客户端的解锁流程；
-     * 平台的 SSV 回调接好、确认 `cuican_shortplay_unlock` 能由服务端写入后，运营把
-     * 这个键设为 0，接口就只认服务端记录。真解在 [`AdSsvController`]：签名与奖励
-     * 只走平台服务器回调，客户端不再参与。
+     * 【风险】开启后客户端可自行签名解锁：`shortplay_sign_secret` 必须编进老版 APK，
+     * 而客户端又自己算签名 —— 反编译拿到密钥就能给任意 `vod_id` / `episode_number` 自签，
+     * **完全不经过 `Playback::trySee`**。密钥一旦泄露，等于整站没有付费墙。
+     *
+     * 所以这里三件事一起做：默认关闭；密钥与广告 SSV 分开（[LEGACY_SIGN_SECRET_SETTING]），
+     * 免得平台侧泄露直接变成全站解锁；注释标明这是**历史兼容路径，仅为老版本保留**。
+     * 现行客户端已不再自签（`app` / `feature` 里没有任何调用），确认线上没有老版本后
+     * 把这条路径连同 [signValid] 一起删掉。
      */
     private const LEGACY_SIGN_SETTING = 'shortplay_legacy_client_sign';
+
+    /**
+     * 自签专用密钥（`shortplay_sign_secret`），与 `ad_ssv_secret` **分开**。
+     *
+     * 为什么不复用广告 SSV 那把：SSV 密钥要交给广告平台，本来就要流经第三方；
+     * 自签再共用同一把，平台侧一旦泄露就直接等于全站解锁。两把各自独立，泄露面才不叠加。
+     */
+    private const LEGACY_SIGN_SECRET_SETTING = 'shortplay_sign_secret';
 
     /**
      * `POST v1.shortplay/unlock`。
@@ -44,8 +54,8 @@ final class ShortPlayController extends BaseController
      * 两条路径，顺序不能换：
      * 1. **服务端记录优先**：平台 SSV 回调（[AdSsvController]）或直投看完
      *    （`AdRewardController`）已经把这一集写进解锁表，那就直接给地址，客户端不签名；
-     * 2. **客户端自签（待废弃）**：见 [LEGACY_SIGN_SETTING]。默认放行只为兼容已发布
-     *    客户端，`shortplay_legacy_client_sign=0` 时这里直接 403。
+     * 2. **客户端自签（历史兼容，默认关闭）**：见 [LEGACY_SIGN_SETTING]。
+     *    `shortplay_legacy_client_sign` 不为 `1` 时这里直接 403。
      */
     public function postUnlock(): void
     {
@@ -69,7 +79,7 @@ final class ShortPlayController extends BaseController
             return;
         }
 
-        if (Setting::get(self::LEGACY_SIGN_SETTING, '1') !== '1') {
+        if (Setting::get(self::LEGACY_SIGN_SETTING, '0') !== '1') {
             Json::fail(403, '请通过广告平台回调解锁');
             return;
         }
@@ -82,10 +92,11 @@ final class ShortPlayController extends BaseController
             return;
         }
 
-        $secret = Setting::get('ad_ssv_secret');
+        // 自签只认专用密钥：与广告 SSV（ad_ssv_secret）分开，平台侧泄露不会变成全站解锁
+        $secret = Setting::get(self::LEGACY_SIGN_SECRET_SETTING);
         if ($secret === '') {
             // 没有密钥就无法验签，宁可拒绝也不放行
-            Json::fail(403, '广告 SSV 密钥未配置');
+            Json::fail(403, '短剧自签密钥未配置');
             return;
         }
         if (!$this->signValid($secret, $transId, $vodId, $episode, $timestamp)) {
@@ -100,8 +111,8 @@ final class ShortPlayController extends BaseController
         }
 
         $first = $this->recordUnlock($userId, $vodId, $episode, $transId);
-        // 走到这里说明客户端参与了签名：留一条日志，运营可以据此确认自签路径的调用量，
-        // 降到 0 之后把 shortplay_legacy_client_sign 设为 0 关掉它。
+        // 走到这里说明客户端参与了自签（这条路默认关闭，只有运营手工开启才会到达）。
+        // 留一条日志：调用量降到 0 就说明线上没有老版本了，可以把整段删掉。
         error_log('[starveil] 短剧解锁走了客户端自签路径（待废弃） uid=' . $userId . ' vod=' . $vodId . ' ep=' . $episode);
         Json::ok(
             ['url' => $url, 'unlocked' => $first],
@@ -110,9 +121,9 @@ final class ShortPlayController extends BaseController
     }
 
     /**
-     * 旧客户端自签验签：`md5(trans_id|vod_id|episode_number|timestamp|ad_ssv_secret)`。
+     * 旧客户端自签验签：`md5(trans_id|vod_id|episode_number|timestamp|shortplay_sign_secret)`。
      *
-     * **待废弃**：密钥在 APK 里，签名只等于"客户端声称自己看过广告"，不构成证明。
+     * **历史兼容路径**：密钥在 APK 里，签名只等于"客户端声称自己看过广告"，不构成证明。
      * 平台 SSV 回调（[AdSsvController]）的原料已经带上 `user_id`，两边口径不同，
      * 不要互相抄。`timestamp` 用秒，窗口 ±600 秒，只能挡旧回调重放。
      */
@@ -186,34 +197,16 @@ final class ShortPlayController extends BaseController
     /**
      * 取第 N 集播放地址。
      *
-     * `vod_play_url` 多源用 `$$$` 分隔，每源内 `#` 分集、`$` 分名称与地址；
-     * 与 `Repo\Vods::playSources()` 口径一致，取第一个源。
+     * 解析与分发都交给 `Repo\Vods::playUrl()`：`vod_play_url` 的三层拆分（`$$$` / `#` / `$`）
+     * 只有那一份实现，CDN 签名与「只在 CDN 自己域名下才改写地址」的判定也在那里。
+     * 这里曾经自己签名，采集来的第三方直链被拼到 `cdn_domain` 上——CDN 上没有那份文件，
+     * 解锁后拿到的地址全部 404，短剧看起来像"解锁了也播不了"。
      *
-     * 两个调用方（[postUnlock] 的两条放行路径）都已解锁过，所以这里按「已解锁」口径
-     * 分发地址：CDN 接通时换成签名地址、exper = 0（不截断）。少这一步，只开 CDN 的站点
-     * 拿到的是源站直链，而源站直链在那种部署下根本连不上——短剧会变成"解锁了也播不了"。
+     * 两个调用方（[postUnlock] 的两条放行路径）都已解锁过，所以按「已解锁」口径取地址：
+     * `Vods::playUrl()` 内部走 free + exper = 0（不截断），CDN 接通时给签名地址。
      */
     private function episodeUrl(int $vodId, int $episode): string
     {
-        $row = Db::name('vod')->where('vod_id', $vodId)->field('vod_id,vod_play_url')->find();
-        if (!$row) {
-            return '';
-        }
-        $sources = array_values(array_filter(
-            explode('$$$', (string)($row['vod_play_url'] ?? '')),
-            static fn (string $item): bool => $item !== ''
-        ));
-        $items = array_values(array_filter(
-            explode('#', (string)($sources[0] ?? '')),
-            static fn (string $item): bool => $item !== ''
-        ));
-        $item = (string)($items[$episode - 1] ?? '');
-        if ($item === '') {
-            return '';
-        }
-        $parts = explode('$', $item, 2);
-        $raw = trim((string)($parts[1] ?? ''));
-
-        return CdnUrlSigner::fromSettings()?->signedUrl($raw, 0) ?? $raw;
+        return (new Vods())->playUrl($vodId, 0, $episode);
     }
 }

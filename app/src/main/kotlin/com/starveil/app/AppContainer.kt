@@ -66,6 +66,7 @@ import com.starveil.core.network.ApiSignature
 import com.starveil.feature.player.DanmuSource
 import com.starveil.feature.player.PlayerDeps
 import com.starveil.feature.player.ProgressSink
+import com.starveil.feature.player.VodDetailLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -94,19 +95,15 @@ class AppContainer(
     signatureSecret: String,
 ) {
     /**
-     * 广告出口：直投实现。`isReady` 读后台下发的广告位配置——没有素材时恒 false，
-     * UI 因此不会出现广告入口，也不会预加载任何东西。
-     *
-     * 字段用 `@Volatile`：启动配置在导航层拉回来后写入，播放页可能在别的线程读。
+     * 广告位配置：直投实现读它判 `isReady`——没有素材时恒 false，UI 不出现广告入口。
+     * `@Volatile`：启动配置在导航层拉回来后写入，播放页可能在别的线程读。
      */
     @Volatile
     private var adPlacements: AdPlacements = AdPlacements.NONE
 
     /**
-     * 广告出口。启动配置就位后由 [updateAdPlacements] 换成平台实现
-     * （TopOn / TradPlus），平台没配齐或未初始化时仍是直投实现。
-     *
-     * 对外只读：播放页用它判 `isReady(REWARD)`，拿到什么实现由这里决定。
+     * 广告出口。启动配置就位后由 [updateAdPlacements] 换成平台实现（TopOn / TradPlus），
+     * 平台没配齐或未初始化时仍是直投实现。
      */
     @Volatile
     var adGateway: AdGateway = LocalAdGateway { adPlacements }
@@ -122,24 +119,15 @@ class AppContainer(
     }
 
     /**
-     * 摘掉 [activity]，但它已经不是当前宿主时什么都不做。
-     *
-     * 必须按实例判断，不能无条件置空：冷启动时 `SplashAdActivity` 先起，
-     * `startActivity` 之后 `MainActivity` 先 `onResume`（挂上自己），开屏页随后才
-     * `onPause`/`onDestroy`。若后者无条件 `hostActivity = null`，首页就会一直以为
-     * 没有前台 Activity，激励/插屏/开屏全部拿不到宿主，只能等下一次切页才恢复。
+     * 摘掉 [activity]，但它已经不是当前宿主时什么都不做：冷启动时开屏页先起，`MainActivity`
+     * 先 `onResume`（挂上自己），开屏页随后才 `onPause`——无条件置空会让首页一直以为没有宿主。
      */
     fun detachActivity(activity: Activity) {
         if (hostActivity !== activity) return
         hostActivity = null
     }
 
-    /**
-     * 启动配置就位后刷新广告位与网关。
-     *
-     * 只在配置真变了时重建：`SideEffect` 每次组合都会调到这里，无条件重建会
-     * 把已经 preload 好的缓存对象换掉，等于每一帧都丢一次广告缓存。
-     */
+    /** 启动配置就位后刷新广告位与网关。只在配置真变了时重建，否则每帧都会丢一次已 preload 的缓存。 */
     fun updateAdPlacements(value: AdPlacements) {
         if (value == adPlacements) return
         adPlacements = value
@@ -175,10 +163,8 @@ class AppContainer(
     fun sessionSnapshot(): Session? = Session.fromCookies(apiClient.sessionCookies())
 
     /**
-     * 登录态流：强制登录锁屏与各页面的"已登录"分支都读它。
-     *
-     * cookie jar 本身不可观察，所以登录成功、登出、冷启动恢复之后都要显式
-     * [refreshSession] 推一次；不推的话界面会停在旧判断上（弹层里登录完，页面还是游客）。
+     * 登录态流。cookie jar 不可观察，所以登录、登出、冷启动恢复之后都要显式 [refreshSession]
+     * 推一次；不推界面会停在旧判断上（弹层里登录完，页面还是游客）。
      */
     private val loginState = MutableStateFlow(sessionSnapshot())
     val session: StateFlow<Session?> = loginState.asStateFlow()
@@ -192,9 +178,7 @@ class AppContainer(
 
     /**
      * 静默设备登录：没有会话、且用户没有主动登出过时调用，返回是否拿到了会话。
-     *
      * 只在后台配置了 `device` 登录方式时才该被调用（见 `StarveilNavHost`）。
-     * 失败不抛异常：设备登录是"顺手把游客变成账号"，失败就当游客继续用。
      */
     suspend fun silentDeviceSignIn(): Boolean = when {
         sessionSnapshot()?.isLoggedIn == true -> true
@@ -231,11 +215,7 @@ class AppContainer(
         }
     }
 
-    /**
-     * 用户主动点"设备一键登录"：先解除登出压制，否则 [silentDeviceSignIn] 会直接返回 false。
-     *
-     * 与静默登录分开命名，是为了让"用户点了按钮"和"冷启动顺手登录"在日志与测试里可区分。
-     */
+    /** 用户主动点"设备一键登录"：先解除登出压制，否则 [silentDeviceSignIn] 直接返回 false。 */
     suspend fun deviceSignInNow(notifyFailure: (String) -> Unit = {}): Boolean {
         deviceCredentials.clearSuppressed()
         deviceLoginFailure = null
@@ -255,11 +235,7 @@ class AppContainer(
         refreshSession()
     }
 
-    /**
-     * 退出登录后的本地收尾。
-     *
-     * 不压住的话，下次冷启动会立刻静默建号/登录，用户会觉得"登出没生效"。
-     */
+    /** 退出登录后的本地收尾。不压住的话，下次冷启动会立刻静默建号，用户会觉得"登出没生效"。 */
     fun onSignedOut() {
         deviceCredentials.suppress()
 
@@ -311,10 +287,8 @@ class AppContainer(
     )
 
     /**
-     * 剧场页数据源：短剧就是 `v1.vod` 里后台指定的那个分类。
-     *
-     * 分类号走启动配置下发（`shortplay_type_id`），后台没配时由仓库回落到内置常量，
-     * 所以换站只需要在后台填一次分类 id，不用改代码。
+     * 剧场页数据源：短剧就是 `v1.vod` 里后台指定的那个分类。分类号走启动配置
+     * （`shortplay_type_id`），后台没配时仓库回落到内置常量，换站只填一次分类 id。
      */
     val shortPlayRepository: ShortPlayRepository = DefaultShortPlayRepository(
         vodRepository = vodRepository,
@@ -376,10 +350,8 @@ class AppContainer(
     )
 
     /**
-     * 冷启动把持久化的会话 cookie 灌回内存 jar。
-     *
-     * 进程重启后 jar 是空的，不灌回去所有需要登录的接口都会返回「请先登录」，
-     * 而本地会话明明还在（页面显示着昵称）。宿主在进入首页前调用一次。
+     * 冷启动把持久化的会话 cookie 灌回内存 jar：进程重启后 jar 是空的，不灌回去所有需要登录的
+     * 接口都回「请先登录」，而本地会话明明还在。宿主在进入首页前调用一次。
      */
     suspend fun restoreSessionCookies() {
         val session = sessionStore.load() ?: return
@@ -411,11 +383,8 @@ class AppContainer(
     }
 
     /**
-     * 组装一个播放页依赖。
-     *
-     * 线路探测走 [ApiClient.probePlayUrl]（旧 的 JSON 模式）：
-     * 另外还有 WebView 嗅探分支，那套开了文件访问与证书放行，不迁。
-     * 试看参数来自 `AccessRepository.checkTrySee`，由调用方（PlayerEntry）先取好传进来。
+     * 组装一个播放页依赖。线路探测走 [ApiClient.probePlayUrl]（旧 JSON 模式），另有 WebView
+     * 嗅探分支开了文件访问与证书放行，不迁。试看参数由调用方（PlayerEntry）先取好传进来。
      */
     fun playerDeps(gate: TrySeeGate? = null): PlayerDeps = PlayerDeps(
         // 线路探测：纯 HTTP 优先，必要时用受限 WebView 兜底（放开的证书与文件访问已全部反转）。
@@ -441,7 +410,9 @@ class AppContainer(
         },
         danmuSource = danmuSource,
         trySeeAccess = gate?.access ?: com.starveil.core.model.TrySeeAccess.FREE,
-        trySeeMinutes = gate?.trySeeMinutes ?: 0,
+        trySeeSeconds = gate?.trySeeSeconds ?: 0,
+        // 解锁后重取详情：付费墙打开时这一集的地址是空的，与首帧取详情同一个入口
+        detailLoader = VodDetailLoader { vodId -> vodRepository.detail(vodId) },
     )
 }
 

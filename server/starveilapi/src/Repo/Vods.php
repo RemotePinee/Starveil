@@ -302,9 +302,16 @@ final class Vods
     /**
      * 详情。
      *
+     * 两层口径，别混：
+     *
+     * - **整剧**：`play_locked` / `trysee_seconds` 只回答"这部片整体要不要解锁"，
+     *   由 [playGate] 判定（会员 / 整剧单），**不带集号**；
+     * - **逐集**：每一集的 `urls[].url` 由 [playSources] 按 nid 单独判，单独买过或
+     *   广告解锁过的那几集照常给地址，其余按整剧口径处理。
+     *
      * `$userId` 决定播放地址怎么下发：未登录传 null。三种形态由 [playGate] 判定：
      *
-     * - `free`：付费墙关，或用户已解锁（会员 / 已购这集 / 看完广告）——给完整地址。
+     * - `free`：付费墙关，或用户已解锁（会员 / 整剧单）——给完整地址。
      *   付费墙关的站点没有"未解锁"这回事，全部按已解锁口径下发：CDN 关 = 原始地址，
      *   CDN 开 = 签名地址且 exper = 0（不截断）。
      * - `cdn_preview`：付费墙开 + CDN 开 + 配了试看分钟。给带签名的 CDN 地址，
@@ -317,7 +324,7 @@ final class Vods
      * 建控制器，而 `\app\common\controller\All` 的构造器不收参数，还要 `request()` 与模板
      * 状态（它的子类 `app\api\controller\Base` 甚至会把"站点关闭"直接 503）。继承等于把
      * 每个控制器的入口契约换掉。这里改用与 App 同一套真相：`Service\Playback`，判定细节
-     * 见 [playGate]。
+     * 见 [playGate] 与 [playSources]。
      */
     public function detail(int $vodId, ?int $userId = null): ?array
     {
@@ -327,8 +334,10 @@ final class Vods
         }
         $dto = $this->toDto($row, $this->typeNameMap([$row]));
         $dto['vod_content'] = (string)($row['vod_content'] ?? '');
-        $gate = $this->playGate($row, $userId);
-        $dto['vod_play_list'] = $this->playSources($row, $gate);
+        // 一个实例走完整个详情：会员判定与订单结果按实例缓存，别在两处各 new 一个
+        $playback = new Playback();
+        $gate = $this->playGate($row, $userId, $playback);
+        $dto['vod_play_list'] = $this->playSources($row, $gate, $userId, $playback);
         // 只有「一个地址都不给」才算锁：CDN 试看态照常下发地址，只是带上 exper 截断
         $dto['play_locked'] = $gate['mode'] === 'none' ? 1 : 0;
         // 老键位恒 0（客户端 `TrySeeDto` 仍在读）；新键位给 CDN 试看秒数，供客户端提示用
@@ -339,7 +348,13 @@ final class Vods
     }
 
     /**
-     * 这行影片这次能拿到什么地址（三态，别用布尔硬塞）。
+     * 整剧闸门：这部片**整体**要不要解锁，供 `play_locked` / `trysee_seconds` 用。
+     *
+     * 只问「会员 / 整剧单」，**绝不带集号**。集号在这条路上曾经是 0，而
+     * `Orders::hasPaidEpisode(..., 0)` 在集号为 0 时不过滤集号：买过任意一集的人被当成
+     * 整剧已购，详情页因此放行、`play_locked = 0`、全剧地址 exper = 0 下发；同一用户走
+     * `v1.vod/playUrl` 却按集被拦。两个接口互相矛盾，等于用一集的价钱送掉整部剧。
+     * 现在集号 0 只走 `Playback::trySeeWholeDrama()` 的整剧口径。
      *
      * | paywall_enabled | cdn_enabled | 未解锁用户 | mode |
      * |---|---|---|---|
@@ -350,12 +365,13 @@ final class Vods
      * 第一行按「完整地址」而不是「原始地址」实现：付费墙关的站点没有未解锁用户，
      * 全部走 free；接了 CDN 就给签名地址（exper = 0），否则运营开了 CDN 也没有流量走 CDN，
      * 源站又只对 CDN 放行时整站会播不了。CDN 关时 free 与原始地址逐字相同。
-     * 已解锁用户（会员 / 已购这集 / 看完广告）恒 free：什么时候都能拿完整地址，
-     * CDN 开时同样走 CDN，只是 exper = 0。
+     * 已解锁用户（会员 / 整剧单）恒 free：什么时候都能拿完整地址，CDN 开时同样走 CDN，
+     * 只是 exper = 0。
      *
-     * 放行判定只用**一套真相**：`Service\Playback::trySee()`。它与
-     * `v1.user/checkVodTrySee` 下发给客户端的是同一个函数——详情页说"能播"，这里就必须放；
-     * 说"要解锁"，这里就不能给地址。关掉付费墙时 `trySee()` 恒返回 status=0，直接放行。
+     * 放行判定只用**一套真相**：`Service\Playback`。它与 `v1.user/checkVodTrySee`
+     * 下发给客户端的是同一个函数——详情页说"整剧要解锁"，这里就必须锁；"某一集买过没有"
+     * 交给 [playSources] 按 nid 判，那里用的是 `Playback::unlockedEpisodes()`，
+     * 与 `v1.vod/playUrl` 的集号判定同源。关掉付费墙时 `trySee()` 恒返回 status=0，直接放行。
      *
      * 试看只在 CDN 这条路上存在：`trySee()` 给出的 `trysee_seconds` 已经是
      * 「CDN 接通且配了试看」的结果，为 0 就退成 `none`——**不再有按集试看**。
@@ -369,9 +385,9 @@ final class Vods
      * @param array<string,mixed> $row
      * @return array{mode:string,trysee_seconds:int}
      */
-    private function playGate(array $row, ?int $userId): array
+    private function playGate(array $row, ?int $userId, Playback $playback): array
     {
-        $gate = (new Playback())->trySee($userId, (int)$row['vod_id']);
+        $gate = $playback->trySeeWholeDrama($userId, (int)$row['vod_id']);
         if ($gate['status'] === 0) {
             return ['mode' => 'free', 'trysee_seconds' => 0];
         }
@@ -604,25 +620,37 @@ final class Vods
      * `player_info` 是全站配置（解析站模板、直链正则、请求头），存在 setting 里，
      * 历史版本是后端按源下发，这里简化为全站一份——要按源区分再加列。
      *
-     * 地址由 `$gate['mode']` 决定（见 [playGate]），逐集交给 [episodeUrl]：
-     * **每集单独签名**，`us` 因而逐集不同（Dir 与 exper 相同，签名仍逐集唯一）。
+     * **地址逐集判**，不按整剧一刀切：单集购买与单集广告解锁只放开那一集，其余照旧
+     * 锁着或只给试看。判定与 `v1.vod/playUrl` 同源（`Playback::unlockedEpisodes()`），
+     * 所以同一个 nid 在详情页与播放接口的结论一致；整剧已放行时不逐集再查。
+     *
+     * 每集单独签名，`us` 因而逐集不同（Dir 与 exper 相同，签名仍逐集唯一）。
      *
      * @param array<string,mixed> $row
      * @param array{mode:string,trysee_seconds:int} $gate
      * @return array<int,array<string,mixed>>
      */
-    private function playSources(array $row, array $gate): array
+    private function playSources(array $row, array $gate, ?int $userId, Playback $playback): array
     {
         $playerInfo = Setting::playerInfo();
         $mode = (string)$gate['mode'];
         $exper = $mode === 'cdn_preview' ? max(0, (int)$gate['trysee_seconds']) : 0;
         $cdn = CdnUrlSigner::fromSettings();
+        $groups = $this->playGroups($row);
+        $unlocked = $this->unlockedNids($groups, $mode, (int)$row['vod_id'], $userId, $playback);
 
         $sources = [];
-        foreach ($this->playGroups($row) as $group) {
+        foreach ($groups as $group) {
             $episodes = [];
             foreach ($group['urls'] as $episode) {
-                $episode['url'] = $this->episodeUrl((string)$episode['url'], $mode, $exper, $cdn);
+                // 单独买过 / 看完广告的那几集按已解锁口径下发（exper = 0），其余沿用整剧口径
+                $episodeMode = ($unlocked[(int)$episode['nid']] ?? false) ? 'free' : $mode;
+                $episode['url'] = $this->episodeUrl(
+                    (string)$episode['url'],
+                    $episodeMode,
+                    $episodeMode === 'free' ? 0 : $exper,
+                    $cdn,
+                );
                 $episodes[] = $episode;
             }
             $sources[] = [
@@ -644,20 +672,56 @@ final class Vods
     }
 
     /**
+     * 这一批集号里哪些对当前用户已解锁（一次批量判定，别每集一条 SQL）。
+     *
+     * 整剧已放行（`free`）、未登录、或没有集号时返回空数组，调用方按整剧口径原样处理——
+     * 少掉这条短路，每个已放行的详情页都会多两条批量查询。
+     *
+     * @param array<int,array{sid:int,from:string,urls:array<int,array{nid:int,name:string,url:string}>}> $groups
+     * @return array<int,bool>
+     */
+    private function unlockedNids(
+        array $groups,
+        string $mode,
+        int $vodId,
+        ?int $userId,
+        Playback $playback
+    ): array {
+        if ($mode === 'free' || $userId === null || $userId <= 0) {
+            return [];
+        }
+        $nids = [];
+        foreach ($groups as $group) {
+            foreach ($group['urls'] as $episode) {
+                $nids[] = (int)$episode['nid'];
+            }
+        }
+
+        return $playback->unlockedEpisodes($userId, $vodId, $nids);
+    }
+
+    /**
      * 单集地址的唯一分发口：详情与 `v1.vod/playUrl` 都走这里，别在两处各写一遍。
      *
      * - `none`：空串。付费墙开着而 CDN 关着时就是这样，未解锁用户拿不到任何地址；
-     * - CDN 未接通：`free` 原样给（付费墙关的站点照旧直连源站），`cdn_preview` 防御性置空
-     *   （闸门保证不会出现，真出现也不该把源站直链漏出去）；
-     * - CDN 接通：一律签名。`free` 用 exper = 0（不截断），`cdn_preview` 用试看秒数。
-     *   签不出来（地址为空 / 不是绝对路径）时，未解锁的宁可不给，已解锁的退回原始地址。
+     * - CDN 未接通，或原始地址不在配置的 CDN 域名下：`free` 原样给（付费墙关的站点
+     *   照旧直连源站），`cdn_preview` 防御性置空——第三方直链既签不了也截不了，
+     *   给出去就是完整地址，等于把试看变成免费；
+     * - CDN 接通且地址就在 CDN 上：签名。`free` 用 exper = 0（不截断），
+     *   `cdn_preview` 用试看秒数。签不出来（地址为空 / 不是绝对路径）时，
+     *   未解锁的宁可不给，已解锁的退回原始地址。
+     *
+     * 为什么必须判域名：CDN 只代理自己域名下的资源。采集来的 `https://采集站/x.m3u8`
+     * 被改写成 `cdn_domain + path` 后，CDN 上根本没有那份文件，签名再正确也是 404，
+     * 整站短剧会变成"全部播不了"。所以只有原始地址本来就在 CDN 上（host 相同）、
+     * 或本来就是相对路径时才改写。
      */
     private function episodeUrl(string $raw, string $mode, int $exper, ?CdnUrlSigner $cdn): string
     {
         if ($mode === 'none') {
             return '';
         }
-        if ($cdn === null) {
+        if ($cdn === null || !$this->onConfiguredCdn($raw)) {
             return $mode === 'cdn_preview' ? '' : $raw;
         }
         $signed = $cdn->signedUrl($raw, $exper);
@@ -666,11 +730,44 @@ final class Vods
     }
 
     /**
+     * 原始地址是否属于后台配置的 CDN 域名。
+     *
+     * 相对路径（`/upload/vod/x.mp4`）没有 host 可比，按"就在本站 CDN / 源站上"处理；
+     * 绝对地址只比 host（大小写不敏感）：scheme 与端口在签名后由 `cdn_domain` 统一给出，
+     * 提前拒绝 `http` 会让同一台机器的两种写法行为不一致。
+     * `cdn_domain` 没配时返回 false——那时 CDN 也未接通，[episodeUrl] 本来就不签名。
+     */
+    private function onConfiguredCdn(string $raw): bool
+    {
+        $host = $this->urlHost($raw);
+        if ($host === '') {
+            return true;
+        }
+        $domain = trim(Setting::get('cdn_domain', ''));
+        if ($domain === '') {
+            return false;
+        }
+        if (preg_match('#^https?://#i', $domain) !== 1) {
+            $domain = 'https://' . $domain;
+        }
+
+        return $host === $this->urlHost($domain);
+    }
+
+    /** URL 的小写 host；相对路径或解析失败返回空串。 */
+    private function urlHost(string $url): string
+    {
+        $host = parse_url(trim($url), PHP_URL_HOST);
+
+        return is_string($host) ? strtolower($host) : '';
+    }
+
+    /**
      * 取某源第 N 集的地址；`$sid <= 0` 表示不限源（取第一个命中的源）。
      *
-     * **只做定位，不做权限判断**：调用方必须先过 [detail] 的闸门
-     * （`VodController::getPlayUrl` 还会按集再判一次）。地址分发交给 [episodeUrl]：
-     * 接通 CDN 的站点这里也必须是签名地址，否则拿到的源站直链在只开 CDN 的站点上放不出来。
+     * **只做定位，不做权限判断**：调用方必须先过闸门（`VodController::getPlayUrl` 按集判，
+     * [detail] 按整剧 + 逐集判）。地址分发交给 [episodeUrl]：在 CDN 上的片源给签名地址
+     * （只开 CDN 的站点上源站直链放不出来），采集来的第三方直链原样给。
      */
     public function playUrl(int $vodId, int $sid, int $nid): string
     {

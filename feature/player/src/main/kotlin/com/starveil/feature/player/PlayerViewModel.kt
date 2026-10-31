@@ -39,7 +39,7 @@ private const val PROGRESS_SAVE_STEP_SEC = 5
  * - 弹幕：[PlayerDanmuDispatcher]。
  */
 class PlayerViewModel(
-    override val vod: Vod,
+    vod: Vod,
     internal val deps: PlayerDeps,
     initialSourceIndex: Int = 0,
     initialEpisodeIndex: Int = 0,
@@ -47,11 +47,17 @@ class PlayerViewModel(
     internal val resumePositionMs: Long = 0L,
 ) : ViewModel(), PlayerUiHost {
 
+    /**
+     * 当前影片详情。**可变**：付费墙打开时服务端把这一集的地址置空，解锁后重取的那份
+     * 才带真实地址（见 [reloadDetailAfterUnlock]），起播读的就是这里。
+     */
+    override var vod: Vod = vod
+
     internal val scope: CoroutineScope = deps.scope ?: viewModelScope
     internal val reporter = ProgressReporter(deps.clock, deps.progressSink, scope)
 
     override var trySeeAccess: TrySeeAccess = deps.trySeeAccess
-    override var trySeeMinutes: Int = deps.trySeeMinutes
+    override var trySeeSeconds: Int = deps.trySeeSeconds
 
     private var session: PlaybackSession = initialSessionOf(vod, initialSourceIndex, initialEpisodeIndex)
     /** 上一次已知播放位置：切页回来时引擎重建，用它把进度条直接放在断点上而不是 0。 */
@@ -189,7 +195,7 @@ class PlayerViewModel(
             port = port(),
             actions = actions(),
             positionMs = positionMs,
-            trySee = TrySeeConfig(access = trySeeAccess, minutes = trySeeMinutes),
+            trySee = TrySeeConfig(access = trySeeAccess, seconds = trySeeSeconds),
         )
         if (!blocked) {
             reporter.onTick(isPlaying, session.sourceIndex, session.episodeIndex)
@@ -264,7 +270,15 @@ class PlayerViewModel(
 
     fun onBuyClick() = emit(PlayerEvent.RequestPurchase)
 
-    fun updateAccess(access: TrySeeAccess, minutes: Int) = applyAccess(access, minutes)
+    /**
+     * 更新试看权限（购买单集 / 开通会员 / 看完广告回来）。
+     *
+     * 解锁那一次要先换地址：付费墙打开时服务端把这一集的 `urls[].url` 全置空，
+     * 直接 retry 只会立刻"全线解析失败"。见 [reloadDetailAfterUnlock]。
+     */
+    fun updateAccess(access: TrySeeAccess, seconds: Int) {
+        if (applyAccess(access, seconds)) reloadDetailAfterUnlock()
+    }
 
     fun pausePlayback() = pausePlaybackImpl()
 

@@ -29,14 +29,14 @@ internal class PlaybackActions(
 )
 
 /**
- * 付费墙参数：权限类型 + 可看分钟数。
+ * 付费墙参数：权限类型 + 可看秒数。
  *
- * [minutes] 已废弃（服务端不再下发有效秒数），只为兼容既有调用保留；
- * 取 0 表示"没有可看窗口"，需解锁的集一开始就拦。
+ * [seconds] 是服务端 `trysee_seconds` 原值：`600` 表示前 10 分钟可看；
+ * 0 表示"没有可看窗口"，需解锁的集一开始就拦。
  */
 internal class TrySeeConfig(
     val access: TrySeeAccess,
-    val minutes: Int,
+    val seconds: Int,
 )
 
 /**
@@ -96,7 +96,7 @@ internal fun applyTrySeeGate(
     trySee: TrySeeConfig,
 ): Boolean {
     val session = port.read()
-    val next = PlaybackMachine.gate(session, positionMs, trySee.access, trySee.minutes)
+    val next = PlaybackMachine.gate(session, positionMs, trySee.access, trySee.seconds)
     if (next === session) return false
     port.write(next)
     actions.triggers.republish()

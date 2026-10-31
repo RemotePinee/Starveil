@@ -16,7 +16,8 @@ fun TrySeeDto.toDomain(): TrySeeGate {
     val access = TrySeeRules.access(status = status, freeCount = freeCount)
     return TrySeeGate(
         access = access,
-        trySeeMinutes = trySeeMinutes,
+        // 服务端唯一有效的时长字段：秒。旧的 `trysee`（分钟）恒 0，不再读
+        trySeeSeconds = trySeeSeconds,
         // 老后端没有能力位：退回"需会员只给会员按钮、需积分只给积分按钮"的旧行为
         canUpgrade = canVip?.let { it == 1 } ?: (access == TrySeeAccess.NEED_VIP),
         canRedeemPoints = canPoints?.let { it == 1 } ?: (access == TrySeeAccess.NEED_PAY),

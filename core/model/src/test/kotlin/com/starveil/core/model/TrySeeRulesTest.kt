@@ -34,33 +34,37 @@ class TrySeeRulesTest {
     @Test
     fun `gate defaults keep the legacy single exit`() {
         // 老后端不下发能力位时，客户端行为必须和改造前一致
-        val vip = TrySeeGate(access = TrySeeAccess.NEED_VIP, trySeeMinutes = 6)
+        val vip = TrySeeGate(access = TrySeeAccess.NEED_VIP, trySeeSeconds = 360)
         assertTrue(vip.canUpgrade)
         assertFalse(vip.canRedeemPoints)
         assertFalse(vip.canWatchAd)
         assertEquals(0, vip.pointsPrice)
 
-        val pay = TrySeeGate(access = TrySeeAccess.NEED_PAY, trySeeMinutes = 6)
+        val pay = TrySeeGate(access = TrySeeAccess.NEED_PAY, trySeeSeconds = 360)
         assertFalse(pay.canUpgrade)
         assertTrue(pay.canRedeemPoints)
     }
 
     @Test
-    fun `position beyond trysee minutes is blocked`() {
-        assertTrue(TrySeeRules.isExceeded(positionMs = 6 * 60_000L + 1, trySeeMinutes = 6))
-        assertFalse(TrySeeRules.isExceeded(positionMs = 6 * 60_000L, trySeeMinutes = 6))
+    fun `ten minute window comes from trysee seconds`() {
+        // 服务端按秒下发（cdn_trysee_minutes × 60）：600 = 前 10 分钟可看
+        assertFalse(TrySeeRules.isExceeded(positionMs = 0, trySeeSeconds = 600))
+        assertFalse(TrySeeRules.isExceeded(positionMs = 599_000, trySeeSeconds = 600))
+        assertFalse(TrySeeRules.isExceeded(positionMs = 600_000, trySeeSeconds = 600))
+        assertTrue(TrySeeRules.isExceeded(positionMs = 600_001, trySeeSeconds = 600))
+    }
+
+    @Test
+    fun `zero seconds means no window at all`() {
+        // CDN 没接通 / 没配试看 / 已解锁，服务端都发 0：需解锁的集一开始就拦
+        assertTrue(TrySeeRules.isExceeded(positionMs = 0, trySeeSeconds = 0))
+        assertTrue(TrySeeRules.isExceeded(positionMs = 10_000_000, trySeeSeconds = -1))
     }
 
     @Test
     fun `sentinel 888 is just a long window after the single switch`() {
-        // 888 不再有"直接拦截"的语义：服务端已改成单一付费墙开关
-        assertFalse(TrySeeRules.isExceeded(positionMs = 0, trySeeMinutes = 888))
-    }
-
-    @Test
-    fun `no trial minutes blocks right away`() {
-        // 服务端不再下发有效秒数（恒 0），需解锁的集一开始就拦
-        assertTrue(TrySeeRules.isExceeded(positionMs = 0, trySeeMinutes = 0))
-        assertTrue(TrySeeRules.isExceeded(positionMs = 10_000_000, trySeeMinutes = -1))
+        // 888 不再有"直接拦截"的语义，现在只是一个普通的 888 秒
+        assertFalse(TrySeeRules.isExceeded(positionMs = 0, trySeeSeconds = 888))
+        assertFalse(TrySeeRules.isExceeded(positionMs = 888_000, trySeeSeconds = 888))
     }
 }

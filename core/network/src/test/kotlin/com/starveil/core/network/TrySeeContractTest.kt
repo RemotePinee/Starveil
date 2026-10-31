@@ -64,17 +64,17 @@ class TrySeeContractTest {
 
         // status=1 本来要 VIP，但 user_video=5 还有免费次数，按 TrySeeRules 放行
         assertEquals(TrySeeAccess.FREE, gate.access)
-        assertEquals(6, gate.trySeeMinutes)
+        assertEquals(360, gate.trySeeSeconds)
     }
 
     @Test
-    fun `blocked fixture keeps the raw trysee value`() = runTest {
+    fun `blocked fixture carries no window`() = runTest {
         server.enqueue(jsonResponse(fixture("v1_user_checkVodTrySee_blocked.json")))
 
         val gate = requireNotNull(api.checkVodTrySee("101", "9").data).toDomain()
 
         assertEquals(TrySeeAccess.NEED_PAY, gate.access)
-        assertEquals(888, gate.trySeeMinutes)
+        assertEquals(0, gate.trySeeSeconds)
     }
 
     @Test

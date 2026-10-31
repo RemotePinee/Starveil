@@ -7,6 +7,8 @@ import com.starveil.core.model.PlayStream
 import com.starveil.core.model.TrySeeAccess
 import kotlinx.coroutines.CoroutineScope
 import com.starveil.core.model.DanmuTarget
+import com.starveil.core.model.Vod
+
 /** 一条待绘制的弹幕：文本 + 轨道 + 绝对时间轴位置（毫秒，与播放位置同一口径）。 */
 data class DanmuItem(
     val text: String,
@@ -116,8 +118,10 @@ object SystemPlayerClock : PlayerClock {
  * ViewModel 依赖。
  *
  * [scope] 为 null 时用 viewModelScope；测试注入 TestScope 以便控制虚拟时间。
- * [trySeeAccess] 来自服务端下发（`TrySeeRules.access`）；[trySeeMinutes] 已废弃
- * （服务端不再下发有效秒数），只为兼容旧调用保留，不参与任何文案。
+ * [trySeeAccess] / [trySeeSeconds] 来自服务端 `checkVodTrySee`（判定见 `TrySeeRules`），
+ * 秒数是唯一口径，0 表示没有可看窗口。
+ * [detailLoader] 是解锁后重取详情的入口（:app 注入 `VodRepository.detail`），
+ * null 表示不重取，装配行为与旧版一致。
  */
 data class PlayerDeps(
     val probe: LineProbe,
@@ -125,9 +129,21 @@ data class PlayerDeps(
     val clock: PlayerClock = SystemPlayerClock,
     val scope: CoroutineScope? = null,
     val trySeeAccess: TrySeeAccess = TrySeeAccess.FREE,
-    val trySeeMinutes: Int = 0,
+    val trySeeSeconds: Int = 0,
     val danmuSource: DanmuSource? = null,
+    val detailLoader: VodDetailLoader? = null,
 )
+
+/**
+ * 重新拉取影片详情。
+ *
+ * 付费墙打开时服务端把这一集的 `urls[].url` 全置空、解锁后才下发真实地址：进入页面时
+ * 取到的那份详情里地址是空的，解锁后拿它重试只会"全线解析失败"。:app 在
+ * `AppContainer.playerDeps` 里注入 `VodRepository.detail`——与首帧取详情是同一个入口。
+ */
+fun interface VodDetailLoader {
+    suspend fun load(vodId: Int): AppResult<Vod>
+}
 
 /**
  * 一次性事件。走 Channel，不放 UiState（AGENTS.md 第 5 节）。

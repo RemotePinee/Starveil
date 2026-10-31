@@ -22,6 +22,13 @@ use think\Db;
 
 final class Playback
 {
+    /**
+     * 本请求内的会员判定缓存：详情页要判两次（整剧闸门 + 逐集解锁），别为同一个人查两遍用户表。
+     *
+     * @var array<int,bool>
+     */
+    private array $vipCache = [];
+
     public function __construct(
         private Users $users = new Users(),
         private Orders $orders = new Orders(),
@@ -29,7 +36,7 @@ final class Playback
     }
 
     /**
-     * 付费墙闸门。
+     * 付费墙闸门（按集）。
      *
      * 只有一个开关：`paywall_enabled`。
      * - 关：一律 status=0，任何登录状态都拿完整播放地址，下面三处出口都不参与判定。
@@ -37,7 +44,7 @@ final class Playback
      *   会员（`member_enabled` + `vip_group_id`，见 [isVip]）、
      *   广告（激励位已配，见 [rewardAdConfigured]）、积分（`episode_points > 0`）。
      *
-     * 已解锁的用户（会员 / 已购这一集 / 看完广告）不管开关怎么设都是 status=0。
+     * 已解锁的用户（会员 / 整剧单 / 已购这一集 / 看完广告）不管开关怎么设都是 status=0。
      *
      * status 只发 0 / 1：客户端 `TrySeeRules.access()` 把 1 当"需 VIP"、2 当"需单集付费"，
      * 而"能走哪几种解锁方式"现在由 `can_vip` / `can_points` / `can_ad` 三个能力位回答，
@@ -52,8 +59,11 @@ final class Playback
      * 三种解锁方式一个都没配时，开关一开就是全站锁死——后台分组说明已写明要至少配一种，
      * 这里不做"没配就自动免费"的隐藏兜底，否则运营会以为关掉会员就等于免费。
      *
-     * `$episodeNumber` 只用来查广告解锁与单集购买：解锁按「用户 + 剧 + 集」生效，
-     * 传 0 表示调用方不知道第几集，此时只按会员口径判定。
+     * `$episodeNumber` 决定按哪个口径判解锁：
+     * - `> 0`：按「用户 + 剧 + 集」判——广告解锁、单集购买，以及会员 / 整剧单；
+     * - `= 0`：调用方不知道第几集，**只按「会员 / 整剧单」判**，绝不查单集订单。
+     *   集号 0 在订单表里是"整剧单"的写法（加列之前的老单），拿它去查"任意已付单"会把
+     *   买过一集的人当成整剧已购——详情页曾经就是这么把整部剧送出去的。
      */
     public function trySee(?int $userId, int $vodId, int $episodeNumber = 0): array
     {
@@ -75,14 +85,13 @@ final class Playback
             return $this->gate(0, $pointsPrice, $memberEnabled, $tryseeSeconds);
         }
 
-        // 广告解锁（平台 SSV 回调 / 直投看完）已经把这一集写进解锁表：先放行，再谈会员与积分。
+        // 广告解锁（平台 SSV 回调 / 直投看完）与单集购买按集生效：先放行，再谈会员与积分。
         // 少了这一步，用户看完广告重查闸门时服务端仍答"需解锁"，这次广告就白看了。
-        if ($episodeNumber > 0 && $this->unlocked($userId, $vodId, $episodeNumber)) {
-            return $this->gate(0, $pointsPrice, $memberEnabled, $tryseeSeconds);
-        }
-
-        if ($this->isVip($userId)
-            || ($userId !== null && $this->orders->hasPaidEpisode($userId, $vodId, $episodeNumber))) {
+        if ($episodeNumber > 0) {
+            if ($this->unlockedEpisodes($userId, $vodId, [$episodeNumber])[$episodeNumber] ?? false) {
+                return $this->gate(0, $pointsPrice, $memberEnabled, $tryseeSeconds);
+            }
+        } elseif ($this->ownsWholeDrama($userId, $vodId)) {
             return $this->gate(0, $pointsPrice, $memberEnabled, $tryseeSeconds);
         }
 
@@ -90,11 +99,22 @@ final class Playback
     }
 
     /**
+     * 整剧口径的闸门：这部片**整体**要不要解锁（详情页的 `play_locked` 用它）。
+     *
+     * 就是集号为 0 的 [trySee]：只认会员与整剧单，不把"买过任意一集"当整剧已购。
+     * 逐集能不能播按 nid 另判（见 [unlockedEpisodes]），两处共用同一套事实。
+     */
+    public function trySeeWholeDrama(?int $userId, int $vodId): array
+    {
+        return $this->trySee($userId, $vodId, 0);
+    }
+
+    /**
      * 闸门结果。`can_vip` / `can_points` / `can_ad` 是给播放器浮层的按钮能力位，
      * 客户端按它们渲染"开通会员 / 积分兑换 / 看广告"三种出口，不再自己猜。
      *
      * `can_ad` 只表示"后台配了激励位"，与客户端的 `AdSlotDto.isEnabled` 同口径：
-     * 总开关开，且位 ID 或素材非空。是否放行不由这里决定——广告解锁走 [unlocked]，
+     * 总开关开，且位 ID 或素材非空。是否放行不由这里决定——广告解锁走 [unlockedEpisodes]，
      * 解锁成功时上游已经用 status=0 调进来，`can_ad` 因而自然为 0。
      *
      * `trysee` 恒 0：键位留着只为客户端仍在读。真正的试看时长走 `trysee_seconds`，
@@ -141,29 +161,84 @@ final class Playback
     }
 
     /**
-     * 该用户这一集有没有广告解锁记录。
+     * 整剧口径：这名用户是否已经拥有整部片（会员 / 整剧单）。
      *
-     * 表里没有过期列：广告解锁与付费买断同口径，按集永久有效。
-     * 不按 `unlock_type` 过滤——将来积分兑换也写这张表时，同样应该放行。
-     *
-     * 查询失败一律当"未解锁"：插件可能还没跑 v2.2.0 迁移（表不存在），
-     * 这时首页与播放页必须照常工作，绝不能因为一个可选能力把整页打成 500。
+     * 详情页的 `play_locked` 与集号为 0 的闸门走这里。**不看单集订单**：单集订单在集号为 0
+     * 时不过滤集号（见 `Repo\Orders::hasPaidEpisode()`），拿它当整剧口径就是"买一集解锁全剧"。
      */
-    private function unlocked(?int $userId, int $vodId, int $episodeNumber): bool
+    public function ownsWholeDrama(?int $userId, int $vodId): bool
     {
-        if ($userId === null || $userId <= 0 || $vodId <= 0 || $episodeNumber <= 0) {
+        if ($userId === null || $userId <= 0 || $vodId <= 0) {
             return false;
         }
+        if ($this->isVip($userId)) {
+            return true;
+        }
+
+        return $this->orders->paidEpisodes($userId, $vodId)['whole'];
+    }
+
+    /**
+     * 逐集解锁状态（批量）：详情页一次判完整部剧。
+     *
+     * 与 [trySee] 的集号分支完全同源——会员 / 整剧单 / 单集购买 / 广告解锁，任一成立即算
+     * 已解锁，所以同一集在详情页与 `v1.vod/playUrl` 的结论必然一致。逐集调 [trySee] 也能得到
+     * 同样结果，但那会为每集重查一次用户与订单（短剧动辄上百集）；这里把「已购集号」与
+     * 「广告解锁集号」各用一条 SQL 取回。
+     *
+     * @param array<int,int> $episodeNumbers
+     * @return array<int,bool> nid => 已解锁
+     */
+    public function unlockedEpisodes(?int $userId, int $vodId, array $episodeNumbers): array
+    {
+        $status = [];
+        foreach ($episodeNumbers as $number) {
+            $status[(int)$number] = false;
+        }
+        if ($status === [] || $userId === null || $userId <= 0 || $vodId <= 0) {
+            return $status;
+        }
+        if ($this->isVip($userId)) {
+            return array_fill_keys(array_keys($status), true);
+        }
+        $paid = $this->orders->paidEpisodes($userId, $vodId);
+        if ($paid['whole']) {
+            return array_fill_keys(array_keys($status), true);
+        }
+        $purchased = array_fill_keys($paid['episodes'], true);
+        $adUnlocked = $this->unlockedEpisodeNumbers($userId, $vodId);
+        foreach (array_keys($status) as $nid) {
+            $status[$nid] = isset($purchased[$nid]) || isset($adUnlocked[$nid]);
+        }
+
+        return $status;
+    }
+
+    /**
+     * 这名用户在这部剧里被广告解锁过的集号（一条 SQL）。
+     *
+     * 与 [unlockedEpisodes] 同口径：表里没有过期列，广告解锁按集永久有效；不按 `unlock_type`
+     * 过滤（将来积分兑换也写这张表时同样应该放行）；查询失败一律当"未解锁"——插件可能还没跑
+     * v2.2.0 迁移（表不存在），这时首页与播放页必须照常工作，不能把一个可选能力打成 500。
+     *
+     * @return array<int,true>
+     */
+    private function unlockedEpisodeNumbers(int $userId, int $vodId): array
+    {
         try {
-            $row = Db::table(Installer::prefix() . 'cuican_shortplay_unlock')
+            $rows = Db::table(Installer::prefix() . 'cuican_shortplay_unlock')
                 ->where('user_id', $userId)
                 ->where('vod_id', $vodId)
-                ->where('episode_number', $episodeNumber)
-                ->find();
-            return (bool)$row;
+                ->column('episode_number');
         } catch (\Throwable $e) {
-            return false;
+            return [];
         }
+        $unlocked = [];
+        foreach ($rows as $number) {
+            $unlocked[(int)$number] = true;
+        }
+
+        return $unlocked;
     }
 
     /**
@@ -173,23 +248,30 @@ final class Playback
      * 这里必须同口径。等值匹配 `in_array()` 会把 `1,4`（VIP4）判成非会员，
      * 于是同一个账号在网页是会员、在 App 不是。
      *
-     * `user_end_time = 0` 表示永久，否则按到期时间。
+     * 到期口径同样对齐核心：`user_end_time > time()` 才算会员，**0 视为已过期**。
+     * 核心 `application/common/model/User.php` 两处会员判定（507、784）都这么写；把 0 当永久
+     * 会让同一账号在网页已降级、在 App 仍免费。插件自己开通会员的路径
+     * （`Repo\Users::extendMembership()`）一定写正数到期时间，不存在"故意用 0 表示永久"的数据。
      */
     public function isVip(?int $userId): bool
     {
-        if ($userId === null) {
+        if ($userId === null || $userId <= 0) {
             return false;
+        }
+        if (array_key_exists($userId, $this->vipCache)) {
+            return $this->vipCache[$userId];
         }
         $user = $this->users->findById($userId);
         if (!$user) {
-            return false;
+            return $this->vipCache[$userId] = false;
         }
         $vipGroupId = Setting::int('vip_group_id', 3);
         // App 只有一种会员：等级 >= vip_group_id 都算，与 macCMS 的 max(group_id) >= 3 对齐。
         $groups = array_map('intval', array_map('trim', explode(',', (string)($user['group_id'] ?? ''))));
         $level = $groups === [] ? 0 : max($groups);
         $endTime = (int)($user['user_end_time'] ?? 0);
-        return $level >= $vipGroupId && ($endTime === 0 || $endTime > time());
+
+        return $this->vipCache[$userId] = $level >= $vipGroupId && $endTime > time();
     }
 
     /** 观看时长累加（秒）。按 2 倍上报，这里只记真实值。 */

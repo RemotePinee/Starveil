@@ -32,24 +32,24 @@ class DefaultAccessRepositoryTest {
 
     @Test
     fun `remaining free count wins over vip status`() = runTest {
-        val api = FakeTrySeeApi(gateResponse = gateOf(status = 1, freeCount = 5, trySeeMinutes = 6))
+        val api = FakeTrySeeApi(gateResponse = gateOf(status = 1, freeCount = 5, trySeeSeconds = 360))
 
         val gate = (DefaultAccessRepository(api)
             .checkTrySee(vodId = 101, episodeNumber = 3, sourceIndex = 0) as AppResult.Success).value
 
         assertEquals(TrySeeAccess.FREE, gate.access)
-        assertEquals(6, gate.trySeeMinutes)
+        assertEquals(360, gate.trySeeSeconds)
     }
 
     @Test
     fun `paid episode without free count needs pay`() = runTest {
-        val api = FakeTrySeeApi(gateResponse = gateOf(status = 2, freeCount = 0, trySeeMinutes = 888))
+        val api = FakeTrySeeApi(gateResponse = gateOf(status = 2, freeCount = 0, trySeeSeconds = 0))
 
         val gate = (DefaultAccessRepository(api)
             .checkTrySee(vodId = 101, episodeNumber = 9, sourceIndex = 1) as AppResult.Success).value
 
         assertEquals(TrySeeAccess.NEED_PAY, gate.access)
-        assertEquals(888, gate.trySeeMinutes)
+        assertEquals(0, gate.trySeeSeconds)
     }
 
     @Test
@@ -77,11 +77,11 @@ class DefaultAccessRepositoryTest {
     private fun gateOf(
         status: Int,
         freeCount: Int,
-        trySeeMinutes: Int = 6,
+        trySeeSeconds: Int = 360,
     ): ApiEnvelopeDto<TrySeeDto> = ApiEnvelopeDto(
         code = 200,
         msg = "success",
-        data = TrySeeDto(trySeeMinutes = trySeeMinutes, status = status, freeCount = freeCount),
+        data = TrySeeDto(trySeeSeconds = trySeeSeconds, status = status, freeCount = freeCount),
     )
 }
 

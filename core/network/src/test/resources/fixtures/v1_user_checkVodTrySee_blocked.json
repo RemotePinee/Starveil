@@ -5,6 +5,7 @@
     "code": 1,
     "msg": "需要购买本集",
     "trysee": 888,
+    "trysee_seconds": 0,
     "status": 2,
     "user_video": 0
   }

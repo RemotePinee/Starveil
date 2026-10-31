@@ -6,16 +6,14 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * 播放状态机。断言对齐 与 。
- */
-class PlaybackMachineTest {
+/** 播放状态机：探测、选路、失败记忆与流类型。试看闸门见 [PlaybackMachineGateTest]。 */
+private fun session(failed: Set<Int> = emptySet(), playerInfo: PlayerInfo? = null) = PlaybackSession(
+    parseTargets = listOf("https://p1.example.com/?url=", "https://p2.example.com/?url="),
+    playerInfo = playerInfo,
+    failedTargets = failed,
+)
 
-    private fun session(failed: Set<Int> = emptySet(), playerInfo: PlayerInfo? = null) = PlaybackSession(
-        parseTargets = listOf("https://p1.example.com/?url=", "https://p2.example.com/?url="),
-        playerInfo = playerInfo,
-        failedTargets = failed,
-    )
+class PlaybackMachineTest {
 
     @Test
     fun `begin parse probes all healthy lines concurrently`() {
@@ -198,6 +196,10 @@ class PlaybackMachineTest {
         assertNull(playing.audioUrl)
         assertEquals("https://cdn.example.com/1.mp4", playing.url)
     }
+}
+
+/** 试看闸门、付费墙拦截与拦截时机：与线路探测解耦，单独成类。 */
+class PlaybackMachineGateTest {
 
     @Test
     fun `trysee gate blocks only after the free window is exceeded`() {
@@ -207,13 +209,13 @@ class PlaybackMachineTest {
             playing,
             positionMs = 1_000,
             access = TrySeeAccess.NEED_VIP,
-            trySeeMinutes = 6,
+            trySeeSeconds = 360,
         )
         val after = PlaybackMachine.gate(
             playing,
             positionMs = 6 * 60_000L + 1,
             access = TrySeeAccess.NEED_VIP,
-            trySeeMinutes = 6,
+            trySeeSeconds = 360,
         )
 
         assertTrue(before.phase is PlaybackPhase.Playing)
@@ -227,7 +229,12 @@ class PlaybackMachineTest {
     fun `free access never blocks`() {
         val playing = PlaybackMachine.onParsed(session(), 0, PlayStream("https://cdn.example.com/1.m3u8"))
 
-        val next = PlaybackMachine.gate(playing, positionMs = 10_000_000, access = TrySeeAccess.FREE, trySeeMinutes = 1)
+        val next = PlaybackMachine.gate(
+            playing,
+            positionMs = 10_000_000,
+            access = TrySeeAccess.FREE,
+            trySeeSeconds = 60,
+        )
 
         assertTrue(next.phase is PlaybackPhase.Playing)
         assertFalse(next.phase is PlaybackPhase.Blocked)
@@ -239,22 +246,22 @@ class PlaybackMachineTest {
 
         assertEquals(
             idle,
-            PlaybackMachine.gate(idle, positionMs = 10_000_000, access = TrySeeAccess.NEED_PAY, trySeeMinutes = 1),
+            PlaybackMachine.gate(idle, positionMs = 10_000_000, access = TrySeeAccess.NEED_PAY, trySeeSeconds = 60),
         )
     }
 
     @Test
     fun `paywall blocks before probing when there is no free window`() {
         // 付费墙打开时服务端把地址全置空：拦截必须发生在探测之前，不能靠空地址失败兜底
-        val next = PlaybackMachine.blockBeforePlay(session(), TrySeeAccess.NEED_VIP, trySeeMinutes = 0)
+        val next = PlaybackMachine.blockBeforePlay(session(), TrySeeAccess.NEED_VIP, trySeeSeconds = 0)
 
         assertEquals(PlaybackPhase.Blocked(access = TrySeeAccess.NEED_VIP, lastUrl = ""), next.phase)
     }
 
     @Test
     fun `paywall leaves free access and open trials on the normal path`() {
-        val free = PlaybackMachine.blockBeforePlay(session(), TrySeeAccess.FREE, trySeeMinutes = 0)
-        val trial = PlaybackMachine.blockBeforePlay(session(), TrySeeAccess.NEED_PAY, trySeeMinutes = 3)
+        val free = PlaybackMachine.blockBeforePlay(session(), TrySeeAccess.FREE, trySeeSeconds = 0)
+        val trial = PlaybackMachine.blockBeforePlay(session(), TrySeeAccess.NEED_PAY, trySeeSeconds = 180)
 
         assertEquals(PlaybackPhase.Idle, free.phase)
         assertEquals(PlaybackPhase.Idle, trial.phase)

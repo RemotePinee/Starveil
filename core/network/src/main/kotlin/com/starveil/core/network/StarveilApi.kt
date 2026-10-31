@@ -52,23 +52,16 @@ import com.starveil.core.network.dto.PointsTaskListDto
  */
 interface StarveilApi : DeviceAuthApi {
 
-    /**
-     * 启动接口。这里拿到皮肤、Tab 布局、广告位、支付方式；
-     * 四个关键字段缺失会被判盗版并杀进程——
-     * 新版只标记契约不完整（[com.starveil.core.model.SkinResolution.contractBroken]），不退出。
-     */
+    /** 启动接口：皮肤、Tab 布局、广告位、支付方式。字段缺失只标记契约不完整，不杀进程。 */
     @GET(ApiPaths.STARTUP)
     suspend fun startup(): ApiEnvelopeDto<StartupDto>
 
     /**
      * 分类/筛选列表。type 为 0 时后端按全部返回。
      *
-     * 片库筛选的四维（`area` / `year` / `lang` / `class`）与排序（`by`）由
-     * `DefaultVodRepository.filter` 统一拼装，页面不直接调本方法。
-     *
-     * 参数名与 macCMS 前台（`mac_param_url()`）逐字同名：`class` 是**扩展分类名**
-     * （不是 id，后端按名字 LIKE 匹配），`by` 是排序字段、方向由后端默认 desc 决定。
-     * 空串 = 该维度不限。
+     * 四维筛选（`area`/`year`/`lang`/`class`）与排序 `by` 由 `DefaultVodRepository.filter`
+     * 统一拼装，页面不直接调本方法。参数名与 macCMS 前台逐字同名：`class` 是**扩展分类名**
+     * （后端按名字 LIKE 匹配，不是 id），`by` 是排序字段（方向后端默认 desc），空串 = 不限。
      */
     @GET(ApiPaths.VOD_LIST)
     suspend fun listVod(
@@ -90,10 +83,7 @@ interface StarveilApi : DeviceAuthApi {
     ): ApiEnvelopeDto<VodDto>
 
     /**
-     * 登录。表单字段名固定 `user_name` / `user_pwd`。
-     *
-     * 返回值只是 `code`/`msg`，真正的登录态是响应 Set-Cookie 下发的 7 个 cookie。
-     *
+     * 登录。表单字段固定 `user_name` / `user_pwd`；真正的登录态是 Set-Cookie 下发的 7 个 cookie。
      * `data` 用 [JsonElement] 接：有的后端版本回提示串，有的回整个 profile 数组，
      * 写死成 String 会在后者上抛"数据解析失败"（用户登录时看到的正是这句）。
      */
@@ -105,11 +95,8 @@ interface StarveilApi : DeviceAuthApi {
     ): ApiEnvelopeDto<JsonElement>
 
     /**
-     * 注册。表单字段固定 `user_name` / `user_pwd` / `user_pwd2` / `uid`。
-     *
-     * `uid` 传渠道号，常用值是 `App.CHANNE`。
-     * `data` 同样用 [JsonElement] 接，避免后端回对象时解析失败。
-     * 响应 `data` 只是提示串，注册成功不等于登录成功——注册后仍要再登录一次。
+     * 注册。表单字段 `user_name` / `user_pwd` / `user_pwd2` / `uid`（渠道号，常用 `App.CHANNE`）。
+     * `data` 同样用 [JsonElement] 接。注册成功不等于登录成功——注册后仍要再登录一次。
      */
     @FormUrlEncoded
     @POST(ApiPaths.REGISTER)
@@ -134,10 +121,7 @@ interface StarveilApi : DeviceAuthApi {
     ): ApiEnvelopeDto<String>
 
     /**
-     * 找回密码。注意是 **GET + query**，不是表单 POST；
-     * 历史代码注释里给出的真实请求串见 。
-     *
-     * `user_pwd` 与 `user_pwd2` 必须都传且相同，`type` 固定 `2`。
+     * 找回密码：**GET + query**，不是表单 POST。`user_pwd` 与 `user_pwd2` 必须都传且相同，`type` 固定 `2`。
      */
     @GET(ApiPaths.FIND_PASS)
     suspend fun resetPassword(
@@ -283,36 +267,30 @@ interface StarveilApi : DeviceAuthApi {
     suspend fun memberGroups(): ApiEnvelopeDto<MemberGroupCatalogDto>
 
     /**
-     * 创建充值订单（路径 `v1.user/order`，常量 `POINT_PURCHASE`）。
-     *
-     * 表单只有一个 `price`，单位元；返回 `order_code` 供拼支付页地址
-     * 同一路径的 GET（`order_code`）是查询订单状态，
-     * 响应体不同，另见 [orderStatus]。
+     * 创建充值订单（`v1.user/order`，常量 `POINT_PURCHASE`）。表单两项：`price` 单位元、
+     * `payment` 是后台配的支付通道 code（`alipay` / `wxpay` …），服务端据此记通道并带进支付页地址。
+     * 空串时服务端回退到唯一启用的通道——老调用方不传不报错，但通道可能和用户选的不是一个。
+     * 返回 `order_code` 供拼支付页地址；同路径的 GET 是查订单状态，另见 [orderStatus]。
      */
     @FormUrlEncoded
     @POST(ApiPaths.ORDER)
-    suspend fun createOrder(@Field("price") price: String): ApiEnvelopeDto<OrderDto>
+    suspend fun createOrder(
+        @Field("price") price: String,
+        @Field("payment") payment: String = "",
+    ): ApiEnvelopeDto<OrderDto>
 
     /**
-     * 查询订单状态（`GET v1.user/order?order_code=`）。
-     *
-     * 与 [createOrder] **同一路径**，只靠 HTTP 方法区分：GET 带 `order_code` 查、
-     * POST 带 `price` 建。响应体也不同（多 `order_status` 等字段），所以是两个 DTO。
-     *
-     * H5 支付页回跳后调一次，`order_status == 0` 即未支付
+     * 查订单状态（`GET v1.user/order?order_code=`）。与 [createOrder] **同路径**，只按 HTTP 方法区分
+     * （GET 带 `order_code` 查、POST 带 `price` 建，响应体不同所以是另一个 DTO）。
+     * H5 支付页回跳后调一次，`order_status == 0` 即未支付。
      */
     @GET(ApiPaths.ORDER)
     suspend fun orderStatus(@Query("order_code") orderCode: String): ApiEnvelopeDto<OrderStatusDto>
 
     /**
-     * 会员兑换/升级（路径 `v1.user/group`，常量 `UPGRADE_GROUP`）。
-     *
-     * 两个表单字段，名字保持后端原样（`long` 是关键字但不是 Kotlin 的）：
-     * - `long` 是**时长档位串**（`day`/`week`/`month`/`year`），旧页把它叫 `price`
-     * 变量名容易误读，实际传的是 `packaged`；
-     * - `group_id` 是会员组 id，传用户当前所在组，
-     * 新版传价目表里被购买的那个组（见 `PayRepository.upgradeMembership`）。
-     *
+     * 会员兑换/升级（`v1.user/group`，常量 `UPGRADE_GROUP`）。两个表单字段保持后端原样：
+     * `long` 是**时长档位串**（`day`/`week`/`month`/`year`；旧页把变量叫 `price`，实际传 `packaged`）、
+     * `group_id` 是会员组 id（新版传价目表里被购买的那个组）。
      * 语义是"用刚充的积分把会员时长延长一档"，必须在订单已支付之后再调。
      */
     @FormUrlEncoded
@@ -339,16 +317,11 @@ interface StarveilApi : DeviceAuthApi {
     suspend fun goldTip(): ApiEnvelopeDto<GoldTipDto>
 
     /**
-     * 金币提现申请（`POST v1.user/goldWithdrawApply`）。
-     *
-     * 表单字段全部来自旧调用：
-     * `num` = 提现金额（元，字符串）、`type` = 收款渠道（1 支付宝 / 2 微信）、
-     * `account` = 收款账号、`realname` = 收款姓名。
-     *
-     * 新增的 `qrcode` 是 [uploadWithdrawQrcode] 返回的站内相对路径。空值必须真的不发
-     * （Retrofit 对 null 的 `@Field` 直接省字段）：传空串等于告诉后端"用户传了个空收款码"。
-     *
-     * 成功只表示"申请已提交"，审核结果不在这个响应里；旧页提交后重新拉一次提现记录。
+     * 金币提现申请（`POST v1.user/goldWithdrawApply`）。`num` 提现金额（元、字符串）、
+     * `type` 收款渠道（1 支付宝 / 2 微信）、`account` 收款账号、`realname` 收款姓名。
+     * `qrcode` 是 [uploadWithdrawQrcode] 返回的站内相对路径：空值必须真的不发
+     * （Retrofit 对 null 的 `@Field` 直接省字段），传空串等于告诉后端"用户传了个空收款码"。
+     * 成功只表示"申请已提交"，审核结果不在这个响应里。
      */
     @FormUrlEncoded
     @POST(ApiPaths.GOLD_WITHDRAW)
@@ -362,12 +335,9 @@ interface StarveilApi : DeviceAuthApi {
 
     /**
      * 提现收款码上传（`POST v1.upload/withdraw`，multipart 字段名 `file`）。
-     *
-     * 响应体与头像上传同构（`{"file": "/upload/withdraw/..."}`），因此复用 [AvatarDto]，
-     * 不为同样的一个字段再建一个类。`data.file` 是站内相对路径，拼域名展示由调用方负责。
-     *
-     * 放在本接口而不是 [ProfileApi]：仓库层只拿得到 [StarveilApi]（`:app` 的 AppContainer
-     * 注入），[ProfileApi] 只有资料仓库持有。
+     * 响应体与头像上传同构（`{"file": "/upload/withdraw/..."}`），因此复用 [AvatarDto]；
+     * `data.file` 是站内相对路径，拼域名展示由调用方负责。
+     * 放在本接口而不是 [ProfileApi]：仓库层只拿得到 [StarveilApi]。
      */
     @Multipart
     @POST(ApiPaths.WITHDRAW_QRCODE)
@@ -385,13 +355,9 @@ interface StarveilApi : DeviceAuthApi {
     suspend fun buyCard(@Field("card_pwd") cardPwd: String): ApiEnvelopeDto<BuyCardResultDto>
 
     /**
-     * 单集购买（路径 `v1.user/buypopedom`，常量 `BUY_VIDEO`）。
-     *
-     * 六个表单字段全部来自旧调用 ：
-     * `type` 恒 `"4"`、`id` 影片 id、`sid` 播放源 id、`nid` 单集 nid、
-     * `mid` 恒 `"1"`（模块 id，与试看接口一致）、`pay_type` 恒 `"1"`。
-     *
-     * 用 [FieldMap] 而不是六个 `@Field`：detekt 参数上限是 5（AGENTS.md 第 2 节），
+     * 单集购买（`v1.user/buypopedom`，常量 `BUY_VIDEO`）。六个表单字段：`type` 恒 `"4"`、
+     * `id` 影片 id、`sid` 播放源 id、`nid` 单集 nid、`mid` 恒 `"1"`（与试看接口一致）、`pay_type` 恒 `"1"`。
+     * 用 [FieldMap] 而不是六个 `@Field`：detekt 参数上限 5（AGENTS.md 第 2 节），
      * 字段名逐个写在 `DefaultPayRepository` 的表单构造里，契约测试逐个断言。
      */
     @FormUrlEncoded
@@ -399,11 +365,9 @@ interface StarveilApi : DeviceAuthApi {
     suspend fun buyEpisode(@FieldMap fields: Map<String, String>): ApiEnvelopeDto<String>
 
     /**
-     * 直投激励视频：领观看会话。
-     *
-     * 表单 `vod_id` / `episode_number`，回 `{token, seconds, video_url}`。
-     * token 只在服务端有意义，客户端原样回传给 [adProgress] 与 [adComplete]。
-     * 服务端会顺带记下"开始时间"，所以拿到 token 之后才真正开始计时。
+     * 直投激励视频：领观看会话。表单 `vod_id` / `episode_number`，回 `{token, seconds, video_url}`。
+     * token 只在服务端有意义，客户端原样回传给 [adProgress] 与 [adComplete]；服务端会顺带记下
+     * "开始时间"，所以拿到 token 之后才真正开始计时。
      */
     @FormUrlEncoded
     @POST(ApiPaths.AD_SESSION)
@@ -413,10 +377,8 @@ interface StarveilApi : DeviceAuthApi {
     ): ApiEnvelopeDto<AdSessionDto>
 
     /**
-     * 直投激励视频：上报播放位置（秒）。
-     *
-     * 播放期间约每 5 秒一次，`position` 是**当前播放位置**而不是增量。
-     * 这一笔不解锁，只让服务端能对着自己的时钟复核进度。
+     * 直投激励视频：上报播放位置（秒）。播放期间约每 5 秒一次，`position` 是**当前播放位置**
+     * 而不是增量；这一笔不解锁，只让服务端对着自己的时钟复核进度。
      */
     @FormUrlEncoded
     @POST(ApiPaths.AD_PROGRESS)
@@ -426,10 +388,8 @@ interface StarveilApi : DeviceAuthApi {
     ): ApiEnvelopeDto<AdProgressDto>
 
     /**
-     * 直投激励视频：完成并请求解锁。
-     *
-     * `data.unlocked == 1` 才算服务端写了本集解锁记录；客户端据此决定是否把
-     * 控制权交回调用方（调用方会重查 `checkVodTrySee`）。
+     * 直投激励视频：完成并请求解锁。`data.unlocked == 1` 才算服务端写了本集解锁记录，
+     * 客户端据此决定是否把控制权交回调用方（调用方会重查 `checkVodTrySee`）。
      */
     @FormUrlEncoded
     @POST(ApiPaths.AD_COMPLETE)

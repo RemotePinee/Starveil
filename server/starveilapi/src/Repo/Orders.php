@@ -55,6 +55,39 @@ final class Orders
         return (int)Db::table($this->table())->insertGetId($row);
     }
 
+    /**
+     * 与 [create] 相同，但撞唯一键时返回 null 而不是把 1062 抛给调用方。
+     *
+     * 给「同一个人对同一目标只该有一条单」的场景用（单集购买）：并发双击的第二条请求
+     * 会在 `(user_id,target_type,target_id,episode_number)` 唯一键上撞 1062，
+     * 而 TP5.0 在 PHP 8 下把 PDO 异常一律抛成 500，用户看到的是"连点报错"。
+     * 唯一键还没加的老库上这里等价于 [create]，幂等由调用方事务里的用户行锁保证。
+     *
+     * 其它数据库错误照旧抛出去：那不是"已经买过"，不能静默吞掉。
+     *
+     * @param array<string,mixed> $payload
+     */
+    public function createOnce(
+        int $userId,
+        string $code,
+        float $price,
+        string $channel,
+        string $targetType,
+        int $targetId,
+        array $payload = [],
+        int $episodeNumber = 0,
+    ): ?int {
+        try {
+            return $this->create($userId, $code, $price, $channel, $targetType, $targetId, $payload, $episodeNumber);
+        } catch (\Throwable $e) {
+            $message = $e->getMessage();
+            if (str_contains($message, '1062') || str_contains($message, 'Duplicate entry')) {
+                return null;
+            }
+            throw $e;
+        }
+    }
+
     public function byCode(string $code): ?array
     {
         if ($code === '') {
@@ -104,6 +137,42 @@ final class Orders
             $query->where('episode_number', 'in', $episodeNumber . ',0');
         }
         return (bool)$query->find();
+    }
+
+    /**
+     * 这部剧中已经买过的集号，一次取回。
+     *
+     * `whole` = 存在「整剧单」：`episode_number = 0` 的老单；加列之前建的库上所有单都是整剧单。
+     * `episodes` = 逐集购买的集号（去重、升序无保证）。
+     *
+     * 详情页要一次判完整部剧，逐集调 [hasPaidEpisode] 就是每集一条 SQL——短剧动辄上百集。
+     * 口径与 [hasPaidEpisode] 逐字一致，只是把 IN 拆成"自己在内存里比"。
+     *
+     * @return array{whole:bool,episodes:array<int,int>}
+     */
+    public function paidEpisodes(int $userId, int $vodId): array
+    {
+        $query = Db::table($this->table())
+            ->where('user_id', $userId)
+            ->where('target_type', 'episode')
+            ->where('target_id', $vodId)
+            ->where('order_status', 1);
+        if (!$this->hasEpisodeColumn()) {
+            // 没有集号列：加列之前的老库，一单就是整部（与 hasPaidEpisode 的老口径一致）
+            return ['whole' => (bool)$query->find(), 'episodes' => []];
+        }
+        $numbers = array_map('intval', (array)$query->column('episode_number'));
+        $episodes = [];
+        $whole = false;
+        foreach ($numbers as $number) {
+            if ($number <= 0) {
+                $whole = true;
+                continue;
+            }
+            $episodes[$number] = $number;
+        }
+
+        return ['whole' => $whole, 'episodes' => array_values($episodes)];
     }
 
     private function hasEpisodeColumn(): bool

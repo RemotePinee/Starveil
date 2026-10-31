@@ -102,17 +102,18 @@ object PlaybackMachine {
      * 所以没有可看窗口时连探测都不做，直接落 [PlaybackPhase.Blocked]。
      *
      * 口径与播放中的 [gate] 一致，只是位置按 0 算：[TrySeeRules.isExceeded] 为真即拦
-     * （服务端 `trysee` 已废弃，`trySeeMinutes <= 0` 恒成立，需解锁的集一开始就拦）。
-     * 解锁后 `PlayerUiHost.applyAccess` → `retryPlayback` 会重走起播，那时 access 已是 FREE。
+     * （`trySeeSeconds` 是服务端 `trysee_seconds`，没配试看时为 0，需解锁的集一开始就拦）。
+     * 解锁后 `retryPlayback` 会重走起播，那时 access 已是 FREE；地址在解锁前是空的，
+     * 所以解锁那一次要先重取详情，见 `PlayerParseOps.reloadDetailAfterUnlock`。
      *
      * [PlaybackPhase.Blocked.lastUrl] 记空串：这一集没拿到过地址，没有可续播的东西。
      */
     fun blockBeforePlay(
         session: PlaybackSession,
         access: TrySeeAccess,
-        trySeeMinutes: Int,
+        trySeeSeconds: Int,
     ): PlaybackSession {
-        val blocked = access != TrySeeAccess.FREE && TrySeeRules.isExceeded(0L, trySeeMinutes)
+        val blocked = access != TrySeeAccess.FREE && TrySeeRules.isExceeded(0L, trySeeSeconds)
         if (!blocked) return session
         return session.copy(
             phase = PlaybackPhase.Blocked(access = access, lastUrl = ""),
@@ -187,11 +188,11 @@ object PlaybackMachine {
         session: PlaybackSession,
         positionMs: Long,
         access: TrySeeAccess,
-        trySeeMinutes: Int,
+        trySeeSeconds: Int,
     ): PlaybackSession {
         val playing = session.phase as? PlaybackPhase.Playing ?: return session
         val blocked = access != TrySeeAccess.FREE &&
-            TrySeeRules.isExceeded(positionMs, trySeeMinutes)
+            TrySeeRules.isExceeded(positionMs, trySeeSeconds)
         return if (blocked) {
             session.copy(phase = PlaybackPhase.Blocked(access = access, lastUrl = playing.url))
         } else {

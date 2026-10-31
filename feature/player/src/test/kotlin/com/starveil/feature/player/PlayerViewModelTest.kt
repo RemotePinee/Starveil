@@ -1,6 +1,7 @@
 package com.starveil.feature.player
 
 import app.cash.turbine.test
+import com.starveil.core.common.AppResult
 import com.starveil.core.model.PlaybackMachine
 import com.starveil.core.model.PlaybackPhase
 import com.starveil.core.model.ProgressRules
@@ -182,7 +183,7 @@ class PlayerViewModelTest {
     @Test
     fun `try see gate blocks playback and emits upgrade event`() = runTest {
         val probe = ScriptedProbe(mapOf(0 to listOf("https://cdn.example.com/d.m3u8")))
-        val viewModel = playerViewModel(probe, access = TrySeeAccess.NEED_VIP, trySeeMinutes = 3)
+        val viewModel = playerViewModel(probe, access = TrySeeAccess.NEED_VIP, trySeeSeconds = 180)
 
         viewModel.start()
         advanceUntilIdle()
@@ -202,7 +203,7 @@ class PlayerViewModelTest {
         // 客户端必须在探测前就拦，否则播放器只会报"解析失败"
         val url = "https://cdn.example.com/a.m3u8"
         val probe = ScriptedProbe(mapOf(0 to listOf(url, url)))
-        val viewModel = playerViewModel(probe, access = TrySeeAccess.NEED_VIP, trySeeMinutes = 0)
+        val viewModel = playerViewModel(probe, access = TrySeeAccess.NEED_VIP, trySeeSeconds = 0)
 
         viewModel.start()
         advanceUntilIdle()
@@ -219,6 +220,38 @@ class PlayerViewModelTest {
         // 解锁后的自动恢复走 applyAccess → retryPlayback → start 这条既有链路，
         // 它依赖真实调度器与网络回包，在单测里只能验证"拦截发生在探测之前"这一段；
         // 恢复播放请在真机上用「试看卡住 → 积分兑换」验证，这里不写会骗人的断言。
+    }
+
+    @Test
+    fun `unlock reloads detail once and plays the fresh address`() = runTest {
+        // 付费墙打开时后端把 urls[].url 全置空：解锁后必须先重取详情再重试，
+        // 否则重试拿到的还是空地址，用户看到的是"全线解析失败"
+        val fresh = "https://cdn.example.com/unlocked.m3u8"
+        val probe = ScriptedProbe(mapOf(0 to listOf(fresh)))
+        val loads = mutableListOf<Int>()
+        val viewModel = playerViewModel(
+            probe,
+            access = TrySeeAccess.NEED_VIP,
+            detailLoader = VodDetailLoader { vodId ->
+                loads += vodId
+                AppResult.Success(sampleVod(firstEpisodeUrl = fresh))
+            },
+        )
+
+        viewModel.start()
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.phase is PlaybackPhase.Blocked)
+        // 被拦下时一次都不重取：地址是空的，重取也只会失败
+        assertTrue(loads.isEmpty())
+
+        viewModel.updateAccess(TrySeeAccess.FREE, 0)
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.phase is PlaybackPhase.Playing)
+
+        // 权限没再变：前台重查 / 重组重复推同一次 FREE 时不能再重取详情
+        viewModel.updateAccess(TrySeeAccess.FREE, 0)
+        advanceUntilIdle()
+        assertEquals(listOf(SAMPLE_VOD_ID), loads)
     }
 
     @Test
@@ -248,9 +281,10 @@ private fun TestScope.playerViewModel(
     sink: ProgressSink = RecordingProgressSink(),
     clock: PlayerClock = FakeClock(),
     access: TrySeeAccess = TrySeeAccess.FREE,
-    trySeeMinutes: Int = 0,
+    trySeeSeconds: Int = 0,
     directLinkPatterns: List<String> = emptyList(),
     firstEpisodeUrl: String = "vod-1-1",
+    detailLoader: VodDetailLoader? = null,
 ): PlayerViewModel = PlayerViewModel(
     vod = sampleVod(directLinkPatterns = directLinkPatterns, firstEpisodeUrl = firstEpisodeUrl),
     deps = PlayerDeps(
@@ -259,9 +293,13 @@ private fun TestScope.playerViewModel(
         clock = clock,
         scope = this,
         trySeeAccess = access,
-        trySeeMinutes = trySeeMinutes,
+        trySeeSeconds = trySeeSeconds,
+        detailLoader = detailLoader,
     ),
 )
+
+/** `sampleVod` 的影片 id：校验解锁后重取的是当前这部片。 */
+private const val SAMPLE_VOD_ID = 7
 
 /** 倍速档位是弹层与循环切换共用的唯一来源，档位表漂移会让选中项高亮错位。 */
 class PlayerSpeedsTest {

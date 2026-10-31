@@ -597,6 +597,11 @@ return " . var_export(array_values($lines), true) . ";
             'ad_banner_url' => '',
             'ad_banner_title' => '',
             'ad_ssv_secret' => '',
+            // 短剧客户端自签（历史兼容路径）：默认关闭。开了等于把解锁交给客户端——
+            // 密钥必须编进 APK，反编译即得，能对任意剧集自签，服务端按集判定形同虚设。
+            'shortplay_legacy_client_sign' => '0',
+            // 自签专用密钥，与广告 SSV（ad_ssv_secret）分开：那把要交给广告平台。
+            'shortplay_sign_secret' => '',
         ];
         foreach ($defaults as $key => $value) {
             // 已存在的配置不覆盖：重复安装不能把运营改过的值重置回默认
