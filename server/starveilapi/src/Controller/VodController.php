@@ -88,10 +88,14 @@ final class VodController extends BaseController
             return;
         }
 
-        // 影片级闸门之外再按集判一次：广告解锁是「用户 + 剧 + 集」粒度，
-        // 只看影片级会漏掉"这一集刚看完广告"与"只买了别的集"两种情况。
+        // 能不能下发这一集只看**按集闸门**：它内部已经把影片级条件全算过一遍
+        //（付费墙关闭 / 会员 / 会员体系未配 / 本集已购买 / 本集看完广告），只会比影片级更严。
+        //
+        // 不能再拿 `$detail['play_locked']` 参与判定：付费墙开 + CDN 开时它是 0
+        //（试看态照常下发地址），把它当"已解锁"就会让试看态从这里换到 exper=0 的完整地址，
+        // 付费墙等于被这一个接口绕过去。
         $episode = (new Playback())->trySee($userId > 0 ? $userId : null, $vodId, $nid);
-        if ((int)$detail['play_locked'] !== 0 && (int)$episode['status'] !== 0) {
+        if ((int)$episode['status'] !== 0) {
             if ($userId <= 0) {
                 Json::fail(401, '请先登录', 401);
             } else {

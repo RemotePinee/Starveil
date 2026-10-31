@@ -20,6 +20,7 @@ macCMS V10 插件。**不改 macCMS 核心文件**，所有表带 `cuican_` 前�
 | `app_ui_tab_fun` | 0 | 第二个 tab：1 专题 / 其它直播 |
 | `vip_group_id` | 3 | 会员组 id（对应 `mac_group`） |
 | `paywall_enabled` | 0 | 付费墙：0 = 全部免费；1 = 未解锁用户拿不到播放地址（按会员 / 看广告 / 积分兑换解锁，三种同时生效） |
+| `cdn_enabled` | 0 | CDN 播放与试看开关，见下文「CDN 播放与试看」 |
 | `episode_points` | 0 | 单集购买所需积分 |
 | `register_require_sms` | 1 | 注册是否必须验证码 |
 | `sms_http_url` | 空 | 短信网关模板，支持 `{phone}` `{code}` `{purpose}` 占位 |
@@ -42,6 +43,45 @@ macCMS V10 插件。**不改 macCMS 核心文件**，所有表带 `cuican_` 前�
 ```json
 {"driver":"epay","url":"https://pay.example.com/submit.php","pid":"1000","key":"商户密钥","type":"alipay","notify_url":"https://站点/icciu_api.php/v1.Payment/notify","return_url":"https://站点/"}
 ```
+
+### CDN 播放与试看（v2.6.3）
+
+`paywall_enabled` 与 `cdn_enabled` 组合出三种下发形态，**试看只存在于 CDN 这条路上**：
+
+| paywall_enabled | cdn_enabled | 未解锁用户拿到什么 |
+|---|---|---|
+| 关 | 任意 | 全部剧集的**完整地址**（免费）：未接 CDN 是原始地址，接了 CDN 是签名地址且 `exper = 0` |
+| 开 | **关** | **什么地址都不给**：`urls[].url` 置空、`play_locked = 1`，只能靠会员 / 看广告 / 积分兑换解锁 |
+| 开 | **开** | **带签名的 CDN 地址**，`exper = cdn_trysee_minutes × 60`（0 = 不截断，等价于不给地址） |
+
+已解锁用户（会员 / 已购这集 / 看完广告）任何时候都给完整地址；CDN 开时也走 CDN，但 `exper = 0`。
+
+配置项在后台「运营设置 → 付费墙与积分」：
+
+| 键 | 默认 | 说明 |
+|---|---|---|
+| `cdn_enabled` | 0 | 0 = 不签名，未解锁用户也就没有试看；1 = 用下面的域名与密钥签发地址 |
+| `cdn_domain` | 空 | 例 `https://v.example.com`，不带尾斜杠。原始地址的 path 拼在它后面再签名；没写协议时按 https 补 |
+| `cdn_sign_key` | 空 | CDN 后台「Key 防盗链」里的密钥（SENSITIVE，后台不回显）。留空 = 没接 CDN |
+| `cdn_trysee_minutes` | 0 | 试看分钟数，**仅 CDN 接通时生效**；0 = 不给试看。已解锁用户不受影响 |
+
+**片源必须已经上传到 CDN，且路径与源站 path 完全一致**——源站是 `/vod/2026/1.m3u8`，
+CDN 上也得是 `/vod/2026/1.m3u8`，否则签名再正确也是 404/403。
+
+签名按腾讯云 Key 防盗链 TypeD（实现见 `src/Support/CdnUrlSigner.php`）：
+
+```text
+sign = md5(KEY + Dir + t + exper + rlimit + us)
+```
+
+- `KEY` = `cdn_sign_key`；`Dir` = path 去掉文件名那一段（`/vod/2026/`，注意不含文件名）；
+- `t` = 过期时间戳的十六进制小写，有效期 6 小时（`CdnUrlSigner::TOKEN_TTL`）；
+- `exper` = 试看秒数（0 = 不截断）、`rlimit` = 0（不限次数）、`us` = 每集随机的串；
+- 下发参数顺序固定 `t, exper, rlimit, us, sign`，顺序变了就播不了；地址原有的 query 保留在签名参数之前。
+
+HLS 片源额外注意：签名只挂在 m3u8 上，`ts` 分片是相对地址、自身不带签名参数。
+要么在 CDN 侧开能**把鉴权参数透传到分片**的配置（m3u8 改写一类），要么只对整片文件开防盗链，
+否则分片会被拦。
 
 ## 2. 已加固的常见缺陷
 
@@ -97,7 +137,7 @@ macCMS V10 插件。**不改 macCMS 核心文件**，所有表带 `cuican_` 前�
 | `GET v1.user/favs` · `POST/DELETE v1.user/ulog` | 收藏列表与增删 |
 | `POST v1.user/viewSeconds` | 观看时长上报 |
 | `GET v1.user/videoProgressList` | 首页「继续观看」最近 10 条 |
-| `GET v1.user/checkVodTrySee` | 付费墙闸门（`status` 只发 0/1，`trysee` 恒 0 已废弃） |
+| `GET v1.user/checkVodTrySee` | 付费墙闸门（`status` 只发 0/1，`trysee` 恒 0 已废弃；v2.6.3 起另带 `trysee_seconds`：CDN 接通且配了试看时 = 分钟 × 60，否则 0，供客户端提示用） |
 | `GET/POST v1.user/sign` · `v1.user/task` | 签到 / 任务 |
 | `GET v1.user/groups` · `POST v1.user/group` | 价目表 / 会员兑换 |
 | `GET/POST v1.user/order` | 下单 / 查单，同一路径两种语义 |

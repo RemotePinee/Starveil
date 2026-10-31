@@ -3,8 +3,9 @@
  * 付费墙与观看数据。
  *
  * 闸门只有一个开关 `paywall_enabled`。下发给客户端的字段与旧接口
- * `v1.user/checkVodTrySee` 保持一致：`status` / `trysee` / `user_video`，
- * 其中 `trysee` 已废弃（恒 0），保留键位只是因为客户端还在读它。
+ * `v1.user/checkVodTrySee` 保持一致：`status` / `trysee` / `user_video`。
+ * 其中 `trysee` 已废弃（恒 0），保留键位只是因为客户端还在读它；试看改由
+ * `trysee_seconds` 表达，且**只在 CDN 接通时**才可能非 0（见 [trySee]）。
  */
 
 declare(strict_types=1);
@@ -15,6 +16,7 @@ use Starveil\Api\Installer;
 use Starveil\Api\Repo\Orders;
 use Starveil\Api\Repo\Users;
 use Starveil\Api\Support\AdReward;
+use Starveil\Api\Support\CdnUrlSigner;
 use Starveil\Api\Support\Setting;
 use think\Db;
 
@@ -41,8 +43,10 @@ final class Playback
      * 而"能走哪几种解锁方式"现在由 `can_vip` / `can_points` / `can_ad` 三个能力位回答，
      * 客户端按位画按钮，不靠 status 区分。2 因此不再下发。
      *
-     * 试看时长与试看集数已下线：`trysee` 恒 0（客户端 `TrySeeDto.trySeeMinutes` 仍在读这个键，
-     * 删键会让它走解析默认值之外的路径，故保留键、值恒 0）。
+     * 试看**只在 CDN 这条路上存在**：`trysee` 仍恒 0（客户端 `TrySeeDto.trySeeMinutes`
+     * 还在读这个键，删键会让它走解析默认值之外的路径），真正的试看秒数放进新键
+     * `trysee_seconds`（= `cdn_trysee_minutes × 60`；CDN 关、没配试看、或用户已解锁时为 0）。
+     * 没有 CDN 就没有试看——不按集试看，也不因为填了分钟数就放行。
      *
      * 会员体系关闭只是停止售卖，**历史会员仍按到期时间继续享受权益**：先走 isVip 分支。
      * 三种解锁方式一个都没配时，开关一开就是全站锁死——后台分组说明已写明要至少配一种，
@@ -57,29 +61,32 @@ final class Playback
         $memberEnabled = Setting::int('member_enabled', 1) === 1;
         $pointsPrice = max(Setting::int('episode_points', 0), 0);
 
+        // 试看只在 CDN 接通时才有值：CDN 关着时 minutes 不参与任何判定，和"没配"等价
+        $tryseeSeconds = CdnUrlSigner::fromSettings()?->previewSeconds() ?? 0;
+
         if (!$paywall) {
-            return $this->gate(0, $pointsPrice, $memberEnabled);
+            return $this->gate(0, $pointsPrice, $memberEnabled, $tryseeSeconds);
         }
 
         // 会员体系关闭只是"停止售卖"，不是取消会员：在期会员由下面的 isVip() 照常放行。
         // 但如果既没配积分也没配广告位，非会员就一个解锁入口都没有——锁死没有意义，
         // 按免费处理。对应旧 trysee_status 时代那条"会员关闭 + 需会员 → 转免费/积分"。
         if (!$memberEnabled && $pointsPrice === 0 && !$this->rewardAdConfigured()) {
-            return $this->gate(0, $pointsPrice, $memberEnabled);
+            return $this->gate(0, $pointsPrice, $memberEnabled, $tryseeSeconds);
         }
 
         // 广告解锁（平台 SSV 回调 / 直投看完）已经把这一集写进解锁表：先放行，再谈会员与积分。
         // 少了这一步，用户看完广告重查闸门时服务端仍答"需解锁"，这次广告就白看了。
         if ($episodeNumber > 0 && $this->unlocked($userId, $vodId, $episodeNumber)) {
-            return $this->gate(0, $pointsPrice, $memberEnabled);
+            return $this->gate(0, $pointsPrice, $memberEnabled, $tryseeSeconds);
         }
 
         if ($this->isVip($userId)
             || ($userId !== null && $this->orders->hasPaidEpisode($userId, $vodId, $episodeNumber))) {
-            return $this->gate(0, $pointsPrice, $memberEnabled);
+            return $this->gate(0, $pointsPrice, $memberEnabled, $tryseeSeconds);
         }
 
-        return $this->gate(1, $pointsPrice, $memberEnabled);
+        return $this->gate(1, $pointsPrice, $memberEnabled, $tryseeSeconds);
     }
 
     /**
@@ -90,16 +97,19 @@ final class Playback
      * 总开关开，且位 ID 或素材非空。是否放行不由这里决定——广告解锁走 [unlocked]，
      * 解锁成功时上游已经用 status=0 调进来，`can_ad` 因而自然为 0。
      *
-     * `trysee` 恒 0：试看时长已下线，键位留着只为客户端仍在读。
+     * `trysee` 恒 0：键位留着只为客户端仍在读。真正的试看时长走 `trysee_seconds`，
+     * 而且只在 `status != 0` 时下发：已解锁用户本来就能看完整剧集，给他一个非 0 的
+     * "试看秒数"只会让客户端对着会员提示"试看 X 分钟"。
      *
-     * @return array{status:int,trysee:int,user_video:int,member_enabled:int,points_price:int,can_vip:int,can_points:int,can_ad:int}
+     * @return array{status:int,trysee:int,trysee_seconds:int,user_video:int,member_enabled:int,points_price:int,can_vip:int,can_points:int,can_ad:int}
      */
-    private function gate(int $status, int $pointsPrice, bool $memberEnabled): array
+    private function gate(int $status, int $pointsPrice, bool $memberEnabled, int $tryseeSeconds): array
     {
         $blocked = $status !== 0;
         return [
             'status' => $status,
             'trysee' => 0,
+            'trysee_seconds' => $blocked ? max(0, $tryseeSeconds) : 0,
             'user_video' => 0,
             'member_enabled' => $memberEnabled ? 1 : 0,
             'points_price' => $pointsPrice,

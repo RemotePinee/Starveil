@@ -14,6 +14,7 @@ namespace Starveil\Api\Controller;
 
 use Starveil\Api\Http\Json;
 use Starveil\Api\Installer;
+use Starveil\Api\Support\CdnUrlSigner;
 use Starveil\Api\Support\Setting;
 use think\Db;
 
@@ -187,6 +188,10 @@ final class ShortPlayController extends BaseController
      *
      * `vod_play_url` 多源用 `$$$` 分隔，每源内 `#` 分集、`$` 分名称与地址；
      * 与 `Repo\Vods::playSources()` 口径一致，取第一个源。
+     *
+     * 两个调用方（[postUnlock] 的两条放行路径）都已解锁过，所以这里按「已解锁」口径
+     * 分发地址：CDN 接通时换成签名地址、exper = 0（不截断）。少这一步，只开 CDN 的站点
+     * 拿到的是源站直链，而源站直链在那种部署下根本连不上——短剧会变成"解锁了也播不了"。
      */
     private function episodeUrl(int $vodId, int $episode): string
     {
@@ -207,6 +212,8 @@ final class ShortPlayController extends BaseController
             return '';
         }
         $parts = explode('$', $item, 2);
-        return trim((string)($parts[1] ?? ''));
+        $raw = trim((string)($parts[1] ?? ''));
+
+        return CdnUrlSigner::fromSettings()?->signedUrl($raw, 0) ?? $raw;
     }
 }
