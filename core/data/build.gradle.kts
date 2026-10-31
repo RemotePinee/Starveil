@@ -35,7 +35,6 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(libs.junit)
-    testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)
     // HttpException 需要构造真实的 okhttp ResponseBody
     testImplementation(libs.okhttp)

@@ -16,8 +16,8 @@
 
 | 部分 | 技术栈 | 位置 | 规模 |
 |---|---|---|---|
-| Android 客户端 | Kotlin / Compose / Media3 / Retrofit | `app/` `core/` `feature/` | 约 14,700 行 Kotlin，15 个 Gradle 模块 |
-| 苹果 CMS 插件 | PHP 8.1+ / ThinkPHP 5.0.24 | `server/starveilapi/` | 约 11,200 行 PHP，26 张 `cuican_*` 表 |
+| Android 客户端 | Kotlin / Compose / Media3 / Retrofit | `app/` `core/` `feature/` | 约 27,000 行 Kotlin，17 个 Gradle 模块 |
+| 苹果 CMS 插件 | PHP 8.1+ / ThinkPHP 5.0.24 | `server/starveilapi/` | 约 13,500 行 PHP，29 张 `cuican_*` 表 |
 
 插件不改苹果 CMS 核心文件，全部数据表独立前缀，随核心升级不受影响。客户端按 `{code,msg,data}` 响应壳调用 `/icciu_api.php/v1.*` 接口。
 

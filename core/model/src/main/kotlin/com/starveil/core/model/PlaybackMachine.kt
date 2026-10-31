@@ -13,7 +13,7 @@ package com.starveil.core.model
  * 语义对齐点：
  * - 历史版本是**并发**给所有未失败线路各起一个探测，
  * 先回先赢，不是串行轮询。所以 [PlaybackPhase.Parsing] 带的是"待回集合"。
- * - 每条线路 8 秒超时，超时按失败处理。
+ * - 每条线路 15 秒超时，超时按失败处理。
  * - 全部线路都失败才进 [PlaybackPhase.Failed]。
  */
 object PlaybackMachine {
@@ -111,7 +111,7 @@ object PlaybackMachine {
     }
 
     /**
-     * 8 秒到点：把在途线路全部记为失败。
+     * 15 秒到点：把在途线路全部记为失败。
      *
      * 历史版本超时回调成"成功但空地址"，再由上层换线；这里显式归为失败。
      */

@@ -74,7 +74,7 @@
   实现见 `app/src/main/kotlin/com/starveil/app/probe/RestrictedWebProbe.kt`：
   - 解析页必须是 https 且非内网/本机地址（`core:model` 的 `ParseHostPolicy`，带单测）；
   - 嗅探到的资源地址同样过 `ParseHostPolicy`；
-  - 单线路 8 秒超时，结束即 `destroy()`，不常驻、不复用；
+  - 单线路 15 秒超时，结束即 `destroy()`，不常驻、不复用；
   - `shouldOverrideUrlLoading` 对不合格 host 直接拦截（不交给系统浏览器，
     避免把不可信地址再递给外部应用）。
 - 白名单目前是"https + 非内网"，不再依赖服务端下发域名列表；后端若将来下发，
