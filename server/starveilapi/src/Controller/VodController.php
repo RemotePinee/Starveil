@@ -8,10 +8,15 @@ namespace Starveil\Api\Controller;
 use Starveil\Api\Http\Json;
 use Starveil\Api\Installer;
 use Starveil\Api\Repo\Vods;
+use Starveil\Api\Service\Playback;
+use Starveil\Api\Support\Setting;
 use think\Db;
 
 final class VodController extends BaseController
 {
+    /** 播放地址的签名有效期（秒）：够一次起播与重试，不给人拿去做长期分发。 */
+    private const PLAY_URL_TTL = 300;
+
     /**
      * 列表 + 片库筛选。
      *
@@ -41,15 +46,113 @@ final class VodController extends BaseController
         ], $page, $limit));
     }
 
+    /**
+     * 影片详情。
+     *
+     * 未登录也能看元信息（简介、分类、集名），但**只有放行态才带播放地址**：
+     * 非会员 / 未买这一集时 `urls[].url` 一律为空，播放器要走 [getPlayUrl]。
+     */
     public function getDetail(): void
     {
         $vodId = $this->input->int('vod_id');
-        $detail = (new Vods())->detail($vodId);
+        $userId = $this->userId();
+        $detail = (new Vods())->detail($vodId, $userId > 0 ? $userId : null);
         if ($detail === null) {
             Json::fail(404, '影片不存在', 404);
             return;
         }
         Json::ok($detail);
+    }
+
+    /**
+     * `GET v1.vod/playUrl?vod_id&nid&sid` —— 过闸门后下发单集地址。
+     * 详情在非放行态下把地址清空，播放器只能从这里取：每开一集都是一次鉴权，
+     * 会员到期、订单退款、后台关掉权益之后，重新进详情/开播就按最新权益判
+     * （已经拿到的第三方直链没法回收，这是没有转码/网关时的固有边界）。
+     * `sid` 不传时取第一个命中的源（与详情里的 sid 同序，从 1 开始）。
+     */
+    public function getPlayUrl(): void
+    {
+        $vodId = $this->input->int('vod_id');
+        $nid = $this->input->int('nid');
+        $sid = $this->input->int('sid');
+        if ($vodId <= 0 || $nid <= 0) {
+            Json::fail(400, '参数不完整');
+            return;
+        }
+
+        $userId = $this->userId();
+        $detail = (new Vods())->detail($vodId, $userId > 0 ? $userId : null);
+        if ($detail === null) {
+            Json::fail(404, '影片不存在', 404);
+            return;
+        }
+
+        // 影片级闸门之外再按集判一次：广告解锁是「用户 + 剧 + 集」粒度，
+        // 只看影片级会漏掉"这一集刚看完广告"与"只买了别的集"两种情况。
+        $episode = (new Playback())->trySee($userId > 0 ? $userId : null, $vodId, $nid);
+        if ((int)$detail['play_locked'] !== 0 && (int)$episode['status'] !== 0) {
+            if ($userId <= 0) {
+                Json::fail(401, '请先登录', 401);
+            } else {
+                Json::fail(403, '尚未解锁该集', 403);
+            }
+            return;
+        }
+
+        $url = (new Vods())->playUrl($vodId, $sid, $nid);
+        if ($url === '') {
+            Json::fail(404, '该集不存在', 404);
+            return;
+        }
+
+        $expires = time() + self::PLAY_URL_TTL;
+        Json::ok([
+            'url' => $url,
+            'vod_id' => $vodId,
+            'nid' => $nid,
+            'expires' => $expires,
+            'sign' => $this->signPlayUrl($userId, $vodId, $nid, $url, $expires),
+        ]);
+    }
+
+    /**
+     * 播放地址的短时签名：`hmac-sha256(user_id|vod_id|nid|url|expires)`。
+     *
+     * **签名不能替代闸门**：上面那两行判定才是"能不能拿地址"的唯一依据。这个 sign
+     * 是给解析层/边缘节点校验"这条地址是本次下发、且没过期"用的；现在还没有消费方，
+     * 接 CDN 鉴权时把同一套算法交给边缘即可（届时 `url` 也要换成带鉴权参数的形式）。
+     */
+    private function signPlayUrl(int $userId, int $vodId, int $nid, string $url, int $expires): string
+    {
+        $key = $this->playUrlSecret();
+        if ($key === '') {
+            return '';
+        }
+        return hash_hmac('sha256', implode('|', [$userId, $vodId, $nid, $url, $expires]), $key);
+    }
+
+    /**
+     * 签名密钥：`play_url_secret`，没有就现生成一个写进 `cuican_setting`。
+     *
+     * 不复用 `session_secret`（它与会话串无关，见 `Auth\Session` 的类注释），
+     * 也不复用 `ad_ssv_secret`（那是广告平台共享的，泄露面更大）。
+     * 写库失败时返回空串，调用方只回地址不带签名，不影响起播。
+     */
+    private function playUrlSecret(): string
+    {
+        $key = Setting::get('play_url_secret');
+        if ($key !== '') {
+            return $key;
+        }
+        try {
+            $key = bin2hex(random_bytes(32));
+            Setting::set('play_url_secret', $key);
+        } catch (\Throwable $e) {
+            error_log('[starveil] 生成 play_url_secret 失败: ' . $e->getMessage());
+            return '';
+        }
+        return $key;
     }
 
     public function getTypes(): void

@@ -10,6 +10,10 @@
  *
  * 安全性没有降低：`user_random` 只存在库里（macCMS 自己也是这么校验的），
  * 不知道它就算不出 user_check；cookie 有效期仍是 30 天。
+ *
+ * 另：`Installer` 写入的 `session_secret` **当前没有任何读取方**。README / docs 里
+ * "HMAC 签名会话"的说法与实现不符——会话串就是下面这个裸 md5。要真用它做 HMAC，
+ * 必须同时改 macCMS 的 `user_check`，否则网页与 App 立刻互不认账（见上面的教训）。
  */
 
 declare(strict_types=1);
@@ -71,11 +75,23 @@ final class Session
         return $this->id() > 0;
     }
 
-    /** 登录/注册成功后下发 cookie。 */
+    /**
+     * 登录/注册成功后下发 cookie。
+     *
+     * `ensureRandom()` 失败时**不下发会话**，并抛 `InvalidArgumentException`
+     * （`Kernel::run()` 会把它变成 `{"code":400,"msg":...}`）：
+     * 拿不到 user_random 就算不出正确的 `user_check`，发了也必定在下次请求校验失败，
+     * 用户看到的是"刚登录就掉线"；不如让这次登录直接失败、让他重试。
+     */
     public function issue(array $user): void
     {
         $uid = (int)$user['user_id'];
-        $user = $this->ensureRandom($uid, $user);
+        $withRandom = $this->ensureRandom($uid, $user);
+        if ($withRandom === null) {
+            throw new \InvalidArgumentException('会话初始化失败，请重试');
+        }
+        $user = $withRandom;
+        $user = $withRandom;
         $exp = time() + self::TTL;
         $secure = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
 
@@ -120,8 +136,9 @@ final class Session
     /**
      * 撤销当前会话：轮换 `user_random` 后清 cookie。
      *
-     * `user_check` 由 `user_random` 派生，macCMS 改密码时并不轮换它，旧 cookie
-     * 在 30 天有效期内一直可用。退出时轮换一次，App 与网页的旧凭据同时失效。
+     * 只留给"强制下线 / 改密后踢人"：它会把同账号的网页会话一起踢掉。
+     * 普通退出登录用 [clear]（对齐 macCMS `model(User)->logout()` 只清 cookie 的语义），
+     * 那条路径不会轮换 `user_random`。
      */
     public function revoke(): void
     {
@@ -148,8 +165,15 @@ final class Session
         );
     }
 
-    /** 老用户可能没有 user_random（macCMS 允许为空），登录时补一个并落库。 */
-    private function ensureRandom(int $uid, array $user): array
+    /**
+     * 老用户可能没有 user_random（macCMS 允许为空），登录时补一个并落库。
+     *
+     * 落库失败返回 null，调用方据此放弃下发 cookie（见 [issue]）。不能返回旧 user：
+     * 那会用旧的（可能是空的）random 算出 `user_check`，下发的凭据下次请求必然失效。
+     *
+     * @return array<string,mixed>|null
+     */
+    private function ensureRandom(int $uid, array $user): ?array
     {
         if ((string)($user['user_random'] ?? '') !== '') {
             return $user;
@@ -158,7 +182,8 @@ final class Session
         try {
             Db::name('user')->where('user_id', $uid)->update(['user_random' => $random]);
         } catch (\Throwable $e) {
-            return $user;
+            error_log('[starveil] 写入 user_random 失败 uid=' . $uid . ' err=' . $e->getMessage());
+            return null;
         }
         $user['user_random'] = $random;
         return $user;

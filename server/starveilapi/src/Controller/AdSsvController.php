@@ -36,14 +36,14 @@ final class AdSsvController extends BaseController
      * 平台回调入口。
      *
      * 两家字段不同：TopOn 回 `user_custom_data`，TradPlus 回 `custom_data`，
-     * 其余（`trans_id` / `user_id` / `timestamp` / `sign`）同名，所以都在这里兼容。
+     * 其余（`trans_id` / `timestamp` / `sign`）同名；`user_id` 不再取请求体，
+     * 一律从 `custom_data` 的 `uid:vod:episode` 里取（见 [target]）。
      */
     public function getSsv(): void
     {
         $transId = $this->input->str('trans_id');
-        $userId = $this->input->int('user_id');
         $timestamp = $this->input->int('timestamp');
-        [$vodId, $episode] = $this->target();
+        [$userId, $vodId, $episode] = $this->target();
 
         $secret = Setting::get('ad_ssv_secret');
         if ($secret === '') {
@@ -55,7 +55,7 @@ final class AdSsvController extends BaseController
             $this->respond(false, 1002, 'invalid params', 400);
             return;
         }
-        if (!$this->signValid($secret, $transId, $vodId, $episode, $timestamp)) {
+        if (!$this->signValid($secret, $transId, $userId, $vodId, $episode, $timestamp)) {
             $this->respond(false, 1003, 'sign invalid', 403);
             return;
         }
@@ -74,35 +74,44 @@ final class AdSsvController extends BaseController
     }
 
     /**
-     * 取这次回调要解锁的「剧 + 集」。
+     * 取这次回调要解锁的「用户 + 剧 + 集」。
      *
-     * 平台不知道我们的业务参数，它只会把客户端请求广告时塞进去的 custom_data 原样回传；
-     * 所以优先取显式的 `vod_id` / `episode_number`（自测或二次封装回调会带），
-     * 缺了再从 `user_custom_data`（TopOn）/ `custom_data`（TradPlus）里的
-     * `vodId:episodeNumber` 兜底。
+     * 只认平台原样回传的 `custom_data`（TopOn 叫 `user_custom_data`）里的
+     * `uid:vod:episode` 整体：三段必须齐全，**不再信请求体里单独的 `user_id` /
+     * `vod_id` / `episode_number`**。原因有两个：
+     * 1. `user_id` 必须被签名覆盖，否则抓一条合法回调改 uid 就能把奖励记到别人账上；
+     * 2. 三个字段分开放，就允许"签名拿 A 集的、解锁写 B 集"的拼接。
      *
-     * @return array{0:int,1:int}
+     * 平台侧要配合把签名模板改成 `trans_id|user_id|vod_id|episode_number|timestamp`，
+     * uid 取 custom_data 的第一段（见 [signValid]）。
+     *
+     * @return array{0:int,1:int,2:int} [user_id, vod_id, episode_number]
      */
     private function target(): array
     {
-        $vodId = $this->input->int('vod_id');
-        $episode = $this->input->int('episode_number');
-        if ($vodId > 0 && $episode > 0) {
-            return [$vodId, $episode];
+        $raw = trim($this->input->str('user_custom_data', $this->input->str('custom_data')));
+        if ($raw === '') {
+            return [0, 0, 0];
         }
-        $raw = $this->input->str('user_custom_data', $this->input->str('custom_data'));
-        $parts = explode(':', $raw, 2);
-        return [(int)($parts[0] ?? 0), (int)($parts[1] ?? 0)];
+        $parts = array_map('trim', explode(':', $raw));
+        if (count($parts) !== 3) {
+            return [0, 0, 0];
+        }
+        return [(int)$parts[0], (int)$parts[1], (int)$parts[2]];
     }
 
     /**
-     * 验签：`md5(trans_id|vod_id|episode_number|timestamp|ad_ssv_secret)`。
+     * 验签：`md5(trans_id|user_id|vod_id|episode_number|timestamp|ad_ssv_secret)`。
      *
-     * `timestamp` 用秒。与 `v1.shortplay/unlock` 同一口径，两处必须一起改。
+     * `user_id` 必须在原料里：它决定奖励记到谁头上。少了它，时间窗（±300 秒）就是
+     * 唯一的防线——抓一条合法回调改 `user_id` 重放即可刷给任意账号。
+     *
+     * `timestamp` 用秒。
      */
     private function signValid(
         string $secret,
         string $transId,
+        int $userId,
         int $vodId,
         int $episode,
         int $timestamp
@@ -111,7 +120,7 @@ final class AdSsvController extends BaseController
             return false;
         }
         $sign = strtolower($this->input->str('sign'));
-        $raw = $transId . '|' . $vodId . '|' . $episode . '|' . $timestamp . '|' . $secret;
+        $raw = $transId . '|' . $userId . '|' . $vodId . '|' . $episode . '|' . $timestamp . '|' . $secret;
         return $sign !== '' && hash_equals(md5($raw), $sign);
     }
 

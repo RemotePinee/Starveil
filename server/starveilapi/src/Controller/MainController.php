@@ -21,6 +21,26 @@ final class MainController extends BaseController
         Json::ok((new Startup($this->userId()))->payload());
     }
 
+    /**
+     * 插件版本：读 `info.ini` 的 `version`，读不到再退到 macCMS 的 `config('version')`。
+     *
+     * `Kernel::ROUTES` 一直放行 `getVersion`，但类里以前没有这个方法——路由先通过，
+     * 再 `$instance->getVersion()` 触发 Error，被兜成 `{"code":500}`，README 承诺的
+     * 接口实际不可用。
+     */
+    public function getVersion(): void
+    {
+        $version = '';
+        $ini = @parse_ini_file(dirname(__DIR__, 2) . '/info.ini', false, INI_SCANNER_RAW);
+        if (is_array($ini)) {
+            $version = trim((string)($ini['version'] ?? ''));
+        }
+        if ($version === '') {
+            $version = trim((string)config('version'));
+        }
+        Json::ok(['version' => $version]);
+    }
+
     /** 首页轮播。 */
     public function getBanner(): void
     {
@@ -80,5 +100,21 @@ final class MainController extends BaseController
     public function getPush(): void
     {
         Json::ok(['count' => (new Push())->count()]);
+    }
+
+    /**
+     * `POST v1.auth/logout`：只清 cookie，**不轮换** `user_random`。
+     *
+     * 对齐 macCMS `model(User)->logout()`（只把 cookie 置空）：轮换会把同账号的网页
+     * 会话一起踢掉，而"退出登录"不该有这种副作用。需要强制下线/改密踢人时用
+     * `Auth\Session::revoke()`。
+     *
+     * 为什么挂在 main 前缀下：`Kernel::ACTION_CONTROLLERS` 把 `auth/postLogout`
+     * 分派到这里——登出与启动配置一样是无状态入口，不需要额外控制器。
+     */
+    public function postLogout(): void
+    {
+        $this->session->clear();
+        Json::ok(null, '已退出');
     }
 }

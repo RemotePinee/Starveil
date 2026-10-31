@@ -54,7 +54,7 @@ final class WithdrawPage extends BasePage
         return '<div class="sv-card"><div class="sv-section-title">提现申请</div>'
             . '<table class="sv-table"><tr><th>id</th><th>用户</th><th>金额</th><th>收款信息</th><th>状态</th><th></th></tr>'
             . ($body !== '' ? $body : '<tr><td colspan="6" class="sv-empty">没有提现申请</td></tr>')
-            . '</table><p class="sv-hint">拒绝会把金币退回用户；通过只改状态，打款需手动完成。</p></div>';
+            . '</table><p class="sv-hint">拒绝会按申请时实扣的金币原额退回；通过只改状态，打款需手动完成。</p></div>';
     }
 
     /**
@@ -88,13 +88,33 @@ final class WithdrawPage extends BasePage
                 return;
             }
             if ($op === 'reject') {
-                (new Users())->addGold((int)$row['user_id'], (int)$row['amount'] * Setting::int('gold_per_yuan', 10));
+                $this->refundGold($row);
             }
             Db::commit();
         } catch (\Throwable $e) {
             // 退款失败时状态一起回滚，申请重新回到待审核，管理员可以再点一次
             Db::rollback();
             throw $e;
+        }
+    }
+
+    /**
+     * 拒绝提现时退金币。
+     *
+     * `gold_cost` 是申请时实扣的金币快照，按它原额退回；不能再乘「当前」比例——
+     * 运营把 `gold_per_yuan` 从 10 调到 100 后批量拒绝历史申请，旧算法每单退 10 倍。
+     *
+     * 加列之前的老申请没有 `gold_cost`（0），只能按当时的口径重算：退回 0 金币
+     * 等于把用户的钱吞掉，比按错比例退更糟。
+     */
+    private function refundGold(array $row): void
+    {
+        $cost = (int)($row['gold_cost'] ?? 0);
+        if ($cost <= 0) {
+            $cost = (int)$row['amount'] * Setting::int('gold_per_yuan', 10);
+        }
+        if ($cost > 0) {
+            (new Users())->addGold((int)$row['user_id'], $cost);
         }
     }
 }

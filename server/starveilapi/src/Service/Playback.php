@@ -63,7 +63,7 @@ final class Playback
         }
 
         $isVip = $this->isVip($userId);
-        if ($isVip || ($userId !== null && $this->orders->hasPaidEpisode($userId, $vodId))) {
+        if ($isVip || ($userId !== null && $this->orders->hasPaidEpisode($userId, $vodId, $episodeNumber))) {
             return $this->gate(0, $minutes, $pointsPrice, $memberEnabled);
         }
 
@@ -139,6 +139,15 @@ final class Playback
         }
     }
 
+    /**
+     * 会员判定：`mac_user.group_id` 是逗号串，取最高等级与 `vip_group_id` 比大小。
+     *
+     * macCMS 网页端用的就是 `max(group_id) >= 3`（`All.php` 的 check_user_popedom），
+     * 这里必须同口径。等值匹配 `in_array()` 会把 `1,4`（VIP4）判成非会员，
+     * 于是同一个账号在网页是会员、在 App 不是。
+     *
+     * `user_end_time = 0` 表示永久，否则按到期时间。
+     */
     public function isVip(?int $userId): bool
     {
         if ($userId === null) {
@@ -148,11 +157,12 @@ final class Playback
         if (!$user) {
             return false;
         }
-        $vipGroupId = (string)Setting::int('vip_group_id', 3);
-        // macCMS 的 group_id 允许逗号分隔多组，不能直接 (int) 比较
-        $groups = array_map('trim', explode(',', (string)($user['group_id'] ?? '')));
+        $vipGroupId = Setting::int('vip_group_id', 3);
+        // App 只有一种会员：等级 >= vip_group_id 都算，与 macCMS 的 max(group_id) >= 3 对齐。
+        $groups = array_map('intval', array_map('trim', explode(',', (string)($user['group_id'] ?? ''))));
+        $level = $groups === [] ? 0 : max($groups);
         $endTime = (int)($user['user_end_time'] ?? 0);
-        return in_array($vipGroupId, $groups, true) && ($endTime === 0 || $endTime > time());
+        return $level >= $vipGroupId && ($endTime === 0 || $endTime > time());
     }
 
     /** 观看时长累加（秒）。按 2 倍上报，这里只记真实值。 */

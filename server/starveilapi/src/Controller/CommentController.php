@@ -62,12 +62,24 @@ final class CommentController extends BaseController
     public function postIndex(): void
     {
         $user = $this->requireLogin();
+        $config = (array)config('maccms.comment');
+        if ((string)($config['status'] ?? '1') !== '1') {
+            // CMS 的评论总开关关掉后，网页端已经不收评论；App 这边也必须一起关。
+            Json::fail(403, '评论功能已关闭');
+            return;
+        }
+
         $vodId = $this->input->int('vod_id');
-        $content = mb_substr($this->input->str('content'), 0, self::MAX_CONTENT);
+        // 先清洗再截断：实体编码会让长度变长，反过来做可能把超过 255 字符的串写进
+        // varchar(255)（严格模式下是 1406，接口回 500）。
+        $content = mb_substr(self::sanitize($this->input->str('content')), 0, self::MAX_CONTENT);
         if ($vodId <= 0 || $content === '') {
             Json::fail(400, '参数不完整');
             return;
         }
+
+        // 审核开关读 CMS 的配置：`audit == 1` 时入库 0（待审），否则 1（直接可见）。
+        $audit = (string)($config['audit'] ?? '0') === '1';
 
         $table = self::table();
         $userId = (int)$user['user_id'];
@@ -85,13 +97,28 @@ final class CommentController extends BaseController
             'comment_rid' => $vodId,
             'comment_pid' => 0,
             'user_id' => $userId,
-            'comment_status' => 1,
+            'comment_status' => $audit ? 0 : 1,
             'comment_name' => $this->authorName($user),
             'comment_ip' => self::ipLong(),
             'comment_time' => time(),
             'comment_content' => $content,
         ]);
-        Json::ok(null, '评论已发布');
+        Json::ok(null, $audit ? '评论已提交，审核通过后可见' : '评论已发布');
+    }
+
+    /**
+     * 正文清洗：敏感词替换 + HTML 实体。
+     *
+     * `mac_filter_words()` 来自 macCMS 的 `application/common.php`，与网页端同一份词表
+     * （`config('maccms.app')` 的 `filter_words`）。函数没加载时退化为只做实体转义：
+     * 少一层词过滤可以接受，因为函数不存在把评论接口打成 500 不行。
+     */
+    private static function sanitize(string $content): string
+    {
+        if (function_exists('mac_filter_words')) {
+            $content = (string)mac_filter_words($content);
+        }
+        return htmlentities($content, ENT_QUOTES, 'UTF-8');
     }
 
     /** macCMS 的评论表，不带插件前缀：App 与 PC 站共用同一份数据。 */

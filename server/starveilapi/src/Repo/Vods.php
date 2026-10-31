@@ -11,6 +11,7 @@ declare(strict_types=1);
 
 namespace Starveil\Api\Repo;
 
+use Starveil\Api\Service\Playback;
 use Starveil\Api\Support\Setting;
 use think\Db;
 use think\db\Query;
@@ -297,7 +298,20 @@ final class Vods
         return array_map(fn (array $row): array => $this->toDto($row, $typeNames), $rows);
     }
 
-    public function detail(int $vodId): ?array
+    /**
+     * 详情。
+     *
+     * `$userId` 决定播放地址是否下发：未登录传 null。放行态原样返回直链；
+     * 命中非放行态（需会员 / 需积分 / 未购 / 未广告解锁）时把每条 `urls[].url` 清空，
+     * 只留 `nid` / `name`，并给出 `trysee`（秒）与 `play_locked`。
+     *
+     * 为什么不用 CMS 的 `check_user_popedom()`：Kernel 统一按 `new $class(Input, Session)`
+     * 建控制器，而 `\app\common\controller\All` 的构造器不收参数，还要 `request()` 与模板
+     * 状态（它的子类 `app\api\controller\Base` 甚至会把"站点关闭"直接 503）。继承等于把
+     * 每个控制器的入口契约换掉。这里改用与 App 同一套真相：`Service\Playback`，判定细节
+     * 见 [playGate]；集名与 `trysee` 秒数照样下发，客户端据此画"试看 / 解锁"引导。
+     */
+    public function detail(int $vodId, ?int $userId = null): ?array
     {
         $row = Db::name('vod')->where('vod_id', $vodId)->where('vod_status', 1)->find();
         if (!$row) {
@@ -305,8 +319,51 @@ final class Vods
         }
         $dto = $this->toDto($row, $this->typeNameMap([$row]));
         $dto['vod_content'] = (string)($row['vod_content'] ?? '');
-        $dto['vod_play_list'] = $this->playSources($row);
+        $gate = $this->playGate($row, $userId);
+        $sources = $this->playSources($row);
+        if (!$gate['allowed']) {
+            // 非放行态只回集号与集名：地址一旦下发，付费墙就只剩前端在把关。
+            foreach ($sources as $si => $source) {
+                foreach ($source['urls'] as $ui => $_) {
+                    $sources[$si]['urls'][$ui]['url'] = '';
+                }
+            }
+        }
+        $dto['vod_play_list'] = $sources;
+        $dto['play_locked'] = $gate['allowed'] ? 0 : 1;
+        $dto['trysee'] = $gate['trysee'];
+
         return $dto;
+    }
+
+    /**
+     * 这行影片这次能不能拿播放地址。
+     *
+     * 判定只用**一套真相**：`Service\Playback::trySee()`。它内部依次看免费档、
+     * 广告解锁记录、会员等级、单集已购，与 `v1.user/checkVodTrySee` 下发给客户端的是
+     * 同一个函数——详情页说"能播"，这里就必须放；说"要开通"，这里就不能给地址。
+     *
+     * 为什么**不**顺手把 `mac_vod.vod_points_play` 也当闸门：那是 macCMS 自己的
+     * `mac_ulog` 积分体系，插件没有对应的购买入口（`cuican_order` 与它不互通）。
+     * 拿它在这里硬拦，运营只要给影片填过播放积分，App 就会把内容锁死、而客户端连
+     * "购买"按钮都渲染不出来（`can_points` 来自插件自己的 `episode_points`）。
+     * 要让 App 也收费，正确做法是后台设 `trysee_status=2` + `episode_points`。
+     *
+     * `trysee` 统一换成秒；`vod_trysee > 0` 时覆盖插件设置，与 CMS `label_vod_play` 同序。
+     *
+     * @param array<string,mixed> $row
+     * @return array{allowed:bool,trysee:int}
+     */
+    private function playGate(array $row, ?int $userId): array
+    {
+        $gate = (new Playback())->trySee($userId, (int)$row['vod_id']);
+
+        $minutes = (int)($row['vod_trysee'] ?? 0);
+        if ($minutes <= 0) {
+            $minutes = (int)$gate['trysee'];
+        }
+
+        return ['allowed' => $gate['status'] === 0, 'trysee' => max($minutes, 0) * 60];
     }
 
     public function types(): array
@@ -491,19 +548,20 @@ final class Vods
     }
 
     /**
-     * 播放源还原。
+     * `vod_play_from` / `vod_play_url` → 播放源（不含 player_info）。
      *
-     * 结构：`[{sid,from,url_count,urls:[{nid,name,url}],player_info}]`。
-     * `player_info` 是全站配置（解析站模板、直链正则、请求头），存在 setting 里，
-     * 历史版本是后端按源下发，这里简化为全站一份——要按源区分再加列。
+     * 详情与 `v1.vod/playUrl` 共用这一份解析：`$$$` 分源、`#` 分集、`$` 分名称与地址，
+     * 三层拆分只在这里写，控制器不要再抄一遍（抄了迟早有一处对不上）。
+     *
+     * @param array<string,mixed> $row
+     * @return array<int,array{sid:int,from:string,urls:array<int,array{nid:int,name:string,url:string}>}>
      */
-    private function playSources(array $row): array
+    private function playGroups(array $row): array
     {
         $froms = array_values(array_filter(explode('$$$', (string)($row['vod_play_from'] ?? ''))));
         $urls = array_values(array_filter(explode('$$$', (string)($row['vod_play_url'] ?? ''))));
-        $playerInfo = Setting::playerInfo();
 
-        $sources = [];
+        $groups = [];
         foreach ($froms as $index => $from) {
             $episodes = [];
             $raw = (string)($urls[$index] ?? '');
@@ -515,11 +573,33 @@ final class Vods
                     'url' => trim($parts[1] ?? ''),
                 ];
             }
+            $groups[] = ['sid' => $index + 1, 'from' => (string)$from, 'urls' => $episodes];
+        }
+
+        return $groups;
+    }
+
+    /**
+     * 播放源还原。
+     *
+     * 结构：`[{sid,from,url_count,urls:[{nid,name,url}],player_info}]`。
+     * `player_info` 是全站配置（解析站模板、直链正则、请求头），存在 setting 里，
+     * 历史版本是后端按源下发，这里简化为全站一份——要按源区分再加列。
+     *
+     * @param array<string,mixed> $row
+     * @return array<int,array<string,mixed>>
+     */
+    private function playSources(array $row): array
+    {
+        $playerInfo = Setting::playerInfo();
+
+        $sources = [];
+        foreach ($this->playGroups($row) as $group) {
             $sources[] = [
-                'sid' => $index + 1,
-                'from' => (string)$from,
-                'url_count' => count($episodes),
-                'urls' => $episodes,
+                'sid' => (int)$group['sid'],
+                'from' => (string)$group['from'],
+                'url_count' => count($group['urls']),
+                'urls' => $group['urls'],
                 'player_info' => [
                     'parse2' => (string)($playerInfo['parse2'] ?? ''),
                     'features' => (string)($playerInfo['features'] ?? ''),
@@ -531,5 +611,40 @@ final class Vods
             ];
         }
         return $sources;
+    }
+
+    /**
+     * 取某源第 N 集的原始地址；`$sid <= 0` 表示不限源（取第一个命中的源）。
+     *
+     * **只做定位，不做权限判断**：调用方必须先过 [detail] 的闸门。
+     */
+    public function playUrl(int $vodId, int $sid, int $nid): string
+    {
+        if ($vodId <= 0 || $nid <= 0) {
+            return '';
+        }
+        $row = Db::name('vod')
+            ->where('vod_id', $vodId)
+            ->where('vod_status', 1)
+            ->field('vod_id,vod_play_from,vod_play_url')
+            ->find();
+        if (!$row) {
+            return '';
+        }
+        foreach ($this->playGroups($row) as $group) {
+            if ($sid > 0 && (int)$group['sid'] !== $sid) {
+                continue;
+            }
+            foreach ($group['urls'] as $episode) {
+                if ((int)$episode['nid'] === $nid) {
+                    return (string)$episode['url'];
+                }
+            }
+            if ($sid > 0) {
+                // 指定源里没有这一集：上层传错了 sid，别去别的源猜一个地址出来
+                break;
+            }
+        }
+        return '';
     }
 }

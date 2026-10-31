@@ -331,6 +331,8 @@ final class UserController extends BaseController
             Db::table(Installer::prefix() . 'cuican_gold_withdraw')->insert([
                 'user_id' => (int)$user['user_id'],
                 'amount' => $amount,
+                // 快照实扣金币：拒绝退款按这个数原额退回，不按当前比例重算（审计 S5）
+                'gold_cost' => $needGold,
                 'channel' => $channel,
                 'account' => $account,
                 'realname' => $realName,
@@ -419,6 +421,8 @@ final class UserController extends BaseController
             (int)$user['user_id'],
             $this->input->int('id'),
             $this->input->int('pay_type', 1),
+            // 集号必须落库：不传就成了「买一集解锁整部」（审计 S3）
+            $this->input->int('nid'),
         );
         $result['code'] === 200
             ? Json::ok(null, $result['msg'])

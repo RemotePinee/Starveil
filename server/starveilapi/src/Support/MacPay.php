@@ -45,6 +45,26 @@ final class MacPay
         ];
     }
 
+    /**
+     * 通道配置里的 `url` → 网关提交地址。
+     *
+     * macCMS 后台「在线支付配置」填的是接口根（如 `https://pay.example.com/`），
+     * 易支付的提交脚本固定叫 `submit.php`（与核心 `extend/pay/Epay.php` 拼法一致）。
+     * 不补这一段，请求会打到网关首页，用户点支付被弹回站外首页。
+     * 已经指到具体脚本（以 `.php` 结尾）的不再重复拼。
+     */
+    public static function submitUrl(string $apiUrl): string
+    {
+        $url = trim($apiUrl);
+        if ($url === '') {
+            return '';
+        }
+        if (preg_match('#\.php(\?.*)?$#i', $url) === 1) {
+            return $url;
+        }
+        return rtrim($url, '/') . '/submit.php';
+    }
+
     public static function isConfigured(): bool
     {
         return self::epayChannel() !== null;

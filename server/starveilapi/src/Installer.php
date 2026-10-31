@@ -19,7 +19,7 @@ use think\Db;
 class Installer
 {
     /** 与 info.ini 的 version 保持一致（升级时 upgradeIfNeeded 靠它触发迁移）。 */
-    public const VERSION = '2.5.9';
+    public const VERSION = '2.6.0';
 
     /**
      * 左侧快捷菜单的标签。

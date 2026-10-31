@@ -54,10 +54,12 @@ final class Kernel
             'getFindpassSms',
             'getFindpass',
             'postDevicelogin',
+            'postLogout',
         ],
         'vod' => [
             'getIndex',
             'getDetail',
+            'getPlayUrl',
             'getTypes',
             'getVodphb',
             'getVodPhbAll',
@@ -131,6 +133,11 @@ final class Kernel
             'postSession' => AdRewardController::class,
             'postProgress' => AdRewardController::class,
             'postComplete' => AdRewardController::class,
+        ],
+        // 登出只清 cookie、不轮换 user_random，与「无状态入口」同一类，放 MainController；
+        // 见 MainController::postLogout() 的注释。
+        'auth' => [
+            'postLogout' => MainController::class,
         ],
     ];
 

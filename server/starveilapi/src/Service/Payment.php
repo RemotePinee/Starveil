@@ -2,12 +2,14 @@
 /**
  * 支付与会员兑换。
  *
- * 四个安全点，全部针对的洞：
+ * 五个安全点，全部针对的洞：
  * 1. 金额由服务端按套餐算，客户端只能传套餐编号（表单只收 price，可改成 0.01）；
  * 2. 回调验签失败直接拒绝（旧 用 `=== 0` 判失败，验签返回 false 时反而放行）；
  * 3. 回调按 `order_status=0 → 1` 单向迁移，重复回调幂等，且校验回调金额；
  * 4. 会员开通只认「已支付 + 未开通」的订单：天数据订单快照，`opened_at` 决定谁开，
- * 回调与客户端各调一次也只延长一次。
+ * 回调与客户端各调一次也只延长一次；
+ * 5. 回调只认「下单时那个通道」的密钥：`order_pay_type` 与传入通道不一致直接拒绝，
+ * 否则知道弱通道密钥就能给强通道的订单伪造成功回调。
  */
 
 declare(strict_types=1);
@@ -72,7 +74,8 @@ final class Payment
             return ['code' => 400, 'msg' => '支付方式未开启'];
         }
 
-        $code = 'PAY' . date('YmdHis') . random_int(1000, 9999);
+        // 秒级时间 + 4 位随机只有 9000 种组合，订单号可枚举；换成 64 位随机十六进制
+        $code = 'PAY' . date('Ymd') . bin2hex(random_bytes(8));
         $this->orders->create(
             $userId,
             $code,
@@ -239,17 +242,19 @@ final class Payment
     /**
      * 单集购买：扣积分并落一条已支付订单，试看接口据此放行。
      *
-     * 扣分、建单、置已支付在同一事务里。先无条件 `addPoints(-price)` 再建单，
-     * 余额为 0 也能买（扣成负数）；收尾那条 `where('order_code','like','EP%')`
-     * 还会把这个用户在这部片上的所有历史单一起改成已支付。
+     * 集号必须跟着落库：订单只写 `target_id`（剧 id）时，买一集等于买下整部，
+     * 判定见 `Orders::hasPaidEpisode`。`$episodeNumber = 0` 是留给还不知道集号的
+     * 老调用方的退路，此时退回整部判定（与加列前一致）。
+     *
+     * 扣分与建单在同一事务里：条件扣减扣不动就回滚，绝不留一条没扣到积分的已付订单。
      */
-    public function buyEpisode(int $userId, int $vodId, int $payType): array
+    public function buyEpisode(int $userId, int $vodId, int $payType, int $episodeNumber = 0): array
     {
         if ($vodId <= 0) {
             return ['code' => 400, 'msg' => '影片不存在'];
         }
         // 幂等前置：已买过就直接放行，不重复扣分
-        if ($this->orders->hasPaidEpisode($userId, $vodId)) {
+        if ($this->orders->hasPaidEpisode($userId, $vodId, $episodeNumber)) {
             return ['code' => 200, 'msg' => '已购买，可直接观看'];
         }
         $price = Setting::int('episode_points', 0);
@@ -265,7 +270,9 @@ final class Payment
             $this->orders->create($userId, $code, 0.0, 'points', 'episode', $vodId, [
                 'pay_type' => $payType,
                 'points' => $price,
-            ]);
+                // 快照进 ulog_data：事后查"这单买的是哪一集"不用猜
+                'nid' => max($episodeNumber, 0),
+            ], $episodeNumber);
             Db::table(Installer::prefix() . 'cuican_order')
                 ->where('order_code', $code)
                 ->update(['order_status' => 1, 'order_pay_time' => time()]);
@@ -306,25 +313,58 @@ final class Payment
         $orderCode = (string)($params['out_trade_no'] ?? '');
         $amount = (float)($params['money'] ?? 0);
         $order = $this->orders->byCode($orderCode);
+        if (!$order) {
+            return ['code' => 404, 'msg' => '订单不存在'];
+        }
+        // 验签用的是"传入通道"的密钥：不比对订单所属通道，知道弱通道密钥的人
+        // 就能给强通道的订单伪造一条成功回调（多通道并存时的提权路径）
+        if ((string)$order['order_pay_type'] !== $channel) {
+            return ['code' => 400, 'msg' => '通道不匹配'];
+        }
 
         if (!$this->orders->markPaid($orderCode, $amount)) {
             // 重复回调：只有「已支付 + 金额一致」的单继续往下走，用来补开上次没开成的那笔
             // （网关重试、DB 抖动）；其余一律按"不存在或已处理"拒绝
-            if (!$order || (int)$order['order_status'] !== 1
+            if ((int)$order['order_status'] !== 1
                 || abs((float)$order['order_price'] - $amount) > 0.001) {
-                return ['code' => 400, 'msg' => '订单不存在、金额不符或已处理'];
+                return ['code' => 400, 'msg' => '金额不符或已处理'];
             }
         }
-        if ($order !== null) {
-            try {
-                // 开通只做一次：opened_at 的条件更新挡住重复回调，天数据订单快照
-                $this->membership->openByOrder($order);
-            } catch (\Throwable $e) {
-                // 返回失败让网关重试；opened_at 已随事务回滚，下次回调还能开
-                return ['code' => 500, 'msg' => '开通失败，请稍后重试'];
-            }
+        try {
+            // 开通只做一次：opened_at 的条件更新挡住重复回调，天数据订单快照
+            $this->membership->openByOrder($order);
+        } catch (\Throwable $e) {
+            // 返回失败让网关重试；opened_at 已随事务回滚，下次回调还能开
+            return ['code' => 500, 'msg' => '开通失败，请稍后重试'];
         }
         return ['code' => 200, 'msg' => 'ok'];
+    }
+
+    /**
+     * 从回调请求里定出通道 code。
+     *
+     * 三个来源按优先级试：路径段（CMS 的 `pay_type/epay` 形态）、`pay_type` 查询参数、
+     * 网关自己回传的 `type`。都认不出时退回订单下单时用的通道——网关卡掉查询串、
+     * 或只回 `type=alipay` 这种渠道名（不是我们的通道 code）时，支付链仍然通得过去。
+     *
+     * @param array<int,string> $candidates
+     */
+    public function resolveChannel(array $candidates, string $orderCode = ''): string
+    {
+        foreach ($candidates as $candidate) {
+            $code = trim((string)$candidate);
+            if ($code !== '' && $this->channelRow($code) !== null) {
+                return $code;
+            }
+        }
+        if ($orderCode !== '') {
+            $order = $this->orders->byCode($orderCode);
+            $code = trim((string)($order['order_pay_type'] ?? ''));
+            if ($code !== '' && $this->channelRow($code) !== null) {
+                return $code;
+            }
+        }
+        return '';
     }
 
     /** 站点根地址，用于拼回调；CLI 下为空，由调用方兜底。 */
@@ -375,23 +415,32 @@ final class Payment
         return ($mac !== null && $mac['code'] === $code) ? $mac : null;
     }
 
+    /**
+     * 拼支付跳转地址。
+     *
+     * 网关与站点是两个不同的地址：`$gateway` 拼最终跳转，`$site` 只给
+     * notify_url / return_url 兜底。两者以前共用一个变量，`$site` 把网关覆盖掉了，
+     * pay_url 永远指回本站首页，订单一条都付不出去。
+     */
     private function payUrl(array $channel, string $orderCode, float $price, string $subject): string
     {
         $config = json_decode((string)($channel['config'] ?? '{}'), true);
-        $base = is_array($config) ? (string)($config['url'] ?? '') : '';
-        $pid = is_array($config) ? (string)($config['pid'] ?? '') : '';
-        $key = is_array($config) ? (string)($config['key'] ?? '') : '';
-        if ($base === '' || $pid === '' || $key === '') {
+        $config = is_array($config) ? $config : [];
+        $gateway = MacPay::submitUrl((string)($config['url'] ?? ''));
+        $site = $this->siteBase();
+        $pid = (string)($config['pid'] ?? '');
+        $key = (string)($config['key'] ?? '');
+        if ($gateway === '' || $pid === '' || $key === '') {
             return '';
         }
-        // 回调地址必须由服务端生成：后台没填时自动指向插件回调，否则支付后永远回调不到
-        $base = $this->siteBase();
+        $channelCode = (string)($channel['code'] ?? 'epay');
         $params = [
             'pid' => $pid,
             'type' => (string)($config['type'] ?? 'epay'),
             'out_trade_no' => $orderCode,
-            'notify_url' => (string)($config['notify_url'] ?? ($base . '/icciu_api.php/v1.Payment/notify')),
-            'return_url' => (string)($config['return_url'] ?? ($base . '/')),
+            // 回调地址必须由服务端生成：后台没填时自动指向插件回调，否则支付后永远回调不到
+            'notify_url' => (string)($config['notify_url'] ?? $this->notifyUrl($site, $channelCode)),
+            'return_url' => (string)($config['return_url'] ?? ($site === '' ? '' : $site . '/')),
             'name' => $subject,
             'money' => number_format($price, 2, '.', ''),
         ];
@@ -402,6 +451,21 @@ final class Payment
         }
         $params['sign'] = md5(implode('&', $pairs) . $key);
         $params['sign_type'] = 'MD5';
-        return $base . (str_contains($base, '?') ? '&' : '?') . http_build_query($params);
+        return $gateway . (str_contains($gateway, '?') ? '&' : '?') . http_build_query($params);
+    }
+
+    /**
+     * 回调地址：把通道 code 带出去，网关回来时才知道该拿哪个通道的密钥验签。
+     *
+     * CMS 的形态是路径段（`/index.php/payment/notify/pay_type/epay`），但本插件的路由
+     * 只认 `v1.Payment/notify` 两段（`Kernel::resolve`），多一段直接 404，所以通道
+     * 放在查询串里；控制器同时认路径段与 `type`，路由将来放宽时这里的 URL 不用改。
+     */
+    private function notifyUrl(string $site, string $channelCode): string
+    {
+        if ($site === '') {
+            return '';
+        }
+        return $site . '/icciu_api.php/v1.Payment/notify?pay_type=' . rawurlencode($channelCode);
     }
 }
