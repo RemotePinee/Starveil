@@ -65,8 +65,9 @@ macCMS V10 插件。**不改 macCMS 核心文件**，所有表带 `cuican_` 前�
 | `cdn_domain` | 空 | 例 `https://v.example.com`，不带尾斜杠。原始地址的 path 拼在它后面再签名；没写协议时按 https 补。`self` 模式填媒体服务自己的域名 |
 | `cdn_sign_key` | 空 | 签名密钥（SENSITIVE，后台不回显）。`tencent` 填腾讯云后台「Key 防盗链」里的密钥，`self` 填与媒体服务约定的同一把；留空 = 没接 CDN |
 | `cdn_trysee_minutes` | 0 | 试看分钟数，**仅 CDN 接通时生效**；0 = 不给试看。已解锁用户不受影响 |
+| `cdn_sign_rev` | 0 | **地址泄露时的急救开关，只对 `self` 生效**：加 1 就让此前下发的所有地址立刻失效（媒体服务复算对不上）。`tencent` 模式由腾讯云按固定串校验，这一项无效 |
 
-#### 两种签名模式（v2.6.4）
+#### 两种签名模式
 
 `mac_vod.vod_play_url` 存的是**完整第三方直链**（`https://采集站A.com/vod/1.m3u8`）。
 腾讯云那套只保留 path，源站域名在拼串前就丢了，不同源站的同 path 还会互相顶掉；
@@ -75,25 +76,45 @@ macCMS V10 插件。**不改 macCMS 核心文件**，所有表带 `cuican_` 前�
 | | `tencent`（默认） | `self` |
 |---|---|---|
 | 适用 | 腾讯云点播 / CDN 的 Key 防盗链 | 自建媒体服务回源代理 |
-| 下发 URL | `https://v.example.com/vod/2026/1.m3u8?t=…&exper=…&rlimit=0&us=…&sign=…` | `https://v.example.com/vod/2026/1.m3u8?src=采集站A.com&t=…&exper=…&rlimit=0&us=…&sign=…` |
-| 签名串 | `md5(KEY + Dir + t + exper + rlimit + us)` | `md5(KEY + Dir + t + exper + rlimit + us + src)` |
+| 下发 URL | `https://v.example.com/vod/2026/1.m3u8?t=…&exper=…&rlimit=0&us=…&sign=…` | `https://v.example.com/vod/2026/1.m3u8?src=采集站A.com&uid=42&vod=1001&nid=3&rev=0&t=…&exper=…&rlimit=0&us=…&sign=…` |
+| 签名串 | `md5(KEY + Dir + t + exper + rlimit + us)` | `md5(KEY + Dir + t + exper + rlimit + us + src + 身份段)` |
 
 - `KEY` = `cdn_sign_key`；`Dir` = path 去掉文件名那一段（`/vod/2026/`，注意不含文件名），两种模式算法一致；
 - `t` = 过期时间戳的十六进制小写，有效期 6 小时（`CdnUrlSigner::TOKEN_TTL`）；
 - `exper` = 试看秒数（0 = 不截断）、`rlimit` = 0（不限次数）、`us` = 每集随机的串；
 - `src` = 原始直链的 host，转小写，带非默认端口时保留 `:端口`（`parse_url` 把 host 与 port 分开放，端口要拼回去）；地址里按 query 规则做 URL 编码，参与签名的是**解码后**的值。它放在签名参数组**之前**——那是资源定位信息，不是签名参数；
+- `uid` / `vod` / `nid` / `rev`：**只有 `self` 模式**。`uid` = 登录用户 id（未登录 0）、`vod` = 影片 id、`nid` = 集号、`rev` = 失效序号（`cdn_sign_rev`）。四段用 `|` 分隔拼成**身份段**接在 `src` 之后：`身份段 = "|" + uid + "|" + vod + "|" + nid + "|" + rev`。分隔符不能省——裸拼会让 `uid=1,vod=9,nid=23` 与 `uid=19,vod=2,nid=3` 撞成同一个串，绑定等于没做；
 
 `tencent` 模式：**片源必须已经上传到 CDN，且路径与源站 path 完全一致**——源站是
 `/vod/2026/1.m3u8`，CDN 上也得是 `/vod/2026/1.m3u8`，否则签名再正确也是 404/403。
 
 `self` 模式：`cdn_domain` 填媒体服务自己的域名，媒体服务收到请求后按顺序做三件事：
 
-1. **先校验签名**：用同一个 `cdn_sign_key` 复算 `md5(KEY + Dir + t + exper + rlimit + us + src)`。
+1. **先校验签名**：用同一个 `cdn_sign_key` 复算
+   `md5(KEY + Dir + t + exper + rlimit + us + src + 身份段)`，身份段按上一节的式子拼，值直接取
+   URL 上的同名参数。
    `src` 必须算进签名串——不参与签名的话，谁都能把它改成免费站，让服务器替别人代理任意源；
 2. **按 `src` 回源**：请求 `https://{src}{path}{query}`（回源协议由媒体服务决定，默认 https）。
    `src` 只能取自**已通过校验的签名参数**，不能信任请求头里的 `Referer`，也不能信任
    任何客户端可自由填写、又不在签名里的字段；
 3. **按 `exper` 截断**：`exper = 0` 不截断，大于 0 只放行前 `exper` 秒（HLS 即截断播放列表时长）。
+
+**为什么 `self` 还要把身份算进签名**：只绑 `Dir` 时，一条地址换任何用户、换同目录下的任何一集
+都能用——付费用户把地址贴到群里，全群免费看，也查不出是谁漏的。把 `uid / vod / nid` 并进签名后，
+改任何一个值都会验签失败（`Dir` 相同也不再能互相顶用），媒体服务的访问日志里 `uid + vod + nid`
+就成了"谁看了哪一集"。媒体服务**不需要理解**这三个值，只要复算时算进去。
+
+**诚实的边界**：媒体服务只验签名，它不知道"现在来取流的是不是 `uid` 那个人"。所以一条合法地址
+原封不动转给别人，仍然能播到过期（6 小时）。按人拦截需要媒体服务回调插件校验会话，那是另一套
+架构；插件这边保证的是"改不了、查得到、能一刀切失效"——`cdn_sign_rev` 加 1，此前下发的所有
+`self` 地址立刻作废（签名里的 `rev` 变了），不用等过期，也不动 `cdn_sign_key`。
+
+**`tencent` 模式绑不了身份**：腾讯云按它自己写死的签名串校验，多一个参数、改一处拼接都会签名
+不匹配、整站 403。这是**厂商契约限制**，所以 `tencent` 的地址在 TTL 内仍可被任何人重放，只能
+靠缩短 `CdnUrlSigner::TOKEN_TTL` 或轮换密钥收敛。
+
+**升级必须同时做**：`self` 的签名串变了，插件与媒体服务要一起上线，否则所有 `self` 地址 403。
+`tencent` 模式的签名串一个字都没动，升级不受影响。
 
 HLS 片源额外注意：签名只挂在 m3u8 上，`ts` 分片是相对地址、自身不带签名参数。
 要么在 CDN 侧开能**把鉴权参数透传到分片**的配置（m3u8 改写一类），要么只对整片文件开防盗链，

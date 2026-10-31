@@ -96,8 +96,8 @@ mp4 没有切片边界，只能按字节：
 
 | | `tencent` | `self` |
 |---|---|---|
-| URL | `...?t=&exper=&rlimit=&us=&sign=` | `...?src=采集站A.com&t=&exper=&rlimit=&us=&sign=` |
-| 签名串 | `md5(KEY + Dir + t + exper + rlimit + us)` | `md5(KEY + Dir + t + exper + rlimit + us + src)` |
+| URL | `...?t=&exper=&rlimit=&us=&sign=` | `...?src=采集站A.com&uid=&vod=&nid=&rev=&t=&exper=&rlimit=&us=&sign=` |
+| 签名串 | `md5(KEY + Dir + t + exper + rlimit + us)` | `md5(KEY + Dir + t + exper + rlimit + us + src + 身份段)` |
 | 用途 | 腾讯云点播 / 兼容其格式的 CDN | 自建媒体服务 |
 
 **为什么 `self` 模式要带 `src`**：macCMS 里存的是完整直链，而 `cdn_domain + path` 会把源站域名丢掉——媒体服务收到 `/vod/1.m3u8` 不知道该去 A 站还是 B 站取，不同源站 path 还可能重名。
@@ -106,15 +106,30 @@ mp4 没有切片边界，只能按字节：
 
 **为什么 `tencent` 模式不带 `src`**：腾讯云的校验严格按它自己的签名串，多一个参数会导致签名不匹配。两种模式互斥，配置项一改就走不同分支。
 
+**为什么 `self` 还要带身份段**：`Dir` 只绑目录，同目录下的任意一集、任意用户都能互用——付费用户把地址贴到群里，全群免费看，而且查不出是谁漏的。所以 `self` 把 `uid`（登录用户，未登录 0）、`vod`（影片）、`nid`（集号）、`rev`（失效序号）一起并进签名，并**放进 URL**：
+
+- 媒体服务的契约是「验签 → 按 `src` 回源」，它没有也不该有用户会话，这些值只能由 URL 送过去；它不需要理解含义，复算时算进去即可；
+- 改任何一个值立刻验签失败：换用户（改 `uid`）、换一集（改 `nid`）、换一部剧（改 `vod`）都不行；
+- 身份段四段用 `|` 分隔：裸拼时 `uid=1,vod=9,nid=23` 与 `uid=19,vod=2,nid=3` 会撞成同一个串，绑定等于没做。
+
+**诚实的边界**：媒体服务只验签名，它不知道"现在来取流的是不是 `uid` 那个人"。一条合法地址原封不动转给别人，仍能播到过期（6 小时）。按人拦截要媒体服务回调插件校验会话，那是另一套架构。插件这边保证的是「改不了、查得到、能一刀切失效」。
+
+**一刀切失效**：后台 `cdn_sign_rev` 加 1，此前下发的所有 `self` 地址立刻作废（签名里的 `rev` 变了），不用等过期，也不动 `cdn_sign_key`（那把密钥 `tencent` 模式也在用）。
+
+**`tencent` 模式绑不了身份**：腾讯云按它自己写死的签名串校验，多一个参数、改一处拼接都会签名不匹配、整站 403。这是**厂商契约限制**，不是省略——`tencent` 的地址在 TTL 内仍可被任何人重放，只能靠缩短 `CdnUrlSigner::TOKEN_TTL` 或轮换密钥收敛。
+
+**升级必须同时做**：`self` 的签名串变过，插件与媒体服务要一起上线，否则所有 `self` 地址 403。`tencent` 的签名串一个字都没动。
+
 ## 6. 媒体服务必须实现的三件事
 
 对接 `self` 模式时，媒体服务最少要做到：
 
-1. **校验签名**：用同一 KEY 复算 `md5(KEY + Dir + t + exper + rlimit + us + src)`，`Dir` = 原始 path 去掉文件名；
+1. **校验签名**：用同一 KEY 复算 `md5(KEY + Dir + t + exper + rlimit + us + src + 身份段)`，
+   身份段 = `"|" + uid + "|" + vod + "|" + nid + "|" + rev`（值取 URL 上的同名参数），`Dir` = 原始 path 去掉文件名；
 2. **读 `exper`**：`0` = 不截断，`>0` = 截到这么多秒；
 3. **按 `src` 回源**，且 `src` 只能来自**已签名参数**——绝不能信任请求头里的 `Referer`，那是可以随便写的。
 
-参数顺序建议固定 `src, t, exper, rlimit, us, sign`（插件已按此拼），但媒体服务按名取参即可。
+参数顺序固定为 `src, uid, vod, nid, rev, t, exper, rlimit, us, sign`（`tencent` 模式没有前五个），但媒体服务按名取参即可。
 
 ## 7. 一张图
 
@@ -124,8 +139,8 @@ mp4 没有切片边界，只能按字节：
   ▼
 插件（macCMS 那台）
   │  ② 判权限：未解锁 → 不给地址；试看 → exper=300；已解锁 → exper=0
-  │  ③ 签名：md5(KEY + Dir + t + exper + rlimit + us + src)
-  │  ④ 下发：https://media.example.com/{path}?src=..&t=..&exper=..&sign=..
+  │  ③ 签名：md5(KEY + Dir + t + exper + rlimit + us + src + "|uid|vod|nid|rev")
+  │  ④ 下发：https://media.example.com/{path}?src=..&uid=..&vod=..&nid=..&rev=..&t=..&exper=..&sign=..
   ▼
 媒体服务（新机子）
   │  ⑤ 校验签名（同一个 KEY）
@@ -141,7 +156,10 @@ mp4 没有切片边界，只能按字节：
 - [ ] `cdn_sign_type` 选对（腾讯云 → `tencent`，自建 → `self`）
 - [ ] `cdn_trysee_minutes` 填了才会下发 `exper`；填 0 = 不给试看
 - [ ] 媒体服务的 `Dir` 算法与插件一致（path 去掉文件名）
-- [ ] 媒体服务验证过：改 `src` / 改 `exper` 都会签名不匹配
+- [ ] 媒体服务验证过：改 `src` / 改 `exper` / 改 `uid` / 改 `nid` 都会签名不匹配
+- [ ] 媒体服务的访问日志落了 `uid + vod + nid`：地址泄露时能定位到账号
+- [ ] 插件与媒体服务**同时**上线（`self` 签名串变了，只升一边全站 403）
+- [ ] 应急演练过一次：后台 `cdn_sign_rev` 加 1，此前地址立刻失效（`tencent` 模式没有这个开关）
 - [ ] 抽查一部片：试看能播到点停、拖不回去；解锁后能看完整、位置从断点续
 - [ ] 带宽评估：自建时"出流"全在自己机器上，10Mbps 大约只够 3–4 人同时看
 

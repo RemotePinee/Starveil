@@ -104,7 +104,8 @@ final class VodController extends BaseController
             return;
         }
 
-        $url = (new Vods())->playUrl($vodId, $sid, $nid);
+        // 带 userId 只为签名绑定（self 模式的 uid），放行判定在上面已经做完
+        $url = (new Vods())->playUrl($vodId, $sid, $nid, $userId > 0 ? $userId : null);
         if ($url === '') {
             Json::fail(404, '该集不存在', 404);
             return;

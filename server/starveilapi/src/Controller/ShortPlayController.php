@@ -70,7 +70,7 @@ final class ShortPlayController extends BaseController
 
         $userId = $this->userId();
         if ($this->unlockedByServer($userId, $vodId, $episode)) {
-            $url = $this->episodeUrl($vodId, $episode);
+            $url = $this->episodeUrl($userId, $vodId, $episode);
             if ($url === '') {
                 Json::fail(404, '剧集不存在');
                 return;
@@ -104,7 +104,7 @@ final class ShortPlayController extends BaseController
             return;
         }
 
-        $url = $this->episodeUrl($vodId, $episode);
+        $url = $this->episodeUrl($userId, $vodId, $episode);
         if ($url === '') {
             Json::fail(404, '剧集不存在');
             return;
@@ -204,9 +204,12 @@ final class ShortPlayController extends BaseController
      *
      * 两个调用方（[postUnlock] 的两条放行路径）都已解锁过，所以按「已解锁」口径取地址：
      * `Vods::playUrl()` 内部走 free + exper = 0（不截断），CDN 接通时给签名地址。
+     *
+     * `$userId` 传下去只为签名绑定（`self` 模式的 `uid`）：漏传就走成 `uid=0`，地址泄露时
+     * 查不出是谁取的，也拦不住把地址换给别人用。
      */
-    private function episodeUrl(int $vodId, int $episode): string
+    private function episodeUrl(int $userId, int $vodId, int $episode): string
     {
-        return (new Vods())->playUrl($vodId, 0, $episode);
+        return (new Vods())->playUrl($vodId, 0, $episode, $userId);
     }
 }

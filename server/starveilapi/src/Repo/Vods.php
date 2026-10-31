@@ -13,6 +13,7 @@ namespace Starveil\Api\Repo;
 
 use Starveil\Api\Service\Playback;
 use Starveil\Api\Support\CdnUrlSigner;
+use Starveil\Api\Support\PlayIdentity;
 use Starveil\Api\Support\Setting;
 use think\Db;
 use think\db\Query;
@@ -624,7 +625,8 @@ final class Vods
      * 锁着或只给试看。判定与 `v1.vod/playUrl` 同源（`Playback::unlockedEpisodes()`），
      * 所以同一个 nid 在详情页与播放接口的结论一致；整剧已放行时不逐集再查。
      *
-     * 每集单独签名，`us` 因而逐集不同（Dir 与 exper 相同，签名仍逐集唯一）。
+     * 每集单独签名：`us` 逐集不同；`self` 模式的 `nid` 也逐集不同，所以同目录下的相邻集
+     * 即使共用 Dir 也不能互相顶用。
      *
      * @param array<string,mixed> $row
      * @param array{mode:string,trysee_seconds:int} $gate
@@ -640,15 +642,18 @@ final class Vods
         $unlocked = $this->unlockedNids($groups, $mode, (int)$row['vod_id'], $userId, $playback);
 
         $sources = [];
+        $vodId = (int)$row['vod_id'];
         foreach ($groups as $group) {
             $episodes = [];
             foreach ($group['urls'] as $episode) {
+                $nid = (int)$episode['nid'];
                 // 单独买过 / 看完广告的那几集按已解锁口径下发（exper = 0），其余沿用整剧口径
-                $episodeMode = ($unlocked[(int)$episode['nid']] ?? false) ? 'free' : $mode;
+                $episodeMode = ($unlocked[$nid] ?? false) ? 'free' : $mode;
                 $episode['url'] = $this->episodeUrl(
                     (string)$episode['url'],
                     $episodeMode,
                     $episodeMode === 'free' ? 0 : $exper,
+                    new PlayIdentity($userId, $vodId, $nid),
                     $cdn,
                 );
                 $episodes[] = $episode;
@@ -711,20 +716,29 @@ final class Vods
      *   `cdn_preview` 用试看秒数。签不出来（地址为空 / 不是绝对路径）时，
      *   未解锁的宁可不给，已解锁的退回原始地址。
      *
+     * `$identity`（谁 / 哪部剧 / 哪一集）一路传到 `CdnUrlSigner::signedUrl()`：`self` 模式
+     * 把它并进签名并写进 URL，一条地址换用户或换集就验不过；`tencent` 模式用不上它
+     * （腾讯云按写死的签名串校验，多一个参数就 403）。
+     *
      * 为什么必须判域名：CDN 只代理自己域名下的资源。采集来的 `https://采集站/x.m3u8`
      * 被改写成 `cdn_domain + path` 后，CDN 上根本没有那份文件，签名再正确也是 404，
      * 整站短剧会变成"全部播不了"。所以只有原始地址本来就在 CDN 上（host 相同）、
      * 或本来就是相对路径时才改写。
      */
-    private function episodeUrl(string $raw, string $mode, int $exper, ?CdnUrlSigner $cdn): string
-    {
+    private function episodeUrl(
+        string $raw,
+        string $mode,
+        int $exper,
+        PlayIdentity $identity,
+        ?CdnUrlSigner $cdn
+    ): string {
         if ($mode === 'none') {
             return '';
         }
         if ($cdn === null || !$this->onConfiguredCdn($raw)) {
             return $mode === 'cdn_preview' ? '' : $raw;
         }
-        $signed = $cdn->signedUrl($raw, $exper);
+        $signed = $cdn->signedUrl($raw, $identity, $exper);
 
         return $signed ?? ($mode === 'cdn_preview' ? '' : $raw);
     }
@@ -768,8 +782,11 @@ final class Vods
      * **只做定位，不做权限判断**：调用方必须先过闸门（`VodController::getPlayUrl` 按集判，
      * [detail] 按整剧 + 逐集判）。地址分发交给 [episodeUrl]：在 CDN 上的片源给签名地址
      * （只开 CDN 的站点上源站直链放不出来），采集来的第三方直链原样给。
+     *
+     * `$userId` 只用于签名绑定（`self` 模式的 `uid`），**不参与放行判定**——判定在上一步
+     * 就做完了；未登录传 null，签名里按 0 处理。
      */
-    public function playUrl(int $vodId, int $sid, int $nid): string
+    public function playUrl(int $vodId, int $sid, int $nid, ?int $userId = null): string
     {
         if ($vodId <= 0 || $nid <= 0) {
             return '';
@@ -789,7 +806,13 @@ final class Vods
             foreach ($group['urls'] as $episode) {
                 if ((int)$episode['nid'] === $nid) {
                     // 能走到这里说明闸门已放行：free + exper=0，CDN 开时给不截断的签名地址
-                    return $this->episodeUrl((string)$episode['url'], 'free', 0, CdnUrlSigner::fromSettings());
+                    return $this->episodeUrl(
+                        (string)$episode['url'],
+                        'free',
+                        0,
+                        new PlayIdentity($userId, $vodId, $nid),
+                        CdnUrlSigner::fromSettings(),
+                    );
                 }
             }
             if ($sid > 0) {

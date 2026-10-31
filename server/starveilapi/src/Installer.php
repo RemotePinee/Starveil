@@ -551,6 +551,8 @@ return " . var_export(array_values($lines), true) . ";
             'cdn_domain' => '',
             'cdn_sign_key' => '',
             'cdn_trysee_minutes' => '0',
+            // 失效序号：加 1 让此前下发的 self 模式地址全部作废（见 CdnUrlSigner 类注释）
+            'cdn_sign_rev' => '0',
             'episode_points' => '0',
             'register_require_sms' => '1',
             'sms_daily_limit' => '10',

@@ -3,13 +3,14 @@ name: android
 on:
   push:
     branches: [main]
+    # server/** 不排除：verifySecurityBaseline 会扫 PHP（明文 URL / 写死的密钥），
+    # 排除掉等于「只改服务端的 PR 从不进闸门」。
     paths-ignore:
-      - 'server/**'
       - 'docs/**'
       - '**.md'
   pull_request:
+    # 同上：只改 PHP 的 PR 必须跑到 gradle check（含 verifySecurityBaseline）
     paths-ignore:
-      - 'server/**'
       - 'docs/**'
       - '**.md'
 
@@ -38,3 +39,19 @@ jobs:
         run: ./gradlew check --max-workers=1 --no-daemon
         env:
           STARVEIL_API_HOST: ${{ secrets.STARVEIL_API_HOST }}
+
+  # 服务端语法闸门：几秒出结果，不必等 gradle 全量跑完才知道有语法错误。
+  # 安全基线（verifySecurityBaseline，含 server/ 下的 PHP）由上面的 check 覆盖，不在这里重复。
+  php-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          # 与本地 `docker run php:8.1-cli-alpine` 对齐，避免 CI 绿而本地红
+          php-version: '8.1'
+          coverage: none
+
+      - name: php -l
+        run: find server -name '*.php' -type f -print0 | xargs -0 -n 1 php -l
