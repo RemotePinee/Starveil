@@ -212,7 +212,8 @@ class PayViewModelTest {
 
         val event = viewModel.events.first()
         assertEquals(PayEvent.Message("余额不足"), event)
-        assertEquals(Triple(101, 3, 1), repository.lastEpisode)
+        // 单集购买传的是"什么片、第几集、第几源、真 sid"；本次没有 sid，仓库按下标兜底
+        assertEquals(listOf(101, 3, 1, 0), repository.lastEpisode)
         assertFalse(viewModel.state.value.isSubmitting)
     }
 

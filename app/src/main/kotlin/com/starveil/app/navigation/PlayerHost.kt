@@ -57,6 +57,15 @@ internal fun episodeNumberOf(vod: Vod, sourceIndex: Int, episodeIndex: Int): Int
         ?.episodes?.getOrNull(episodeIndex)?.episodeNumber ?: DEFAULT_EPISODE_NUMBER
 
 /**
+ * 某一源的后端 sid（1 起）；拿不到返回 0。
+ *
+ * 单集购买要上报的是它，不是数组下标：后端 `array_values` 重排过，按下标 + 1 猜
+ * sid 会把钱付到别的源上。返回 0 表示这一源没有 sid，由 `PayRepository` 退回下标兜底。
+ */
+internal fun sourceSidOf(vod: Vod, sourceIndex: Int): Int =
+    vod.playSources.getOrNull(sourceIndex)?.sid ?: 0
+
+/**
  * 先取详情与试看闸门，再建 [PlayerViewModel]。
  *
  * 试看参数必须在建 ViewModel 之前拿到：`PlayerDeps.trySeeAccess/trySeeMinutes`

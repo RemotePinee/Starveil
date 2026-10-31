@@ -10,6 +10,7 @@ import com.starveil.app.AppContainer
 import com.starveil.feature.pay.ARG_EPISODE_NUMBER
 import com.starveil.feature.pay.ARG_PAY_MODE
 import com.starveil.feature.pay.ARG_SOURCE_INDEX
+import com.starveil.feature.pay.ARG_SOURCE_SID
 import com.starveil.feature.pay.ARG_VOD_ID
 import com.starveil.feature.pay.PAY_MODE_EPISODE
 import com.starveil.feature.pay.PayViewModel
@@ -59,6 +60,7 @@ internal fun rememberPayViewModel(
             vodId = args?.getInt(ARG_VOD_ID) ?: 0,
             episodeNumber = args?.getInt(ARG_EPISODE_NUMBER) ?: 0,
             sourceIndex = args?.getInt(ARG_SOURCE_INDEX) ?: 0,
+            sid = args?.getInt(ARG_SOURCE_SID) ?: 0,
         ),
     )
     return if (args?.getString(ARG_PAY_MODE) == PAY_MODE_EPISODE) {

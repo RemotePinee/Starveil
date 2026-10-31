@@ -20,6 +20,7 @@ internal class PayPurchaseFlow(private val payRepository: PayRepository) {
             vodId = args.vodId,
             episodeNumber = args.episodeNumber,
             sourceIndex = args.sourceIndex,
+            sid = args.sid,
         )
 
     suspend fun redeemCard(code: String): AppResult<CardRedeem> = payRepository.redeemCard(code)

@@ -9,6 +9,7 @@ import com.starveil.core.network.dto.FavoriteDto
 import com.starveil.core.network.dto.PageDto
 import com.starveil.core.network.mapper.toDomain
 import kotlinx.serialization.serializer
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * 收藏。
@@ -68,7 +69,14 @@ class DefaultFavoriteRepository(
 ) : FavoriteRepository {
 
     private var favoriteSnapshotCache: List<FavoriteDto>? = null
-    private val favoriteStatusOverrides = mutableMapOf<Int, Boolean>()
+
+    /**
+     * 进程内收藏状态覆盖：主线程（首帧、播放页收藏按钮）读，协程（[add]/[remove]）写。
+     *
+     * 普通 `mutableMapOf` 在这里不只是可见性问题——`HashMap` 并发写会改结构，
+     * 读到一半可能死循环或丢键，所以用 [ConcurrentHashMap]。
+     */
+    private val favoriteStatusOverrides = ConcurrentHashMap<Int, Boolean>()
 
     override fun cachedFavoriteStatus(vodId: Int): Boolean? = favoriteStatusOverrides[vodId]
     private var favoriteSnapshotLoaded = false

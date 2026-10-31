@@ -33,9 +33,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -101,7 +102,14 @@ internal fun LiveFullscreenPlayer(
         return
     }
     val context = LocalContext.current
-    var index by remember { mutableIntStateOf(initialIndex.coerceIn(0, channels.lastIndex)) }
+    // 播的是哪一台，用 channel.id 记身份，不用下标：换分类是原地替换 items
+    // （LiveViewModel.selectGroup → load → fetchFirst），条数会变少——在"全部"里看第 40 台
+    // 时切到只有 12 台的组，旧下标直接越界；不越界时也可能指着另一台，顶栏与画面就各说各话。
+    var selectedId by remember {
+        mutableLongStateOf(channels[initialIndex.coerceIn(0, channels.lastIndex)].id)
+    }
+    // 手势回调在 pointerInput 里长期存活，用 state 读最新列表，避免抓住旧分类的副本
+    val liveChannels = rememberUpdatedState(channels)
     var error by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     // 新源真正出帧前，用一块黑幕把上一台的最后一帧盖住：
@@ -114,6 +122,8 @@ internal fun LiveFullscreenPlayer(
     // 换台提示只在进入时出现一次，2.5 秒后淡出，不常驻挡画面
     var showHint by remember { mutableStateOf(true) }
     var showPicker by remember { mutableStateOf(false) }
+    // 每次组合按 id 反查：该台不在新分类里就退回第一台，下标永远落在合法范围
+    val index = channelIndex(channels, selectedId)
     val channel = channels[index]
 
     LaunchedEffect(Unit) {
@@ -153,7 +163,7 @@ internal fun LiveFullscreenPlayer(
 
     // 换台：只换 MediaItem，播放器实例不动。
     // 直播地址基本都是 m3u8，统一用 HlsMediaSource；非 HLS 的 flv/直链由 ExoPlayer 自动探测。
-    LaunchedEffect(channel.url) {
+    LaunchedEffect(channel.id, channel.url) {
         val url = channel.url
         // 先把旧画面盖掉再装载：否则切到一个卡住的台时，观众看到的是上一台
         // 的画面配一个转圈，会以为"没切过去"
@@ -234,7 +244,14 @@ internal fun LiveFullscreenPlayer(
                             // 判定单独抽成 swipedIndex()：条件留在 lambda 里会让主函数
                             // 的圈复杂度顶到阈值（detekt CyclomaticComplexMethod = 10）
                             onDragEnd = {
-                                index = swipedIndex(index, drag, channels.lastIndex, size.width * SWIPE_RATIO)
+                                val list = liveChannels.value
+                                val next = swipedIndex(
+                                    channelIndex(list, selectedId),
+                                    drag,
+                                    list.lastIndex,
+                                    size.width * SWIPE_RATIO,
+                                )
+                                selectedId = list[next].id
                                 drag = 0f
                             },
                             onDragCancel = { drag = 0f },
@@ -254,7 +271,8 @@ internal fun LiveFullscreenPlayer(
                 LiveChannelPicker(
                     model = model,
                     onPick = { picked ->
-                        index = picked
+                        // 面板给的是当前列表的下标；换分类的瞬间列表可能已换代，越界就当没点
+                        channels.getOrNull(picked)?.let { selectedId = it.id }
                         showPicker = false
                     },
                     onDismiss = { showPicker = false },
@@ -292,6 +310,10 @@ private fun SwitchCurtain(visible: Boolean) {
             .background(Color.Black),
     )
 }
+
+/** 按 id 在列表里定位；找不到（换分类后这台不在新列表里）退回第一台。 */
+private fun channelIndex(channels: List<LiveChannel>, id: Long): Int =
+    channels.indexOfFirst { it.id == id }.coerceAtLeast(0)
 
 private fun swipedIndex(current: Int, drag: Float, lastIndex: Int, threshold: Float): Int = when {
     drag < -threshold && current < lastIndex -> current + 1

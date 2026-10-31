@@ -191,12 +191,10 @@ class AppContainer(
     val deviceCredentials = DeviceCredentialStore(appContext)
 
     /**
-     * 静默设备登录：没有会话、且用户没有主动登出过时调用。
+     * 静默设备登录：没有会话、且用户没有主动登出过时调用，返回是否拿到了会话。
      *
      * 只在后台配置了 `device` 登录方式时才该被调用（见 `StarveilNavHost`）。
      * 失败不抛异常：设备登录是"顺手把游客变成账号"，失败就当游客继续用。
-     *
-     * @return 是否拿到了会话
      */
     suspend fun silentDeviceSignIn(): Boolean = when {
         sessionSnapshot()?.isLoggedIn == true -> true
@@ -209,7 +207,8 @@ class AppContainer(
     private var deviceLoginFailure: String? = null
     /** 真正走一次设备登录。失败不抛：设备登录是"顺手把游客变成账号"，失败就当游客继续用。 */
     private suspend fun createDeviceSession(): Boolean {
-        val token = deviceCredentials.loadOrCreate()
+        // 凭据存不下来就别发：发出去就是换回一个下次启动再也找不回的账号（静默换号）
+        val token = deviceCredentials.loadOrCreate() ?: return false
         val result = authRepository.deviceLogin(
             token = token,
             deviceName = deviceCredentials.deviceName(),
@@ -217,7 +216,7 @@ class AppContainer(
         )
         return when (result) {
             is AppResult.Success -> {
-                // 恢复场景下服务端会换发 token，旧的要作废
+                // 恢复场景下服务端会换发 token，旧的要作废；落盘失败只影响下次启动的恢复
                 deviceCredentials.save(result.value.token)
                 refreshSession()
                 true
@@ -252,6 +251,7 @@ class AppContainer(
         pageSnapshot.clearAllInBackground()
         // 收藏还有一份进程内副本，光清磁盘不会让它失效
         favoriteRepository.resetLocalCache()
+        startupRepository.invalidate()
         refreshSession()
     }
 

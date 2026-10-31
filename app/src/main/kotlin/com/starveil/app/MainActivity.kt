@@ -63,12 +63,22 @@ class MainActivity : ComponentActivity() {
 
     /** Compose 是否已经画出第一帧。系统启动屏以它为放行条件。 */
     private val composedReady = AtomicBoolean(false)
+    /** 是否离开过前台：区分"冷启动第一次 onResume"与"从后台回来"。 */
+    private var wasBackgrounded = false
+
     override fun onResume() {
         super.onResume()
         container.attachActivity(this)
+        if (wasBackgrounded) {
+            wasBackgrounded = false
+            // 回前台重拉启动配置：强制登录、广告位、登录方式都是后台可改项，只有进程内缓存
+            // 的话，运营改了要等用户杀进程才生效。冷启动第一次不调——启动流程刚拉过。
+            container.startupRepository.invalidate()
+        }
     }
 
     override fun onPause() {
+        wasBackgrounded = true
         // 全屏广告只在前台展示；页面不可见时留引用等于持有一个已销毁的窗口。
         // 按实例摘：冷启动时开屏页可能在本页 resume 之后才销毁，它清的是自己。
         container.detachActivity(this)

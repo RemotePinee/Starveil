@@ -21,6 +21,9 @@ const val ARG_EPISODE_NUMBER = "episodeNumber"
 /** 播放源下标，0 起。 */
 const val ARG_SOURCE_INDEX = "sourceIndex"
 
+/** 播放源的后端主键（sid），1 起；0 = 没拿到，由仓库退回「下标 + 1」。 */
+const val ARG_SOURCE_SID = "sourceSid"
+
 const val PAY_MODE_MEMBERSHIP = "membership"
 const val PAY_MODE_EPISODE = "episode"
 
@@ -29,7 +32,8 @@ const val PAY_ROUTE_PATTERN: String =
     "$PAY_ROUTE?$ARG_PAY_MODE={$ARG_PAY_MODE}" +
         "&$ARG_VOD_ID={$ARG_VOD_ID}" +
         "&$ARG_EPISODE_NUMBER={$ARG_EPISODE_NUMBER}" +
-        "&$ARG_SOURCE_INDEX={$ARG_SOURCE_INDEX}"
+        "&$ARG_SOURCE_INDEX={$ARG_SOURCE_INDEX}" +
+        "&$ARG_SOURCE_SID={$ARG_SOURCE_SID}"
 
 /**
  * 生成跳转地址。两个入口：
@@ -41,10 +45,12 @@ fun payRoute(
     vodId: Int = 0,
     episodeNumber: Int = 0,
     sourceIndex: Int = 0,
+    sid: Int = 0,
 ): String = "$PAY_ROUTE?$ARG_PAY_MODE=$mode" +
     "&$ARG_VOD_ID=$vodId" +
     "&$ARG_EPISODE_NUMBER=$episodeNumber" +
-    "&$ARG_SOURCE_INDEX=$sourceIndex"
+    "&$ARG_SOURCE_INDEX=$sourceIndex" +
+    "&$ARG_SOURCE_SID=$sid"
 
 /** 从导航参数还原 [PayArgs]；缺参数时按会员模式处理。 */
 fun payArgs(
@@ -52,9 +58,12 @@ fun payArgs(
     vodId: Int,
     episodeNumber: Int,
     sourceIndex: Int,
+    // 老调用方（短剧竖屏入口）没有 sid，默认 0 时回退到下标推导
+    sid: Int = 0,
 ): PayArgs = PayArgs(
     mode = PayMode.fromRoute(mode),
     vodId = vodId,
     episodeNumber = episodeNumber,
     sourceIndex = sourceIndex,
+    sid = sid,
 )

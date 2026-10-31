@@ -16,6 +16,8 @@ import com.starveil.core.network.dto.MemberGroupCatalogDto
 import com.starveil.core.network.mapper.toDomain
 import com.starveil.core.network.mapper.toPlans
 import kotlinx.serialization.serializer
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /**
  * 支付仓库：会员价目表、充值下单、卡密、单集购买、充值提示。
@@ -66,13 +68,16 @@ interface PayRepository {
      *
      * @param vodId 影片 id
      * @param episodeNumber 单集 nid，1 起
-     * @param sourceIndex 播放源数组下标，0 起；请求里按后端 `sid`（1 起）传
+     * @param sourceIndex 播放源数组下标，0 起；只在 [sid] 缺失时用来兜底
+     * @param sid 播放源的后端主键，1 起（领域模型 `PlaySource.sid`）。
+     *   0 表示调用方没拿到（老数据/后端没下发），此时退回 `sourceIndex + 1`
      * @param payType 恒为 1
      */
     suspend fun buyEpisode(
         vodId: Int,
         episodeNumber: Int,
         sourceIndex: Int,
+        sid: Int = 0,
         payType: Int = 1,
     ): AppResult<Unit>
 
@@ -187,9 +192,10 @@ class DefaultPayRepository(
         vodId: Int,
         episodeNumber: Int,
         sourceIndex: Int,
+        sid: Int,
         payType: Int,
     ): AppResult<Unit> = apiCall {
-        api.buyEpisode(buyEpisodeFields(vodId, episodeNumber, sourceIndex, payType))
+        api.buyEpisode(buyEpisodeFields(vodId, episodeNumber, sourceIndex, sid, payType))
     }.requireSuccess()
 
     override suspend fun orderStatus(orderCode: String): AppResult<PayOrderStatus> =
@@ -227,10 +233,22 @@ class DefaultPayRepository(
             .requireData()
             .map { order -> order.toDomain(payPageUrl(order.orderCode, paymentCode)) }
 
-    /** 自己拼 H5 支付页地址，host 由 `:app` 注入。 */
-    private fun payPageUrl(orderCode: String, paymentCode: String): String =
-        h5Host.trimEnd('/') + ApiPaths.absolute(ApiPaths.PAY) +
-            "?payment=" + paymentCode + "&order_code=" + orderCode
+    /**
+     * H5 支付页地址，host 由 `:app` 注入。
+     *
+     * 查询串必须经过 [HttpUrl] 编码：支付方式 code 与订单号都是后台/服务端可配的字符串，
+     * 手工拼接时一个 `&` 或 `#` 就能改写整条查询串（后台把 code 配成 `alipay&amount=0.01`）。
+     * 解析不出合法地址时退回不带参数的 base：宁可打不开，也不发一个被改写过的地址。
+     */
+    private fun payPageUrl(orderCode: String, paymentCode: String): String {
+        val base = h5Host.trimEnd('/') + ApiPaths.absolute(ApiPaths.PAY)
+        val url = base.toHttpUrlOrNull() ?: return base
+        return url.newBuilder()
+            .addQueryParameter(PAYMENT_PARAM, paymentCode)
+            .addQueryParameter(ORDER_CODE_PARAM, orderCode)
+            .build()
+            .toString()
+    }
 }
 
 /**
@@ -246,23 +264,30 @@ private fun List<PayPlan>.planOf(planId: Int): AppResult<PayPlan> =
  * 单集购买的表单。字段名与旧调用逐字一致：
  * `type` 恒 "4"、`mid` 恒 "1"、`pay_type` 默认 "1"。
  *
- * `sid` 取 `playFrom.sid`；新模型 `PlaySource` 只保留下标、没保留 sid
- * （`Vod.kt` 的注释说明二者可能不一致）。契约夹具里首个源 sid=1 对应下标 0，
- * 故这里传 `sourceIndex + 1`。后端若下发与顺序不一致的 sid，需要把 sid 补进 PlaySource。
+ * `sid` 只认后端真实主键（`PlaySource.sid`）：源顺序会被后端 `array_values` 重排，
+ * 按下标猜 sid 就会出现「为 A 源付费、解锁的是 B 源」。
+ * 拿不到真 sid（传 0：老数据、后端没下发、短剧竖屏那条固定源入口）时才退回
+ * `sourceIndex + 1`——契约夹具 `v1_vod_detail.json` 里首个源 sid=1 对应下标 0，
+ * 这条回退只为老数据保底，不要当常规路径用。
  */
 private fun buyEpisodeFields(
     vodId: Int,
     episodeNumber: Int,
     sourceIndex: Int,
-    payType: Int,
+    sid: Int,
+    payType: Int = 1,
 ): Map<String, String> = mapOf(
     "type" to BUY_EPISODE_TYPE,
     "id" to vodId.toString(),
-    "sid" to (sourceIndex + SOURCE_SID_OFFSET).toString(),
+    "sid" to episodeSid(sid, sourceIndex),
     "nid" to episodeNumber.toString(),
     "mid" to BUY_EPISODE_MODULE_ID,
     "pay_type" to payType.toString(),
 )
+
+/** 上报的 sid：有真 sid 用真 sid，缺了才按「下标 + 1」兜底（理由见上）。 */
+private fun episodeSid(sid: Int, sourceIndex: Int): String =
+    (if (sid > 0) sid else sourceIndex + SOURCE_SID_OFFSET).toString()
 
 /** 只读 group_id=3 的 VIP 会员组。 */
 private const val PAID_GROUP_KEY = "3"
@@ -275,3 +300,8 @@ private const val BUY_EPISODE_MODULE_ID = "1"
 
 /** 播放源下标 0 起，后端 sid 1 起（夹具 `v1_vod_detail.json` 首个源 sid=1）。 */
 private const val SOURCE_SID_OFFSET = 1
+
+/** H5 支付页的查询参数名：`UserController::getPay` 只读这两个。 */
+private const val PAYMENT_PARAM = "payment"
+
+private const val ORDER_CODE_PARAM = "order_code"

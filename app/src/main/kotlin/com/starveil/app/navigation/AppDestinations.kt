@@ -44,6 +44,7 @@ import com.starveil.feature.live.LiveViewModel
 import com.starveil.feature.pay.ARG_EPISODE_NUMBER as PAY_ARG_EPISODE
 import com.starveil.feature.pay.ARG_PAY_MODE as PAY_ARG_MODE
 import com.starveil.feature.pay.ARG_SOURCE_INDEX as PAY_ARG_SOURCE
+import com.starveil.feature.pay.ARG_SOURCE_SID as PAY_ARG_SID
 import com.starveil.feature.pay.ARG_VOD_ID as PAY_ARG_VOD
 import com.starveil.feature.pay.PAY_MODE_EPISODE
 import com.starveil.feature.pay.PAY_ROUTE_PATTERN
@@ -243,13 +244,14 @@ private fun NavGraphBuilder.playerDestination(
             sourceIndex = args?.getInt(ARG_SOURCE_INDEX) ?: 0,
             episodeIndex = args?.getInt(ARG_EPISODE_INDEX) ?: 0,
             onEvent = { event -> nav.handlePlayerEvent(event, memberEnabled, context) },
-            onPurchase = { vodId, episodeNumber, sourceIndex ->
+            onPurchase = { vodId, episodeNumber, sourceIndex, sid ->
                 nav.navigate(
                     payRoute(
                         mode = PAY_MODE_EPISODE,
                         vodId = vodId,
                         episodeNumber = episodeNumber,
                         sourceIndex = sourceIndex,
+                        sid = sid,
                     ),
                 )
             },
@@ -270,6 +272,7 @@ private fun NavGraphBuilder.payDestination(
             navArgument(PAY_ARG_VOD) { type = NavType.IntType; defaultValue = 0 },
             navArgument(PAY_ARG_EPISODE) { type = NavType.IntType; defaultValue = 0 },
             navArgument(PAY_ARG_SOURCE) { type = NavType.IntType; defaultValue = 0 },
+            navArgument(PAY_ARG_SID) { type = NavType.IntType; defaultValue = 0 },
         ),
     ) { entry ->
         val args = entry.arguments

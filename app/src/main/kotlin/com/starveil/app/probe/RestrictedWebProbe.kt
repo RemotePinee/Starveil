@@ -68,14 +68,24 @@ class RestrictedWebProbe(
                 val handler = Handler(Looper.getMainLooper())
                 var webView: WebView? = null
 
+                /**
+                 * 收尾：**先销毁 View，再恢复协程**，这个顺序是必须的。
+                 *
+                 * `resume` 在 `Main.immediate` 下会就地接着跑调用方协程；先 resume 的话，
+                 * 调用方已经拿着结果往下走了，`stopLoading()`/`destroy()` 反而排在它之后。
+                 * 先销毁再恢复，调用方拿到结果时这个 View 一定已经不存在。
+                 *
+                 * 本函数只能在主线程执行：嗅探命中、证书错误、超时、取消四条路径
+                 * 要么本来就在主线程，要么经 [handler] 投递。
+                 */
                 fun finish(result: String?) {
-                    if (continuation.isActive) continuation.resume(result)
                     webView?.let { view ->
                         view.stopLoading()
                         view.destroy()
                     }
                     webView = null
                     handler.removeCallbacksAndMessages(null)
+                    if (continuation.isActive) continuation.resume(result)
                 }
 
                 val timeout = Runnable { finish(null) }
@@ -87,7 +97,9 @@ class RestrictedWebProbe(
                     ): WebResourceResponse? {
                         val candidate = request.url?.toString().orEmpty()
                         if (ParseHostPolicy.permits(candidate) && ParseRules.looksLikePlayUrl(candidate)) {
-                            finish(candidate)
+                            // 这个回调跑在 WebView 的拦截线程，不是 UI 线程：
+                            // 这里只投递，stopLoading()/destroy() 一律回主线程执行
+                            handler.post { finish(candidate) }
                         }
                         return null
                     }
@@ -104,7 +116,8 @@ class RestrictedWebProbe(
                     ) {
                         // 直接放行证书错误：等于关闭该域名的校验
                         sslErrorHandler.cancel()
-                        finish(null)
+                        // 不在 WebView 自己的回调栈里销毁 View，投递到主线程队列尾
+                        handler.post { finish(null) }
                     }
                 }
 
@@ -118,11 +131,9 @@ class RestrictedWebProbe(
 
                 continuation.invokeOnCancellation {
                     handler.removeCallbacksAndMessages(null)
-                    handler.post {
-                        webView?.stopLoading()
-                        webView?.destroy()
-                        webView = null
-                    }
+                    // 取消时协程已经不在等结果，finish 只会做完销毁那半件事；
+                    // 仍走 finish，保证销毁只有一处、且永远在主线程
+                    handler.post { finish(null) }
                 }
             }
         }

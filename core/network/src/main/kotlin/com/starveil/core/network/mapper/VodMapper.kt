@@ -30,11 +30,13 @@ fun VodDto.toDomain(): Vod = Vod(
 )
 
 fun PlaySourceDto.toDomain(index: Int): PlaySource = PlaySource(
-    // 用数组下标而不是后端 sid：后端 array_values 重排后二者可能不一致
+    // 下标与 sid 是两个东西：下标给选集用，sid 是后端主键，单集购买要上报真 sid。
+    // 后端 array_values 重排过，二者可能不一致，所以两个都保留。
     index = index,
     name = from,
     episodes = urls.map { it.toDomain() },
     playerInfo = playerInfo.toDomain(),
+    sid = sid,
 )
 
 fun com.starveil.core.network.dto.PlayUrlDto.toDomain(): PlayUrl = PlayUrl(

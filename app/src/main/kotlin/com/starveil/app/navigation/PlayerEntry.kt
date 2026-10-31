@@ -44,7 +44,8 @@ fun PlayerEntry(
     episodeIndex: Int,
     modifier: Modifier = Modifier,
     onEvent: (PlayerEvent) -> Unit = {},
-    onPurchase: (vodId: Int, episodeNumber: Int, sourceIndex: Int) -> Unit = { _, _, _ -> },
+    onPurchase: (vodId: Int, episodeNumber: Int, sourceIndex: Int, sid: Int) -> Unit =
+        { _, _, _, _ -> },
     onFullscreenChange: (Boolean) -> Unit = {},
 ) {
     // 详情 + 断点一起取：从观看记录进来时按服务端进度续播（同源同集才续）
@@ -91,7 +92,7 @@ private const val MILLIS_PER_SECOND = 1_000L
 /** 播放页回调：事件与购买。同样是为了参数个数上限。 */
 private data class PlayerCallbacks(
     val onEvent: (PlayerEvent) -> Unit,
-    val onPurchase: (vodId: Int, episodeNumber: Int, sourceIndex: Int) -> Unit,
+    val onPurchase: (vodId: Int, episodeNumber: Int, sourceIndex: Int, sid: Int) -> Unit,
     val onFullscreenChange: (Boolean) -> Unit,
 )
 
@@ -189,7 +190,13 @@ private fun PlayerLoaded(
 
         onEvent = { event ->
             if (event is PlayerEvent.RequestPurchase) {
-                callbacks.onPurchase(request.vod.id, request.episodeNumber, request.sourceIndex)
+                callbacks.onPurchase(
+                    request.vod.id,
+                    request.episodeNumber,
+                    request.sourceIndex,
+                    // 真 sid：付费必须打到用户正在看的那一源
+                    sourceSidOf(request.vod, request.sourceIndex),
+                )
             } else {
                 callbacks.onEvent(event)
             }

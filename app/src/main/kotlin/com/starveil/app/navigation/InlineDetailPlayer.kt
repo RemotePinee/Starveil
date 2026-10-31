@@ -72,7 +72,8 @@ class InlinePlayerCallbacks(
     /** 未起播时点海报上的大播放键。 */
     val onStart: () -> Unit = {},
     /** 点「积分兑换」：:app 转支付页的买断模式，与独立播放页同一条路由。 */
-    val onPurchase: (vodId: Int, episodeNumber: Int, sourceIndex: Int) -> Unit = { _, _, _ -> },
+    val onPurchase: (vodId: Int, episodeNumber: Int, sourceIndex: Int, sid: Int) -> Unit =
+        { _, _, _, _ -> },
     /** 点「开通会员」：:app 转会员页。 */
     val onUpgrade: () -> Unit = {},
     /** 全屏开关：详情页据此收起顶栏。 */
@@ -295,6 +296,8 @@ private fun InlinePlayerRoute(
                         load.request.vod.id,
                         episodeNumberOf(load.request.vod, current.sourceIndex, current.episodeIndex),
                         current.sourceIndex,
+                        // 真 sid：付费必须打到用户正在看的那一源
+                        sourceSidOf(load.request.vod, current.sourceIndex),
                     )
 
                     PlayerEvent.RequestUpgrade -> callbacks.onUpgrade()

@@ -27,13 +27,15 @@ enum class PayMode {
  *
  * @param vodId 单集购买用，旧 的 `id`
  * @param episodeNumber 单集 nid，1 起
- * @param sourceIndex 播放源下标，0 起；仓库按后端 `sid`（1 起）上传
+ * @param sourceIndex 播放源下标，0 起；只在 [sid] 缺失时给仓库兜底
+ * @param sid 播放源的后端主键，1 起；0 表示没拿到（老数据/后端没下发），仓库退回下标 + 1
  */
 data class PayArgs(
     val mode: PayMode = PayMode.MEMBERSHIP,
     val vodId: Int = 0,
     val episodeNumber: Int = 0,
     val sourceIndex: Int = 0,
+    val sid: Int = 0,
 )
 
 /**

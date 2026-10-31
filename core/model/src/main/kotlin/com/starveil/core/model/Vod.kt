@@ -42,14 +42,19 @@ data class Vod(
 }
 
 /**
- * 播放源。后端的 vod_play_list 是「源 -> 集」两层结构，
- * index 等于数组下标，不要用后端下发的 sid（两者可能不一致）。
+ * 播放源。后端的 vod_play_list 是「源 -> 集」两层结构。
+ *
+ * [index] 是数组下标（0 起），用来选集、换源、存观看记录，不能当后端主键用；
+ * [sid] 是后端真正的主键（1 起），单集购买必须原样上报——后端 `array_values`
+ * 重排过，两者不保证一致，按下标 + 1 猜 sid 会把钱付到别的源上。
+ * 老数据/后端没下发时 [sid] 为 0，由仓库退回「下标 + 1」。
  */
 data class PlaySource(
     val index: Int,
     val name: String,
     val episodes: List<PlayUrl>,
     val playerInfo: PlayerInfo,
+    val sid: Int = 0,
 )
 
 /**

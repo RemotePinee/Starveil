@@ -41,7 +41,8 @@ class FakePayRepository(
     var lastPlanId: Int? = null
     var lastPaymentCode: String? = null
     var lastCardCode: String? = null
-    var lastEpisode: Triple<Int, Int, Int>? = null
+    /** 最近一次单集购买：vodId / episodeNumber / sourceIndex / sid。 */
+    var lastEpisode: List<Int>? = null
     var lastOrderCode: String? = null
     var lastUpgrade: Pair<Int, PayPeriod>? = null
     var orderStatusCalls: Int = 0
@@ -68,9 +69,10 @@ class FakePayRepository(
         vodId: Int,
         episodeNumber: Int,
         sourceIndex: Int,
+        sid: Int,
         payType: Int,
     ): AppResult<Unit> {
-        lastEpisode = Triple(vodId, episodeNumber, sourceIndex)
+        lastEpisode = listOf(vodId, episodeNumber, sourceIndex, sid)
         return buyEpisodeResult
     }
 

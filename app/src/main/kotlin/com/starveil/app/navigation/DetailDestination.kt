@@ -223,13 +223,14 @@ private fun InlineDetailHero(
         },
         callbacks = InlinePlayerCallbacks(
             onStart = { callbacks.onStart(content.sourceIndex, content.episodeIndex) },
-            onPurchase = { purchaseVod, episodeNumber, sourceIndex ->
+            onPurchase = { purchaseVod, episodeNumber, sourceIndex, sid ->
                 nav.navigate(
                     payRoute(
                         mode = PAY_MODE_EPISODE,
                         vodId = purchaseVod,
                         episodeNumber = episodeNumber,
                         sourceIndex = sourceIndex,
+                        sid = sid,
                     ),
                 )
             },

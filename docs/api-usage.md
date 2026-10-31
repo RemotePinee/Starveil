@@ -134,7 +134,7 @@
 |---|---|
 | 1. 注册路由 | `server/starveilapi/src/Kernel.php` 的 `ROUTES` |
 | 2. 实现方法 | `server/starveilapi/src/Controller/*Controller.php` |
-| 3. 需要登录就进白名单 | `core/network/.../SessionCookiePolicy.kt`，漏了会被后端当游客处理 |
+| 3. 需要登录就加闸门 | 控制器里调 `$this->requireLogin()`。客户端不用登记：`StarveilCookieJar` 对同 host 全量发 cookie，不存在"漏登记就静默变游客" |
 | 4. 客户端 | `ApiPaths` 常量 + 接口类方法 + DTO/mapper，并把本文 §1 补上 |
 
 两端必须在同一个 PR 里改，原因见 §4。

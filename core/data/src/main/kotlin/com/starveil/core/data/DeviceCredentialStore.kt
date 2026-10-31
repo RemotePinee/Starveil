@@ -35,15 +35,35 @@ class DeviceCredentialStore(private val context: Context) {
     /** 本地凭据；没有或解不开时返回 null。 */
     fun load(): String? {
         val stored = prefs.getString(KEY_TOKEN, null) ?: return null
+        // 解不开按"没有凭据"处理：Keystore 条目被系统清掉（换机、恢复出厂）时只能重走恢复流程
         return runCatching { decrypt(stored) }.getOrNull()
     }
 
-    /** 首次调用生成凭据；已有则原样返回。 */
-    fun loadOrCreate(): String = load() ?: newToken().also { save(it) }
+    /**
+     * 首次调用生成凭据；已有则原样返回。
+     *
+     * 新凭据**存不下来时返回 null**，不能照旧写法直接发出去：拿一个没落盘的 token 去登录，
+     * 换回一个账号，下次启动 [load] 仍是空 → 又生成新 token → 又建一个新账号。
+     * 用户的身份就是这样被静默换掉的。返回 null 后由调用方决定怎么告诉用户。
+     */
+    fun loadOrCreate(): String? {
+        load()?.let { return it }
+        val token = newToken()
+        return token.takeIf { save(it) }
+    }
 
-    fun save(token: String) {
-        val sealed = runCatching { encrypt(token) }.getOrNull() ?: return
-        prefs.edit().putString(KEY_TOKEN, sealed).apply()
+    /**
+     * 落盘凭据。
+     *
+     * @return 是否真的写进去了。加密失败（Keystore 不可用）与写入失败都要让调用方看见：
+     *   静默 return 会让上层以为已经存好，下次启动直接换号。
+     *   用 `commit()` 而不是 `apply()`——只有前者能把写入结果报回来；写入量不到 200 字节，
+     *   还不足以值得为它再开一条 IO 通道。
+     */
+    fun save(token: String): Boolean {
+        // 加密失败在这里只能算"没存成"：异常细节对调用方没有可执行的信息，false 已足够定位
+        val sealed = runCatching { encrypt(token) }.getOrNull() ?: return false
+        return prefs.edit().putString(KEY_TOKEN, sealed).commit()
     }
 
     fun clear() {

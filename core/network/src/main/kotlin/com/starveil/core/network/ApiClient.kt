@@ -2,6 +2,7 @@ package com.starveil.core.network
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import com.starveil.core.model.ParseHostPolicy
 import com.starveil.core.model.ParseRules
 import com.starveil.core.model.PlayStream
 import okhttp3.Request
@@ -57,6 +58,16 @@ class StarveilCookieJar : CookieJar {
         return merged.values.toList()
     }
 
+    /**
+     * 同 host 全量发出，**不做按路径的白名单**。
+     *
+     * 曾经有过一份 `SessionCookiePolicy`（只给 22 个 `v1.*` 路径带 cookie），但它与后端
+     * 实际的登录闸门对不上：`v1.user/videoProgressList`、`v1.upload/withdraw`、
+     * `v1.ad/session|progress|complete` 都要登录却不在表里，而 `/api.php/danmaku/send`
+     * 根本不在这套路径命名空间（macCMS 自带接口，靠 cookie 认人，见插件 `Auth/Session.php`
+     * 头部注释的教训）。按白名单分流会让这些请求静默变成游客请求——403 或空数据，
+     * 编译器与后端都不会报"白名单漏了一个"。因此保留全量发送。
+     */
     override fun loadForRequest(url: HttpUrl): List<Cookie> = store[url.host].orEmpty()
 
     /** 整体清空：`ConcurrentHashMap.clear()` 自身并发安全，不用先遍历再逐个删。 */
@@ -249,13 +260,17 @@ class ApiClient(
      * 拉官方弹幕（解析站下发的 `danmu` 地址，指向 qilin-danmu）。
      *
      * 地址由解析结果给出，不在固定 host 上，所以不走 Retrofit，直接用同一个 OkHttp 实例。
+     * 但"解析站给的"不等于可信：入场先过 [ParseHostPolicy]，只放行 https 且非内网的地址，
+     * 否则被控的解析站能让设备去请求任意地址（含内网），而且用的是带签名拦截器的同一个 client。
      * 失败返回空列表：弹幕挂了不能影响播放（解析站自己也是这个口径）。
      */
     fun fetchOfficialDanmu(url: String): List<com.starveil.core.model.Danmu> {
+        // 不合格直接回空、不抛：弹幕是可选功能，地址不可信时宁可没有弹幕
+        if (!ParseHostPolicy.permits(url)) return emptyList()
         val request = okhttp3.Request.Builder().url(url).build()
         return runCatching {
             okHttpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return emptyList()
+                if (!response.isSuccessful) return@use emptyList()
                 val body = response.body?.string().orEmpty()
                 json.decodeFromString<com.starveil.core.network.dto.OfficialDanmuListDto>(body)
                     .toDomain()

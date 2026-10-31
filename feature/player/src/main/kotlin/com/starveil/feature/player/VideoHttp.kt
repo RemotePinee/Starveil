@@ -8,6 +8,7 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.CacheWriter
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +52,38 @@ internal class VideoHttp(private val context: Context) {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
+
+    /**
+     * 成功预取过的地址。
+     *
+     * 写在 IO 协程里、读在调用方线程（页面每次状态变化都会读），加 `@Volatile` 才有可见性。
+     */
+    @Volatile
     private var primedUrl: String? = null
+
+    /**
+     * 预取清单与前几个分片。
+     *
+     * 同一地址只做一次：页面每次状态变化都会调用。失败静默——预取只是提速，
+     * 不该影响播放。但"只做一次"的前提是**真的成功过**：先置位再发起的话，
+     * 一次超时会让同一集此后永不预取。
+     *
+     * 只捕 [IOException]：换集时 `job.cancel()` 抛的 `CancellationException` 必须向上传播，
+     * 被吞掉会被当成"这一轮干完了"，也会让结构化并发的取消语义失效。
+     */
+    fun prefetch(url: String?, headers: Map<String, String>) {
+        if (url.isNullOrBlank() || url == primedUrl) return
+        job?.cancel()
+        job = scope.launch {
+            try {
+                val targets = if (isHls(url)) firstSegments(url, headers) else listOf(url)
+                targets.forEach { cacheByWriter(it, headers) }
+                primedUrl = url
+            } catch (e: IOException) {
+                PlayerLog.warn { "预取失败（不影响播放）：$url ${e.message}" }
+            }
+        }
+    }
 
     /**
      * 每集新建一个 Factory（要带该集的请求头），但底层 client、连接池与分片缓存是共享的。
@@ -77,24 +109,6 @@ internal class VideoHttp(private val context: Context) {
             .setUpstreamDataSourceFactory(gated)
             // 缓存读坏了就退回网络，不让一个坏分片把整集卡死
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
-    }
-
-    /**
-     * 预取清单与前几个分片。
-     *
-     * 同一地址只做一次：页面每次状态变化都会调用。失败静默——预取只是提速，
-     * 不该影响播放。
-     */
-    fun prefetch(url: String?, headers: Map<String, String>) {
-        if (url.isNullOrBlank() || url == primedUrl) return
-        primedUrl = url
-        job?.cancel()
-        job = scope.launch {
-            runCatching {
-                val targets = if (isHls(url)) firstSegments(url, headers) else listOf(url)
-                targets.forEach { cacheByWriter(it, headers) }
-            }
-        }
     }
 
     fun release() {
