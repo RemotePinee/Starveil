@@ -118,13 +118,24 @@ val verifyModuleGraph by tasks.registering {
     description = "Enforces the module dependency matrix."
 
     val rootDirFile = layout.projectDirectory
-    val coreModules = setOf(":core:common", ":core:model", ":core:network", ":core:data", ":core:designsystem")
+    val coreModules = setOf(
+        ":core:common",
+        ":core:model",
+        ":core:network",
+        ":core:data",
+        ":core:designsystem",
+        ":core:hongguo",
+    )
     val explicitRules = mapOf(
         ":core:common" to emptySet<String>(),
         ":core:model" to setOf(":core:common"),
         ":core:network" to setOf(":core:common", ":core:model"),
         ":core:data" to setOf(":core:common", ":core:model", ":core:network"),
         ":core:designsystem" to setOf(":core:common"),
+        // 红果加密片源的纯 Kotlin 解密模块：spade key 派生、moov/sample 表解析、
+        // CENC 分片解密。不碰 Android SDK，也不碰网络与 UI，只被 :feature:player 使用，
+        // 因此只允许依赖 :core:common（AppResult / 调度器这些纯 Kotlin 设施）。
+        ":core:hongguo" to setOf(":core:common"),
     )
     // feature 只允许这四个 core，与 AGENTS.md 第 1 节矩阵原文一致。
     // 特意不含 :core:network：页面层拿不到 Retrofit 接口与 DTO，换实现不用改页面。
@@ -133,6 +144,13 @@ val verifyModuleGraph by tasks.registering {
         ":core:data",
         ":core:model",
         ":core:common",
+    )
+    // 单个 feature 的额外放行：在 featureAllowed 之上多给的 core，按下标点对点开。
+    // :core:hongguo 只在播放页的 Media3 DataSource 里有意义（其它页面拿解密表也无从用起），
+    // 所以不写进 featureAllowed——那样七个 feature 都会白拿一条解密链路。
+    // 新增条目必须有对应模块实际 project(...) 引用，删依赖时本表跟着删。
+    val featureExtraAllowed = mapOf(
+        ":feature:player" to setOf(":core:hongguo"),
     )
     val featureModules = setOf(
         ":feature:home",
@@ -164,7 +182,8 @@ val verifyModuleGraph by tasks.registering {
                     .replace('/', ':')
                 val allowed: Set<String>? = when {
                     module == ":app" -> appAllowed
-                    module.startsWith(":feature:") -> featureAllowed
+                    module.startsWith(":feature:") ->
+                        featureAllowed + featureExtraAllowed[module].orEmpty()
                     else -> explicitRules[module]
                 }
                 // 未登记模块直接报错，不再"默认给全部 core"：那个默认值正是新模块

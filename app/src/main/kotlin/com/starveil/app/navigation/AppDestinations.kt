@@ -92,6 +92,12 @@ import com.starveil.feature.user.HistoryViewModel
 
 /** 首页。历史版本首页卡片点进去是详情页，不是直接起播。 */
 internal fun NavGraphBuilder.homeDestination(nav: NavHostController, container: AppContainer) {
+    homeEntry(nav, container)
+    searchEntry(nav, container)
+    filterEntry(nav, container)
+}
+
+private fun NavGraphBuilder.homeEntry(nav: NavHostController, container: AppContainer) {
     composable("home") {
         val context = LocalContext.current
         val memberEnabled = LocalMemberEnabled.current
@@ -100,6 +106,9 @@ internal fun NavGraphBuilder.homeDestination(nav: NavHostController, container: 
             actions = homeActions(nav, context, memberEnabled, container),
         )
     }
+}
+
+private fun NavGraphBuilder.searchEntry(nav: NavHostController, container: AppContainer) {
     // 搜索与其它页面共用整幅横滑，避免整页 alpha 把旧短剧内容混到目标页面。
     composable(
         route = "search",
@@ -110,11 +119,20 @@ internal fun NavGraphBuilder.homeDestination(nav: NavHostController, container: 
         popExitTransition = { searchPopExit() },
     ) {
         SearchRoute(
-            viewModel = viewModel(factory = SearchViewModel.factory(container.vodRepository)),
+            viewModel = viewModel(
+                factory = SearchViewModel.factory(
+                    repository = container.vodRepository,
+                    historyStore = container.searchHistoryStore,
+                    rankRepository = container.rankRepository,
+                ),
+            ),
             onVodClick = { vod -> nav.openVod(container, vod) },
             onBack = { nav.popBackStack() },
         )
     }
+}
+
+private fun NavGraphBuilder.filterEntry(nav: NavHostController, container: AppContainer) {
     // 片库筛选页：首页顶部「筛选」入口进来。`initialTypeId` 先固定 0（全部）——
     // 首页目前没有把选中的分类 id 透出来，等 `HomeActions` 带上它再换这一行。
     composable(

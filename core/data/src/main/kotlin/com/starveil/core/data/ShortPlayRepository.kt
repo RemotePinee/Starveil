@@ -25,6 +25,17 @@ interface ShortPlayRepository {
     ): AppResult<List<ShortPlay>>
 
     /**
+     * 短剧范围内的关键词搜索：与 [feed] 同一个 `v1.vod` 路由，多带 `wd`。
+     * [typeId] 为 null 表示跟着后台配置的分类走（与 [feed] 一致）。
+     */
+    suspend fun search(
+        keyword: String,
+        typeId: Int? = null,
+        page: Int = 1,
+        limit: Int = VodRepository.DEFAULT_PAGE_SIZE,
+    ): AppResult<List<ShortPlay>> = AppResult.Success(emptyList())
+
+    /**
      * 首帧快照：上一次成功拿到的该分类第一页。
      *
      * 默认没有——其它模块的测试 fake 不必为此补实现；[DefaultShortPlayRepository]

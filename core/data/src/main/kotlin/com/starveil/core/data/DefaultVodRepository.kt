@@ -204,9 +204,9 @@ class DefaultVodRepository(
                 ?: businessFailure(envelope.code, envelope.msg)
         }
 
-    override suspend fun search(keyword: String, limit: Int): AppResult<List<Vod>> {
+    override suspend fun search(keyword: String, limit: Int, typeId: Int?): AppResult<List<Vod>> {
         val client = searchApi ?: return AppResult.Success(emptyList())
-        return apiCall { client.search(keyword = keyword, limit = limit) }
+        return apiCall { client.search(keyword = keyword, limit = limit, type = typeId) }
             .flatMap { envelope ->
                 envelope.data
                     ?.let { pageDto -> AppResult.Success(pageDto.list.map { dto -> dto.toDomain() }) }

@@ -45,6 +45,24 @@ class DefaultShortPlayRepository(
             }
     }
 
+    /**
+     * 搜索结果不写快照：快照服务的是分类 [feed] 的首帧，搜索是一次性的临时结果，
+     * 落盘只会让下次进剧场页看到上一次搜过的内容。
+     *
+     * [page] 暂不下发：[VodRepository.search] 没有分页参数，搜索只取第一页；
+     * 留在签名里是为了后续接搜索翻页时不必再改 ViewModel 的调用点。
+     */
+    override suspend fun search(
+        keyword: String,
+        typeId: Int?,
+        page: Int,
+        limit: Int,
+    ): AppResult<List<ShortPlay>> {
+        val resolved = resolveTypeId(typeId)
+        return vodRepository.search(keyword = keyword, limit = limit, typeId = resolved)
+            .map { vods -> vods.map { vod -> vod.toShortPlay() } }
+    }
+
     /** 每个分类单独存一份首帧快照：切回某个分类时能立刻铺出它上次的内容。 */
     private fun keyOf(typeId: Int?): String =
         "${PageSnapshotStore.KEY_SHORT_PLAY}_${resolveTypeId(typeId)}"

@@ -58,4 +58,7 @@ data class PlayerInfoDto(
     @SerialName("features") val features: String? = null,
     @SerialName("issethead") val issetHead: String? = null,
     @SerialName("headers") val headers: String? = null,
+    // 红果 CENC 解密：0=关（默认） 1=开；match 是逗号分隔的识别规则
+    @SerialName("hongguo") val hongguo: String? = "0",
+    @SerialName("hongguo_match") val hongguoMatch: String? = null,
 )

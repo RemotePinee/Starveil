@@ -40,25 +40,25 @@ private const val PROGRESS_SAVE_STEP_SEC = 5
  */
 class PlayerViewModel(
     override val vod: Vod,
-    private val deps: PlayerDeps,
+    internal val deps: PlayerDeps,
     initialSourceIndex: Int = 0,
     initialEpisodeIndex: Int = 0,
     /** 断点续播的起播位置（毫秒）；0 表示从头。只作用于首次起播。 */
-    private val resumePositionMs: Long = 0L,
+    internal val resumePositionMs: Long = 0L,
 ) : ViewModel(), PlayerUiHost {
 
-    private val scope: CoroutineScope = deps.scope ?: viewModelScope
-    private val reporter = ProgressReporter(deps.clock, deps.progressSink, scope)
+    internal val scope: CoroutineScope = deps.scope ?: viewModelScope
+    internal val reporter = ProgressReporter(deps.clock, deps.progressSink, scope)
 
     override var trySeeAccess: TrySeeAccess = deps.trySeeAccess
     override var trySeeMinutes: Int = deps.trySeeMinutes
 
     private var session: PlaybackSession = initialSessionOf(vod, initialSourceIndex, initialEpisodeIndex)
     /** 上一次已知播放位置：切页回来时引擎重建，用它把进度条直接放在断点上而不是 0。 */
-    private var lastKnownPositionMs = 0L
-    private var timeoutJob: Job? = null
-    private var probeJobs: Map<Int, Job> = emptyMap()
-    private var parseGeneration = 0
+    internal var lastKnownPositionMs = 0L
+    internal var timeoutJob: Job? = null
+    internal var probeJobs: Map<Int, Job> = emptyMap()
+    internal var parseGeneration = 0
     /** 上次落库的位置（秒）；换集/重来时重置。 */
     private var lastSavedSec = 0
 
@@ -118,6 +118,14 @@ class PlayerViewModel(
         reporter.reset()
         danmuDispatcher.reset()
         lastSavedSec = 0; edit { it.copy(positionMs = 0L, durationMs = 0L, isPlaying = false) }
+        // 红果解密开关随片源下发，默认关；写进运行时供 DataSource 层读取
+        val pi = session.playerInfo
+        PlayerLog.warn { PlayerLog.describePlayerInfo("viewModel", pi) }
+        pi?.let {
+            HongguoRuntime.config = com.starveil.core.hongguo.HongguoConfig.parse(
+                if (it.hongguoEnabled) 1 else 0, it.hongguoMatch
+            )
+        }
         // 命中「直链正则」就直接起播，不送解析站（原因见 ParseRules.isDirectLink）
         val vodUrl = episodeOf(vod, session)?.url.orEmpty()
         if (ParseRules.isDirectLink(vodUrl, session.playerInfo?.directLinkPatterns.orEmpty())) {
@@ -227,76 +235,6 @@ class PlayerViewModel(
     }
 
     // ---- 解析 ---------------------------------------------------------------
-
-    /** 探测单条线路；探测抛异常按"没拿到地址"处理，不让线路把页面带崩。 */
-    private fun launchProbe(targetIndex: Int) {
-        val target = session.parseTargets.getOrNull(targetIndex).orEmpty()
-        // 解析站要的是"这一集的原始地址"，不同集数必须分开探测
-        val vodUrl = episodeOf(vod, session)?.url.orEmpty()
-        val generation = parseGeneration
-        val job = scope.launch {
-            val stream = runCatching { deps.probe.probe(targetIndex, target, vodUrl) }.getOrNull()
-            // 被取消或被新一轮解析取代的结果一律丢弃
-            if (generation == parseGeneration) onProbeResult(targetIndex, stream)
-        }
-        probeJobs = probeJobs + (targetIndex to job)
-    }
-
-    private fun onProbeResult(targetIndex: Int, stream: PlayStream?) {
-        val pending = (session.phase as? PlaybackPhase.Parsing)?.pendingTargets.orEmpty()
-        // 迟到结果：该线路已失败、或已经拿到别的地址，丢弃
-        if (targetIndex !in pending) return
-        session = PlaybackMachine.onParsed(session, targetIndex, stream)
-        if (session.phase is PlaybackPhase.Playing) {
-            timeoutJob?.cancel()
-            cancelProbes()
-            onPlaybackStarted()
-        } else {
-            // 失败也要先 publish：只更新 session 不推状态，UI 会一直停在 Parsing
-            publish()
-            settleParse()
-        }
-    }
-
-    /** 8 秒到点：在途线路全部记失败并取消在途探测。 */
-    private fun launchTimeout() {
-        timeoutJob?.cancel()
-        timeoutJob = scope.launch {
-            delay(PlaybackMachine.LINE_TIMEOUT_MS)
-            val pending = (session.phase as? PlaybackPhase.Parsing)?.pendingTargets.orEmpty()
-            if (pending.isEmpty()) return@launch
-            session = PlaybackMachine.onTimeout(session)
-            cancelProbes()
-            publish()
-            settleParse()
-        }
-    }
-
-    /** 状态机停在"空 Parsing"时重新驱动一轮，避免卡死。 */
-    private fun settleParse() {
-        val phase = session.phase as? PlaybackPhase.Parsing ?: return
-        if (phase.pendingTargets.isNotEmpty()) return
-        start()
-    }
-
-    private fun onPlaybackStarted() {
-        reporter.onPlaybackStarted()
-        // 回页续接优先用 VM 里留的上次位置：否则 UI 先显示 0（进度条停在开头），
-        // 等 seek 落地才跳到断点，看起来像"闪一下"。
-        val resume = maxOf(resumePositionMs.coerceAtLeast(0L), lastKnownPositionMs)
-        lastKnownPositionMs = 0L
-        edit {
-            it.copy(
-                isPlaying = true,
-                isBuffering = true,
-                isPauseAdEligible = false,
-                positionMs = resume,
-                pendingSeekMs = resume,
-            )
-        }
-        publish()
-    }
-
     // ---- 基础设施 -----------------------------------------------------------
 
     private fun port() = PlaybackSessionPort(
@@ -310,13 +248,13 @@ class PlayerViewModel(
         emit = ::sendEvent,
         triggers = PlaybackTriggers(
             restart = ::start,
-            probe = ::launchProbe,
-            armTimeout = ::launchTimeout,
+            probe = { index -> launchProbe(index) },
+            armTimeout = { launchTimeout() },
             republish = ::publish,
         ),
     )
 
-    private fun cancelProbes() {
+    internal fun cancelProbes() {
         probeJobs.values.forEach { it.cancel() }
         probeJobs = emptyMap()
     }
@@ -325,7 +263,7 @@ class PlayerViewModel(
         _events.trySend(event)
     }
 
-    private fun publish() {
+    internal fun publish() {
         _state.value = sessionStateOf(vod, session, _state.value)
         // 解析结果里带了官方弹幕地址就拉一次（内部按 url 去重）
         (session.phase as? PlaybackPhase.Playing)?.danmuUrl?.let(danmuDispatcher::ensureOfficial)

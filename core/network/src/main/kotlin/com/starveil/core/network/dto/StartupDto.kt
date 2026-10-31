@@ -63,11 +63,25 @@ data class StartupDto(
      */
     @SerialName("shortplay_type_id") val shortplayTypeId: JsonPrimitive? = null,
     /**
+     * 搜索专用的**父分类 id**（后台「短剧搜索分类 id」）。
+     *
+     * 服务端按父分类查会自动带上全部子分类，搜索一次请求就够；0 = 没配，
+     * 客户端退回按下面的 [shortplayTypes] 逐个查。同样是 [JsonPrimitive]：数字或字符串都要能读。
+     */
+    @SerialName("shortplay_search_type_id") val shortplaySearchTypeId: JsonPrimitive? = null,
+    /**
      * 短剧分类列表（可多选）：后台「基础 → 短剧分类 id」填 `21,22,23` 时下发数组。
      *
      * 老后端没有这个字段，客户端回落到上面的单个 [shortplayTypeId]。
      */
     @SerialName("shortplay_types") val shortplayTypes: List<ShortPlayTypeDto> = emptyList(),
+    /**
+     * 短剧页**顶部横滑分类条**（后台「短剧顶部 tab 分类 id」，逗号串）。
+     *
+     * 与 [shortplayTypes] 不是同一组：顶部只放 3-6 个，抽屉里才是全量。
+     * 空数组 = 后台没配，由页面退回用 [shortplayTypes]；这里不拿它硬顶。
+     */
+    @SerialName("shortplay_tabs") val shortplayTabs: List<ShortPlayTypeDto> = emptyList(),
     @SerialName("bottom_tabs") val bottomTabs: List<BottomTabDto> = emptyList(),
     /** 底栏是否显示图标；老后端不返回时按「显示」处理。 */
     @SerialName("bottom_tab_icons") val bottomTabIcons: JsonPrimitive? = null,

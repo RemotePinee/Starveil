@@ -33,11 +33,20 @@ import okhttp3.Request
  */
 internal class VideoHttp(private val context: Context) {
 
+    init {
+        // 磁盘缓存要用缓存目录，构造时交一次就够了
+        HongguoGateDataSource.appContext = context.applicationContext
+    }
+
     private val client: OkHttpClient = OkHttpClient.Builder()
         // 连接与读取都给到 15 秒：资源站首包偶尔要十几秒，8 秒会把还能连上的线路判死。
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
-        .connectionPool(ConnectionPool(4, 5, TimeUnit.MINUTES))
+        // 池子要够大：红果头部解密会开 4 条并行的 Range 请求，加上播放流本身，
+        // 原来只有 4 条会被迫边下边淘汰，等于每集都重做一遍 TLS 握手。
+        .connectionPool(ConnectionPool(8, 10, TimeUnit.MINUTES))
+        // 连接失败直接报错，不自动重试：重试会悄悄把首帧拖长几秒，而我们宁可立刻降级
+        .retryOnConnectionFailure(false)
         .build()
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -56,9 +65,16 @@ internal class VideoHttp(private val context: Context) {
             userAgent?.let { setUserAgent(it) }
             if (headers.isNotEmpty()) setDefaultRequestProperties(headers)
         }
+        // 红果加密片源在这一层解密；没命中的地址原样透传，普通片源零影响。
+        // config 由 PlayerViewModel 在开播前写入，默认关闭。
+        val cfg = HongguoRuntime.config
+        PlayerLog.warn { "dataSource() enabled=${cfg.enabled} patterns=${cfg.patterns}" }
+        val gated = DataSource.Factory {
+            HongguoGateDataSource(upstream.createDataSource(), cfg, headers, client)
+        }
         return CacheDataSource.Factory()
             .setCache(VideoCache.get(context))
-            .setUpstreamDataSourceFactory(upstream)
+            .setUpstreamDataSourceFactory(gated)
             // 缓存读坏了就退回网络，不让一个坏分片把整集卡死
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
     }

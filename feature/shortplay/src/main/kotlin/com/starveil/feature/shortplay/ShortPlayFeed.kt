@@ -40,6 +40,12 @@ import androidx.lifecycle.compose.currentStateAsState
 import coil3.compose.AsyncImage
 import com.starveil.core.common.ad.AdPlacement
 import com.starveil.core.designsystem.component.AdBadge
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
+import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.component.LocalAdClick
 import com.starveil.core.designsystem.component.LocalAdPlacements
 import com.starveil.core.designsystem.starveilExtraColors
@@ -98,6 +104,8 @@ internal fun ShortPlayFeed(
     drawerClosed: Boolean,
     playerContent: @Composable (ShortPlay, Boolean) -> Unit,
     presentation: ShortPlayPresentation = ShortPlayPresentation(),
+    /** 当前停的这页是不是广告屏：外层据此收掉顶部菜单/分类/搜索。 */
+    onAdVisible: (Boolean) -> Unit = {},
 ) {
     val feed = LocalAdPlacements.current.feed
     // 素材缺失时 creative 为空，下面的构建函数就不会插任何广告屏（后台没配=不占位）
@@ -121,6 +129,9 @@ internal fun ShortPlayFeed(
     val lockedAdState = rememberLockedAdKey(pager, pages)
     val lockedAdKey = lockedAdState.value
 
+    LaunchedEffect(pager.currentPage, pages) {
+        onAdVisible(pages.getOrNull(pager.currentPage) is FeedPage.Ad)
+    }
     LaunchedEffect(state.collectionVersion) {
         val target = pages.indexOfFirst { (it as? FeedPage.Play)?.play?.id == state.currentPlayId }
         pager.scrollToPage(target.coerceAtLeast(0))
@@ -224,6 +235,8 @@ private fun ShortPlayAdPage(
             model = creative.imageUrl,
             contentDescription = creative.title.ifBlank { "广告" },
             contentScale = ContentScale.Crop,
+            // 竖屏全屏广告按规范铺满整屏（展示面积是横屏的 3 倍），
+            // 只靠角标、倒计时、标题各自的半透明底保证可读，不给图片留边。
             modifier = Modifier.fillMaxSize(),
         )
         // 与顶部工具栏同高：抽屉按钮就在那一行里，角标要跟它水平对齐
@@ -242,10 +255,28 @@ private fun ShortPlayAdPage(
                     text = "${remain}s",
                     style = MaterialTheme.typography.labelMedium,
                     color = colors.onImage,
+                    // 深色圆底托住白字：浅色素材上白字会直接消失。
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(colors.scrimStrong)
+                        .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
                 )
             }
             AdBadge()
         }
+        // 底部纵向渐变：图片仍然是满屏，靠这层把文字压暗托住。
+        // 这是全屏广告的标准做法，给文字加色块会显得像贴片。
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .height(Spacing.xxl * 8)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color.Transparent, starveilExtraColors.scrimStrong),
+                    ),
+                ),
+        )
         AdCaption(creative = creative, modifier = Modifier.align(Alignment.BottomStart))
     }
 }

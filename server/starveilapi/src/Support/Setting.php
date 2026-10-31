@@ -53,7 +53,16 @@ final class Setting
     public static function playerInfo(): array
     {
         $raw = trim(self::get('player_info'));
-        $empty = ['parse2' => '', 'features' => '', 'issethead' => '', 'headers' => ''];
+        // 新增字段必须在这里一并返回：读回时漏掉，后台保存后刷新就是空白，
+        // 看起来像「保存失败」，实际是写进去了但没显示出来。
+        $empty = [
+            'parse2' => '',
+            'features' => '',
+            'issethead' => '',
+            'headers' => '',
+            'hongguo' => '0',
+            'hongguo_match' => '',
+        ];
         if ($raw === '') {
             return $empty;
         }
@@ -65,6 +74,8 @@ final class Setting
                     'features' => (string)($decoded['features'] ?? ''),
                     'issethead' => (string)($decoded['issethead'] ?? ''),
                     'headers' => (string)($decoded['headers'] ?? ''),
+                    'hongguo' => (string)($decoded['hongguo'] ?? '0'),
+                    'hongguo_match' => (string)($decoded['hongguo_match'] ?? ''),
                 ];
             }
         }

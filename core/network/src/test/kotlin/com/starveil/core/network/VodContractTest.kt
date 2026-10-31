@@ -25,15 +25,18 @@ class VodContractTest {
 
     private lateinit var server: MockWebServer
     private lateinit var api: StarveilApi
+    private lateinit var searchApi: VodSearchApi
 
     @Before
     fun setUp() {
         server = MockWebServer()
         server.start()
-        api = ApiClient(
+        val client = ApiClient(
             host = server.url("/").toString(),
             signature = ApiSignature(secret = "test-secret"),
-        ).api
+        )
+        api = client.api
+        searchApi = client.searchApi
     }
 
     @After
@@ -185,6 +188,27 @@ class VodContractTest {
         assertEquals(3, items.first().typeId)
         // 缺字段的条目必须仍能解析，typeId 仍是后端下发的值
         assertEquals(3, items[1].typeId)
+    }
+
+    /**
+     * 剧场里的关键词搜索 = `v1.vod?wd=` + `type`：加了关键词不能把分类丢掉，
+     * 否则结果会从短剧范围漏成全站；不传分类时请求里也不能出现 `type`（老调用点行为不变）。
+     */
+    @Test
+    fun `search keeps keyword and adds type only when scoped`() = runTest {
+        server.enqueue(jsonResponse(fixture("v1_vod_list.json")))
+        server.enqueue(jsonResponse(fixture("v1_vod_list.json")))
+
+        searchApi.search(keyword = "总裁", limit = 20, type = 30)
+        searchApi.search(keyword = "总裁", limit = 20)
+
+        val scoped = requireNotNull(server.takeRequest().requestUrl)
+        assertEquals("总裁", scoped.queryParameter("wd"))
+        assertEquals("30", scoped.queryParameter("type"))
+
+        val unscoped = requireNotNull(server.takeRequest().requestUrl)
+        assertEquals("总裁", unscoped.queryParameter("wd"))
+        assertNull(unscoped.queryParameter("type"))
     }
 
     private fun jsonResponse(body: String): MockResponse = MockResponse()

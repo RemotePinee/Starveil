@@ -57,6 +57,22 @@ class DefaultShortPlayRepositoryTest {
     }
 
     @Test
+    fun `search stays inside the configured type and passes keyword through`() = runTest {
+        val vodRepository = FakeVodRepository(
+            result = AppResult.Success(listOf(vod(id = 31, name = "总裁的替身新娘"))),
+        )
+
+        val result = DefaultShortPlayRepository(vodRepository) { 11 }.search("总裁", limit = 5)
+        val shortPlays = (result as AppResult.Success).value
+
+        // 关键词原样透给后端，分类仍是后台配的那个——搜索结果不能漏成全站
+        assertEquals("总裁", vodRepository.requestedKeyword)
+        assertEquals(11, vodRepository.requestedSearchType)
+        assertEquals(5, vodRepository.requestedSearchLimit)
+        assertEquals("总裁的替身新娘", shortPlays.single().title)
+    }
+
+    @Test
     fun `configured type id wins over fallback`() = runTest {
         val vodRepository = FakeVodRepository(result = AppResult.Success(emptyList()))
 
@@ -150,11 +166,21 @@ private class FakeVodRepository(private val result: AppResult<List<Vod>>) : VodR
     var requestedType: Int? = null
     var requestedPage: Int? = null
     var requestedLimit: Int? = null
+    var requestedKeyword: String? = null
+    var requestedSearchType: Int? = null
+    var requestedSearchLimit: Int? = null
 
     override suspend fun list(type: Int, page: Int, limit: Int): AppResult<List<Vod>> {
         requestedType = type
         requestedPage = page
         requestedLimit = limit
+        return result
+    }
+
+    override suspend fun search(keyword: String, limit: Int, typeId: Int?): AppResult<List<Vod>> {
+        requestedKeyword = keyword
+        requestedSearchLimit = limit
+        requestedSearchType = typeId
         return result
     }
 

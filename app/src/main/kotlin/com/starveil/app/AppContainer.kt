@@ -46,6 +46,8 @@ import com.starveil.core.data.LiveRepository
 import com.starveil.core.data.PlaybackRepository
 import com.starveil.core.data.PayRepository
 import com.starveil.core.data.PreferenceSessionStore
+import com.starveil.core.data.DefaultSearchHistoryStore
+import com.starveil.core.data.SearchHistoryStore
 import com.starveil.core.data.RankRepository
 import com.starveil.core.data.SessionStore
 import com.starveil.core.data.ShortPlayRepository
@@ -163,6 +165,7 @@ class AppContainer(
 
     private val sessionStore: SessionStore =
         PreferenceSessionStore(appContext.sessionDataStore)
+    val searchHistoryStore: SearchHistoryStore = DefaultSearchHistoryStore(appContext.sessionDataStore)
 
     /** 皮肤本地选择：优先级高于服务端 `app_theme_ui`，见 [ThemePreference]。 */
     val themePreference: ThemePreference =

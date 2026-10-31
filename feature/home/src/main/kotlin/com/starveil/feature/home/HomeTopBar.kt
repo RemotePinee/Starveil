@@ -121,33 +121,12 @@ private fun SearchPill(
     pushCount: Int,
     modifier: Modifier = Modifier,
 ) {
-    val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val scale by animateFloatAsState(
-        targetValue = if (pressed) PRESSED_SCALE else 1f,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessMedium,
-        ),
-        label = "search-pill-press",
-    )
-    val scope = rememberCoroutineScope()
     Box(modifier = modifier) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(SearchPillHeight)
-                .graphicsLayer { scaleX = scale; scaleY = scale }
-                .clickable(
-                    interactionSource = interaction,
-                    indication = null,
-                ) {
-                    // 等按下反馈走完小半程再跳页，转场从这颗胶囊的位置展开
-                    scope.launch {
-                        delay(PRESS_SETTLE_MS)
-                        onSearch()
-                    }
-                },
+                .clickable(onClick = onSearch),
             shape = AppShape.full,
             color = starveilExtraColors.imageGlass,
         ) {
@@ -223,6 +202,3 @@ internal val SearchPillHeight = Spacing.xxl + Spacing.xs
 /** logo 占位方块边长，与搜索胶囊同高。 */
 internal val LogoSize = SearchPillHeight
 
-/** 按下缩到 0.92：够看出来，又不会像被点凹了。 */
-private const val PRESSED_SCALE = 0.92f
-private const val PRESS_SETTLE_MS = 90L

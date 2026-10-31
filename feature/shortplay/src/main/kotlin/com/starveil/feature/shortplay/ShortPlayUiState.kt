@@ -44,3 +44,6 @@ sealed interface ShortPlayUiState {
 
 /** 分页从 1 起，与后端 `v1.vod` 的 `page` 参数一致。 */
 internal const val FIRST_PAGE = 1
+
+/** 候选去抖：太短会在每个按键上打一次请求，太长打字时卡顿感明显。 */
+internal const val SEARCH_DEBOUNCE_MS = 200L

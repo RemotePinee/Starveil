@@ -112,6 +112,7 @@ cd starveil-android
 | [docs/testing.md](docs/testing.md) | 测试策略 |
 | [docs/design-system.md](docs/design-system.md) | 设计令牌 |
 | [docs/code-standards.md](docs/code-standards.md) | 代码规范 |
+| [docs/hongguo.md](docs/hongguo.md) | 红果短剧加密链路的技术说明（只讲结构与原理，不含实现） |
 | [server/starveilapi/README.md](server/starveilapi/README.md) | 插件安装、接口清单、表结构、部署 |
 
 ## 授权

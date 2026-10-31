@@ -49,6 +49,12 @@ private fun ShortPlayEntry(container: AppContainer, nav: NavHostController, orig
             repository = container.shortPlayRepository,
             // 分类由后台下发；老后端为空时仓库走兜底分类。
             types = container.startupRepository.cached()?.shortplayTypes.orEmpty(),
+            // 搜索专用的父分类：0 = 后台没配，ViewModel 退回逐个子分类查；
+            // 它同时是进短剧页的初始流（服务端按父分类查会自动带上全部子分类）。
+            searchTypeId = container.startupRepository.cached()?.shortplaySearchTypeId ?: 0,
+            startTypeId = container.startupRepository.cached()?.shortplaySearchTypeId ?: 0,
+            // 顶部横滑条单独配的一小组分类；空则由页面退回用上面的 types。
+            tabs = container.startupRepository.cached()?.shortplayTabs.orEmpty(),
         ),
     )
     val store = remember(origin) { origin.shortPlayPresentationStore() }
@@ -78,6 +84,7 @@ private fun ShortPlayEntry(container: AppContainer, nav: NavHostController, orig
                 seriesExpanded = session.expanded,
                 interactionLocked = session.expanded,
                 expansion = expansion,
+                dockInset = stablePadding.calculateBottomPadding(),
             ),
             navigation = ShortPlayNavigation(
                 onSearch = { nav.navigate("search") },

@@ -28,6 +28,13 @@ object Spacing {
      */
     val rowHeight: Dp = 52.dp
 
+    /**
+     * 侧栏（抽屉）宽度：窄屏按屏幕比例收，宽屏封顶这个值。
+     *
+     * 不再用 [rowHeight] 乘系数凑宽度——那样改行高会把侧栏一起带歪。
+     */
+    val drawerWidth: Dp = 280.dp
+
     /** 页面级横向边距的默认值。 */
     val pageHorizontal: Dp = lg
 }

@@ -16,4 +16,7 @@ data class PlayerInfo(
     val directLinkPatterns: List<String>,
     val headerPatterns: List<String>,
     val headers: Map<String, String>,
+    // 红果 CENC 解密开关与识别规则（默认关，规则为空则不生效）
+    val hongguoEnabled: Boolean = false,
+    val hongguoMatch: String = "",
 )

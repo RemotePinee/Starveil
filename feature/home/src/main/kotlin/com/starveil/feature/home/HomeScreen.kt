@@ -379,6 +379,8 @@ private fun Centered(content: @Composable () -> Unit) {
 private fun HomeBannerAd(creative: AdPlacement) {
     val openLanding = LocalAdClick.current
     Column(modifier = Modifier.fillMaxWidth()) {
+        // 上下都要留白：之前只有底部一条 Spacer，贴着上一块内容会读成"填满了"。
+        Spacer(Modifier.height(Spacing.lg))
         AdCreativeCard(
             creative = creative,
             onClick = { if (creative.clickUrl.isNotBlank()) openLanding(creative.clickUrl) },

@@ -26,6 +26,8 @@ internal object PlayerStartupStats {
         if (ms < 0) return
         lastMs = ms
         total += 1
+        // 这是"点了到出画面"的真实耗时，排查卡顿时以它为准
+        PlayerLog.warn { "起播首帧 ${ms}ms" }
         if (samples.size >= WINDOW) samples.removeFirst()
         samples.addLast(ms)
     }

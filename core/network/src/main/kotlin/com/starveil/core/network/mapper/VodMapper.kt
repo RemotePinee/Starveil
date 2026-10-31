@@ -51,6 +51,8 @@ fun PlayerInfoDto.toDomain(): PlayerInfo = PlayerInfo(
     // 这两处与上面两个字段的分隔符不同，搬过来不能统一成逗号
     headerPatterns = issetHead.toDelimitedList(HEADER_SEPARATOR),
     headers = headers.toHeaderMap(),
+    hongguoEnabled = hongguo?.trim() == "1",
+    hongguoMatch = hongguoMatch.orEmpty(),
 )
 
 private const val COMMA = ","

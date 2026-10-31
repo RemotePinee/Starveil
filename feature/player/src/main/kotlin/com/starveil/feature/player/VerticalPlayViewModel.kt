@@ -5,21 +5,16 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.starveil.core.common.AppResult
 import com.starveil.core.data.VodRepository
 import com.starveil.core.model.DanmuTarget
-import com.starveil.core.model.ParseRules
 import com.starveil.core.model.PlayerInfo
 import com.starveil.core.model.TrySeeGate
-import com.starveil.core.model.Vod
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 
 /**
  * 竖屏播放状态持有者（计划 §5 P3）。
@@ -37,10 +32,11 @@ import kotlinx.coroutines.launch
  * 广告解锁与五态解锁状态机归计划 §5 P4，本页不做。
  */
 class VerticalPlayViewModel(
-    private val vodId: Int,
-    private val vodRepository: VodRepository,
+    // 装载链路拆在 VerticalPlayLoading.kt，那里的扩展函数要读这两项
+    internal val vodId: Int,
+    internal val vodRepository: VodRepository,
     private val deps: PlayerDeps,
-    private val initialEpisodeNumber: Int = FIRST_EPISODE_NUMBER,
+    internal val initialEpisodeNumber: Int = FIRST_EPISODE_NUMBER,
     /** 短剧默认不开弹幕（计划 §5 P3）；打开时用 [PlayerDeps.danmuSource]。 */
     private val danmuEnabled: Boolean = false,
     /** 仅初次指定集装载成功时使用；切集与成功起播后的重试不再消费。 */
@@ -48,17 +44,17 @@ class VerticalPlayViewModel(
     initialMetadata: com.starveil.core.model.ShortPlay? = null,
 ) : ViewModel() {
 
-    private val scope: CoroutineScope = deps.scope ?: viewModelScope
-    private val reporter = ProgressReporter(deps.clock, deps.progressSink, scope)
-    private var pendingResumeMs: Long? = resumeMs.coerceAtLeast(0L)
-    private var loadJob: Job? = null
-    private val trySee = VerticalTrySeeContext(TrySeeGate(deps.trySeeAccess, deps.trySeeMinutes))
+    internal val scope: CoroutineScope = deps.scope ?: viewModelScope
+    internal val reporter = ProgressReporter(deps.clock, deps.progressSink, scope)
+    internal var pendingResumeMs: Long? = resumeMs.coerceAtLeast(0L)
+    internal var loadJob: Job? = null
+    internal val trySee = VerticalTrySeeContext(TrySeeGate(deps.trySeeAccess, deps.trySeeMinutes))
 
     /**
      * 弹幕时间轴。关闭时给控制器传 null：不拉取、不上屏，[danmu] 恒为空，
      * 页面上的 DanmuLayer 直接返回——不新开接口。
      */
-    private val danmuController = DanmuController(
+    internal val danmuController = DanmuController(
         source = deps.danmuSource.takeIf { danmuEnabled },
         scope = scope,
         // 短剧只有一条源（VERTICAL_PLAY_SOURCE_INDEX），集号用当前集下标
@@ -73,17 +69,22 @@ class VerticalPlayViewModel(
     internal val preloader = VerticalPreloadPool()
 
     /** 当前源的播放信息：请求头只在命中 issethead 正则时生效。 */
-    private var playerInfo: PlayerInfo? = null
+    internal var playerInfo: PlayerInfo? = null
 
     private val _state = MutableStateFlow(verticalInitialState(initialMetadata, vodRepository.cachedDetail(vodId)))
     val state: StateFlow<VerticalPlayUiState> = _state.asStateFlow()
+
+    /** 可写状态流：装载链路（[VerticalPlayLoading]）在这里推进状态，与类内写法保持一份。 */
+    internal val stateFlow: MutableStateFlow<VerticalPlayUiState> get() = _state
 
     internal val playback = VerticalPlaybackStore(::ownsPlayback)
 
     /** 预览交接 / 原地全集的编排；语义与顺序见 [VerticalPreviewCoordinator]。 */
     private val handoff = VerticalPreviewCoordinator(
         state = _state, playback = playback, trySee = trySee,
-        host = VerticalPreviewHost(::onPageChanged, ::onProgress, ::onPlaybackSuspended, ::restorePreview),
+        host = VerticalPreviewHost(::onPageChanged, ::onProgress, ::onPlaybackSuspended) { snapshot ->
+            restorePreviewState(snapshot)
+        },
     )
 
     val defaultPlaybackToken: Any get() = handoff.defaultPlaybackToken
@@ -99,18 +100,6 @@ class VerticalPlayViewModel(
 
     fun endPreviewHandoff(token: Any): Boolean = handoff.endPreviewHandoff(token)
 
-    private fun restorePreview(snapshot: VerticalPreviewSnapshot) {
-        loadJob?.cancel()
-        playerInfo = snapshot.playerInfo
-        preloader.clear()
-        trySee.gate = snapshot.gate
-        trySee.episodeNumber = snapshot.gateEpisode
-        _state.value = snapshot.state
-        reporter.reset()
-        reporter.onPlaybackStarted()
-        danmuController.reset()
-    }
-
     override fun onCleared() {
         playback.clear()
         handoff.clear()
@@ -118,14 +107,14 @@ class VerticalPlayViewModel(
     }
 
     init {
-        load()
+        loadDetail()
     }
 
     /** 错误态重试。 */
     fun retry() {
         val current = _state.value
         if (current.playingUrl == null || current.errorMessage == null) {
-            load()
+            loadDetail()
         } else {
             _state.value = current.copy(
                 errorMessage = null,
@@ -147,7 +136,7 @@ class VerticalPlayViewModel(
         val index = page.coerceIn(0, current.episodes.lastIndex)
         if (index == current.currentIndex && current.playingUrl != null) return
         pendingResumeMs = null
-        play(current, index)
+        playEpisode(current, index)
     }
 
     /** 保存位置后过试看闸门，再记账上报，最后喂弹幕时间轴。 */
@@ -162,8 +151,6 @@ class VerticalPlayViewModel(
 
     /** 播放/暂停按钮。 */
     fun onPlayPauseClick() = togglePlayback()
-
-
     private fun togglePlayback() {
         val current = _state.value
         if (current.isBlocked || current.errorMessage != null) return
@@ -206,76 +193,12 @@ class VerticalPlayViewModel(
             _state.update { it.copy(isPlaying = false, isBuffering = false) }
             return
         }
-        play(current, next)
+        playEpisode(current, next)
     }
 
     fun onPlaybackError(message: String) {
         val hint = playerErrorMessage(message, triedOtherSources = false)
         _state.update { it.copy(errorMessage = hint, isPlaying = false, isBuffering = false) }
-    }
-
-    private fun load() {
-        loadJob?.cancel()
-        preloader.clear()
-        val revision = _state.value.playbackRevision + 1L
-        _state.value = _state.value.metadataOnly().copy(playbackRevision = revision)
-        loadJob = scope.launch {
-            val result = vodRepository.detail(vodId)
-            ensureActive()
-            when (result) {
-                is AppResult.Success -> applyVod(result.value)
-                is AppResult.Failure -> _state.update {
-                    it.copy(isLoading = false, errorMessage = verticalErrorMessage(result.error))
-                }
-            }
-        }
-    }
-
-    private fun applyVod(vod: Vod) {
-        playerInfo = vod.playSources.getOrNull(VERTICAL_PLAY_SOURCE_INDEX)?.playerInfo
-        val previous = _state.value
-        val base = verticalStateOf(vod).copy(
-            title = vod.name.ifBlank { previous.title },
-            cover = vod.poster?.takeIf(String::isNotBlank) ?: previous.cover,
-            description = vod.blurb?.takeIf(String::isNotBlank) ?: previous.description,
-            category = vod.typeName?.takeIf(String::isNotBlank) ?: previous.category,
-            playbackRevision = previous.playbackRevision,
-        )
-        if (base.episodes.isEmpty()) {
-            _state.value = base
-            return
-        }
-        val start = base.episodes.indexOfFirst { it.number == initialEpisodeNumber }.coerceAtLeast(0)
-        val resume = pendingResumeMs.takeIf { base.episodes[start].number == initialEpisodeNumber } ?: 0L
-        play(base, start, resume)
-        if (_state.value.playingUrl != null) pendingResumeMs = null
-    }
-
-    /**
-     * 装一集：预取命中直接用，未命中才归一化 → 请求头判定 → 重置进度与上报基准。
-     *
-     * 命中只省一次归一化，真正的收益在将来换成"已 prepared 的播放器"
-     * （见 [VerticalPreloadPool] 的说明）；命中与否都不改播放器状态机。
-     */
-    private fun play(base: VerticalPlayUiState, index: Int, positionMs: Long = 0L) {
-        val episode = base.episodes.getOrNull(index) ?: return
-        val url = preloader.take(index) ?: ParseRules.normalizePlayUrl(episode.url)
-        reporter.reset()
-        reporter.onPlaybackStarted()
-        danmuController.reset()
-        _state.value = base.copy(
-            currentIndex = index,
-            playingUrl = url,
-            headers = verticalHeadersOf(url, playerInfo),
-            audioUrl = null,
-            positionMs = if (url != null) positionMs else 0L,
-            durationMs = 0L,
-            blockedAccess = null,
-            isPlaying = url != null,
-            isBuffering = url != null,
-            errorMessage = if (url == null) MSG_NO_PLAY_URL else null,
-        )
-        preloader.prefetchNext(base.episodes, index)
     }
 
     /** 当前集下标（0 起）。短剧弹幕与 CMS 弹幕表用同一套坐标。 */
@@ -303,11 +226,4 @@ class VerticalPlayViewModel(
             }
         }
     }
-}
-
-/** 只预取下一集地址，不创建播放器；prepare 仍由 session 统一协调。 */
-private fun VerticalPreloadPool.prefetchNext(episodes: List<VerticalEpisode>, index: Int) {
-    val next = episodes.getOrNull(index + 1) ?: return
-    val url = ParseRules.normalizePlayUrl(next.url) ?: return
-    prefetch(index + 1, url)
 }

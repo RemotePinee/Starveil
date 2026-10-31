@@ -17,6 +17,7 @@
     "online_recharge": "0",
     "push_enabled": 1,
     "shortplay_type_id": 11,
+    "shortplay_search_type_id": 21,
     "app_login_type": "0",
     "search_hot": ["示例关键词一", "示例关键词二"],
     "payments": [

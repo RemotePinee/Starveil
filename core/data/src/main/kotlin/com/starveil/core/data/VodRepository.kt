@@ -52,9 +52,17 @@ interface VodRepository {
      */
     suspend fun types(): AppResult<List<VodType>> = AppResult.Success(emptyList())
 
-    /** 关键词搜索；同样给默认实现，避免其它 feature 的 fake 跟着改。 */
-    suspend fun search(keyword: String, limit: Int = DEFAULT_PAGE_SIZE): AppResult<List<Vod>> =
-        AppResult.Success(emptyList())
+    /**
+     * 关键词搜索；同样给默认实现，避免其它 feature 的 fake 跟着改。
+     *
+     * [typeId] 非空时把结果限定在该分类内（剧场内的关键词搜索）；null 表示不限分类，
+     * 与加这个参数之前的行为一致。
+     */
+    suspend fun search(
+        keyword: String,
+        limit: Int = DEFAULT_PAGE_SIZE,
+        typeId: Int? = null,
+    ): AppResult<List<Vod>> = AppResult.Success(emptyList())
 
     /** 首页轮播（插件后台配置）。 */
     suspend fun banners(): AppResult<List<HomeBanner>> = AppResult.Success(emptyList())

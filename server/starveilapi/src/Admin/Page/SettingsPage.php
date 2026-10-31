@@ -154,6 +154,18 @@ final class SettingsPage extends BasePage
             )
             . $this->field('需要请求头的地址正则', 'issethead', (string)$info['issethead'], '可空')
             . $this->field('请求头', 'headers', (string)$info['headers'], '可空；格式 Referer:https://a||User-Agent:xxx')
+            . $this->field(
+                '红果 CENC 解密',
+                'hongguo',
+                (string)($info['hongguo'] ?? '0'),
+                '0=关（默认） 1=开。只对下面规则命中的加密片源生效，普通 m3u8/mp4 不受影响'
+            )
+            . $this->field(
+                '红果识别规则',
+                'hongguo_match',
+                (string)($info['hongguo_match'] ?? ''),
+                '逗号分隔的地址特征，命中即尝试解密。例：/hongguo/,/cenc/'
+            )
             . '</div><div class="sv-actions"><button class="sv-btn" type="submit">保存解析配置</button></div>'
             . '<p class="sv-hint">客户端播放时会拼成「解析接口地址 + 影片地址」。'
             . '不填的话 App 只能播放直链（m3u8/mp4），其它片源会提示解析失败。</p>'

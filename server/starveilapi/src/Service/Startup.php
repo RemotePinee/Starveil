@@ -99,6 +99,12 @@ final class Startup
             // shortplay_type_id 保留成第一个，部分调用方只读这一个；新版读下面的数组。
             'shortplay_type_id' => $this->shortplayTypeIds()[0] ?? 0,
             'shortplay_types' => $this->shortplayTypes(),
+            // 父分类：客户端搜索一次请求就覆盖全部子分类，进短剧页也用它拉默认流；
+            // 0 = 没配，搜索退回按下面的 shortplay_types 逐个搜，进页用第一个分类。
+            'shortplay_search_type_id' => max(0, Setting::int('shortplay_search_type_id', 0)),
+            // 顶部横滑条：单独配的一小组子分类（一般 3-6 个），与抽屉里的全量分类不同。
+            // 空数组 = 没配，客户端顶部直接用上面的 shortplay_types。
+            'shortplay_tabs' => $this->shortplayTypes('shortplay_tab_type_ids'),
             'bottom_tabs' => $this->bottomTabs(),
             // 底栏是否显示图标：关闭后客户端只画文字，并按 tab 数量自动放大字号
             'bottom_tab_icons' => Setting::int('bottom_tab_icons', 1),
@@ -282,11 +288,14 @@ final class Startup
     /**
      * 后台「短剧分类 id」原始值：支持 `21,22,23` 这种逗号串，去重且只留正数。
      *
+     * 顶部 tab 那组（`shortplay_tab_type_ids`）格式完全一样，只有设置键不同，
+     * 所以键作参数传进来，解析规则只维护这一份。
+     *
      * @return array<int,int>
      */
-    private function shortplayTypeIds(): array
+    private function shortplayTypeIds(string $key = 'shortplay_type_id'): array
     {
-        $raw = (string)Setting::get('shortplay_type_id', '');
+        $raw = (string)Setting::get($key, '');
         $ids = [];
         foreach (explode(',', $raw) as $piece) {
             $id = (int)trim($piece);
@@ -299,15 +308,15 @@ final class Startup
     }
 
     /**
-     * 短剧分类的 id + 名字，客户端顶部 chips 按这个顺序出。
+     * 短剧分类的 id + 名字，按后台填写顺序下发（抽屉分类 / 顶部 tab 都用它）。
      *
      * 表里查不到（分类被删）就跳过，不拿 id 拼假名字。
      *
      * @return array<int,array{type_id:int,type_name:string}>
      */
-    private function shortplayTypes(): array
+    private function shortplayTypes(string $key = 'shortplay_type_id'): array
     {
-        $ids = $this->shortplayTypeIds();
+        $ids = $this->shortplayTypeIds($key);
         if ($ids === []) {
             return [];
         }

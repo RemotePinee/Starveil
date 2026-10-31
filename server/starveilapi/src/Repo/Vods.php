@@ -525,6 +525,8 @@ final class Vods
                     'features' => (string)($playerInfo['features'] ?? ''),
                     'issethead' => (string)($playerInfo['issethead'] ?? ''),
                     'headers' => (string)($playerInfo['headers'] ?? ''),
+                    'hongguo' => (string)($playerInfo['hongguo'] ?? '0'),
+                    'hongguo_match' => (string)($playerInfo['hongguo_match'] ?? ''),
                 ],
             ];
         }

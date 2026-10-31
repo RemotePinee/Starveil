@@ -176,6 +176,8 @@ class Media3Player(context: Context) {
         prepareStartedAt = SystemClock.elapsedRealtime()
         frames.beginSource()
         // 播放 HTTP 层：连接复用 + 磁盘缓存，细节见 [VideoHttp]
+        // 红果加密片源：先异步预热（材料 + moov 头部），open() 时多半已经就绪
+        videoHttp.prefetch(url, headers)
         val dataSource = videoHttp.dataSource(headers, userAgentFor(headers))
         val videoSource = buildSource(url, dataSource)
         val source = if (audioUrl.isNullOrBlank() || audioUrl == url) {

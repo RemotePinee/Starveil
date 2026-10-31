@@ -17,8 +17,18 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    testOptions {
+        // 单元测试跑在 JVM 上，没有 android.util.Log 的实现；不让未被 mock 的
+        // Android 方法返回默认值，任何走到日志的用例都会抛
+        // "Method e in android.util.Log not mocked"。这里只放开默认值，不引 Robolectric。
+        unitTests.isReturnDefaultValues = true
+    }
+
     buildFeatures {
         compose = true
+        // PlayerLog 用 BuildConfig.DEBUG 关掉 release 的调试日志（docs/security.md 第 8 节）。
+        // 库模块默认不生成 BuildConfig，这里显式打开，不引入任何新依赖。
+        buildConfig = true
     }
 }
 
@@ -52,6 +62,7 @@ dependencies {
     implementation(libs.androidx.activity.compose)
 
     // 唯一播放内核：Media3，不引入第二套
+    implementation(project(":core:hongguo"))
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.exoplayer.hls)
     implementation(libs.media3.ui)

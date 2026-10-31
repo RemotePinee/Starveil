@@ -34,6 +34,8 @@ final class SettingsSave extends BasePage
             'features' => trim((string)($post['features'] ?? '')),
             'issethead' => trim((string)($post['issethead'] ?? '')),
             'headers' => trim((string)($post['headers'] ?? '')),
+            'hongguo' => trim((string)($post['hongguo'] ?? '0')) === '1' ? '1' : '0',
+            'hongguo_match' => trim((string)($post['hongguo_match'] ?? '')),
         ];
         Setting::set('player_info', json_encode($config, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
     }

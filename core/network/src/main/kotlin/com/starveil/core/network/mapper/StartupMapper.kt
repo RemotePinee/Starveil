@@ -71,9 +71,14 @@ fun StartupDto.toDomain(localThemeOverride: String? = null): StartupConfig = Sta
     agreementUrl = agreementUrl.orEmpty(),
     privacyUrl = privacyUrl.orEmpty(),
     shortplayTypeId = shortplayTypeId?.content?.trim()?.toIntOrNull() ?: 0,
+    // 搜索专用父分类：空串/非数字一律当 0（= 没配），客户端据此退回逐个查子分类
+    shortplaySearchTypeId = shortplaySearchTypeId?.content?.trim()?.toIntOrNull()?.coerceAtLeast(0) ?: 0,
     // 多分类：新后端直接下数组；老后端没有这个字段时用单个 id 兜成一项，
     // 解析与空白规则集中在 [shortPlayTypesOf]
     shortplayTypes = shortPlayTypesOf(shortplayTypes, shortplayTypeId),
+    // 顶部 tab：后台没配就是空列表，不拿 shortplayTypes 硬顶 —— 两者是不同的一组，
+    // 顶部条的"退回全量"由页面自己决定（见 ShortPlayScreen）。
+    shortplayTabs = shortplayTabs.map { ShortPlayType(id = it.typeId, name = it.typeName) }.filter { it.id > 0 },
 )
 
 private fun StartupDto.detailSectionsOf(): DetailSections = DetailSections(

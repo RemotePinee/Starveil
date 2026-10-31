@@ -61,6 +61,8 @@ class StartupContractTest {
         assertTrue(config.pushEnabled)
         // 短剧分类号由后台下发（mac_type.type_id 各站不同），客户端只留兜底
         assertEquals(11, config.shortplayTypeId)
+        // 搜索专用父分类：填了它搜索一次请求就覆盖全部子分类，0 才是"逐个查"
+        assertEquals(21, config.shortplaySearchTypeId)
         assertEquals(2, config.payments.size)
         assertEquals("alipay", config.payments.first().code)
     }

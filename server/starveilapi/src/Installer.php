@@ -505,6 +505,8 @@ return " . var_export(array_values($lines), true) . ";
             'ui_home_data' => '3',
             'vip_group_id' => '3',
             'shortplay_type_id' => '0',
+            'shortplay_search_type_id' => '0',
+            'shortplay_tab_type_ids' => '',
             'member_enabled' => '1',
             'trysee_status' => '0',
             'trysee_minutes' => '6',

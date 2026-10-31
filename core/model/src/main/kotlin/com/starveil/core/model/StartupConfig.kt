@@ -89,6 +89,21 @@ data class StartupConfig(
      * 老后端没有 `shortplay_types`，此时为空，由上面的单个 id 兜成一项。
      */
     val shortplayTypes: List<ShortPlayType> = emptyList(),
+    /**
+     * 搜索专用的父分类 id（`shortplay_search_type_id`），**也用作进短剧页的初始流**。
+     *
+     * 搜索只请求它一次：服务端查父分类会带上全部子分类，比逐个查 [shortplayTypes] 快。
+     * 进页同理，先按父分类拉一屏全部子分类的内容，比只拉第一个子分类更接近"全部短剧"。
+     * 0 表示后台没配，搜索退回按 [shortplayTypes] 逐个查，进页用第一个子分类。
+     */
+    val shortplaySearchTypeId: Int = 0,
+    /**
+     * 短剧页**顶部横滑分类条**（`shortplay_tabs`）。
+     *
+     * 与 [shortplayTypes] 是两组：顶部只放后台单独配的 3-6 个，抽屉里才是全量。
+     * 空表示后台没配，顶部条退回用 [shortplayTypes]——所以这里不继承它的兜底。
+     */
+    val shortplayTabs: List<ShortPlayType> = emptyList(),
 ) {
 
     /**
