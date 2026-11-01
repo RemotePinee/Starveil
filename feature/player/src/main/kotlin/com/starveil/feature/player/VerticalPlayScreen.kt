@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.PagerState
@@ -246,11 +248,38 @@ private fun VerticalStageContent(stage: VerticalPlayStage, contentModifier: Modi
             VerticalVideoPager(stage)
             DanmuOverlay(items = stage.danmu, isPlaying = state.isPlaying && stage.options.active)
         }
+        // dock 让位带：前景按 dock 预留高度上收后，页面底部这一条在页面里是透明的，
+        // feed 级的唯一视频输出会把这条填成画面——静止时被 dock 盖住，滑页位移时
+        // 正好在入口条下方露出。铺住它，随展开进度一起让开。
+        PageDockBand(stage)
         Box(contentModifier.fillMaxSize()) { OverlayLayer(stage) }
         if (!state.isLoading && state.episodes.isNotEmpty()) {
             PlaybackAccessLayer(stage)
         }
     }
+}
+
+/**
+ * 页面为 dock 预留的那一条的底色。
+ *
+ * 前景（`contentModifier`）按 `seriesDockOffset` 上收，页面底部就空出一条透明带；
+ * 视频只有一份、铺在整屏，于是这条里全是画面。静止时 dock 盖着它，可一旦页面
+ * 被滑页/回弹带起来，它就会从入口条下方露出来——这里用底栏自己的颜色铺住，
+ * 并跟入口条同一口径下移：整剧态 dock 整块让开时它也随之移出屏幕。
+ */
+@Composable
+private fun BoxScope.PageDockBand(stage: VerticalPlayStage) {
+    val inset = stage.options.seriesDockOffset
+    if (inset <= Spacing.none) return
+    val expansion = stage.options.seriesExpansion.coerceIn(0f, 1f)
+    Box(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth()
+            .height(inset)
+            .background(starveilExtraColors.surfaceElevated)
+            .graphicsLayer { translationY = inset.toPx() * expansion },
+    )
 }
 
 /** 视频面归 feed 时这里不能再铺不透明底：整页会盖住 pager 下面唯一的那块输出。 */

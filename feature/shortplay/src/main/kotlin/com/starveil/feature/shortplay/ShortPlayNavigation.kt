@@ -32,3 +32,14 @@ data class ShortPlayPresentation(
      */
     val dockInset: Dp = Spacing.none,
 )
+
+/**
+ * feed 级视频层要让出的底部高度：正好是页面为 dock 预留的那一条。
+ *
+ * 页面前景由 `:app` 按 [dockInset] 往上收（见 `VerticalPlayEntry`），预留出来的那条在
+ * 页面里是透明的；视频铺满整屏就会把它填成画面——静止时被 dock 盖住，一有位移
+ * （滑页、回弹）就从入口条下方露出一截。整剧态 dock 整块下移，视频必须重新铺回屏幕底，
+ * 否则入口条下方会留一条底色，所以 inset 随展开进度归零。
+ */
+internal fun ShortPlayPresentation.videoBottomInset(): Dp =
+    dockInset * (1f - expansion.coerceIn(0f, 1f))

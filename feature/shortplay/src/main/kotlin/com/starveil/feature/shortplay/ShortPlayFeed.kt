@@ -34,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
@@ -44,7 +45,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.component.LocalAdClick
 import com.starveil.core.designsystem.component.LocalAdPlacements
@@ -151,7 +154,8 @@ internal fun ShortPlayFeed(
     ShortPlayPageWatcher(pager, FeedWatcher(pages, state, actions, synchronized))
     Box(Modifier.fillMaxSize()) {
         // 视频面铺在 pager 下面：整条信息流只创建这一次，换剧/换集都不重建。
-        FeedVideoLayer(videoLayer, covered)
+        // 底边让出 dock 预留的那一条：那条在页面里是透明的，不裁就会在滑页时露出来。
+        FeedVideoLayer(videoLayer, covered, presentation.videoBottomInset())
         VerticalPager(
             state = pager,
             modifier = Modifier.fillMaxSize(),
@@ -179,10 +183,26 @@ internal fun ShortPlayFeed(
 
 /**
  * 视频层由外层注入时铺在 pager 下面；null 表示没有 feed 级播放面，页面自己垫封面。
+ *
+ * 只裁绘制、不改测量：视频取景是「contain」，用 padding 收边会把取景框改小，
+ * 画面位置就会随 dock 让位上下跳。裁到内容区下沿之后，dock 预留的那一条里
+ * ——以及 TextureView 溢出的部分——都不会再有画面。
  */
 @Composable
-private fun FeedVideoLayer(layer: (@Composable (Boolean) -> Unit)?, covered: Boolean) {
-    if (layer != null) layer(covered)
+private fun FeedVideoLayer(
+    layer: (@Composable (Boolean) -> Unit)?,
+    covered: Boolean,
+    bottomInset: Dp,
+) {
+    if (layer == null) return
+    Box(
+        Modifier.fillMaxSize().drawWithContent {
+            val bottom = (size.height - bottomInset.toPx()).coerceAtLeast(0f)
+            clipRect(bottom = bottom) { this@drawWithContent.drawContent() }
+        },
+    ) {
+        layer(covered)
+    }
 }
 
 /** 一屏内容：正片交给 app 注入的播放器，广告屏画自己的整屏。 */

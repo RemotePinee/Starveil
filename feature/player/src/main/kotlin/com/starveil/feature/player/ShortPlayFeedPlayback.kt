@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clipToBounds
 
 /** 视频面归谁画。[FEED] = 整个 feed 唯一一份，页面只画覆盖层；[PAGE] = 本页自己画。 */
 enum class ShortPlayVideoHost { PAGE, FEED }
@@ -94,7 +95,9 @@ fun ShortPlayFeedVideoLayer(
     LaunchedEffect(playback, covered) { if (covered) playback.stopForCover() }
     val stage = playback.stage
     Box(
-        modifier = modifier.fillMaxSize().graphicsLayer {
+        // 布局尺寸仍是整屏：画面要按整屏取景；越出边界的那部分（TextureView 的输出、
+        // 内层 pager 换集时的平移）靠这层裁掉，不能被画到布局边界外。
+        modifier = modifier.fillMaxSize().clipToBounds().graphicsLayer {
             translationY = stage?.videoTranslationY() ?: 0f
         },
     ) {
