@@ -110,7 +110,9 @@ internal fun ShortPlayFeed(
     val feed = LocalAdPlacements.current.feed
     // 素材缺失时 creative 为空，下面的构建函数就不会插任何广告屏（后台没配=不占位）
     val creative = feed.takeIf { it.drawable }
-    val pages = remember(state.plays, creative, feed.feedInterval) {
+    // 键只取稳定的三个值：pagesVersion 只随 plays 真换内容 +1，落页与进度不动它。
+    // 原来拿整个 plays 当键，重组时每次都要对几百条短剧逐字段深比较，滚动中被反复触发。
+    val pages = remember(state.pagesVersion, creative, feed.feedInterval) {
         buildFeedPages(state.plays, creative, feed.feedInterval)
     }
     if (pages.isEmpty()) return

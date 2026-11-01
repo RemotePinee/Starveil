@@ -88,7 +88,8 @@ class ShortPlayViewModel(
         collectionVersion++
         _state.value = ShortPlayUiState.Content(
             plays = listOf(play), types = types, selectedTypeId = selectedTypeId,
-            endReached = true, currentPlayId = play.id, collectionVersion = collectionVersion,
+            endReached = true, currentPlayId = play.id,
+            collectionVersion = collectionVersion, pagesVersion = nextPagesVersion(),
         )
     }
 
@@ -140,11 +141,20 @@ class ShortPlayViewModel(
             val result = fetchPlays(requestType.takeIf { it > 0 }, nextPage)
             if (!isCurrentRequest(requestType, requestGeneration)) return@launch
             when (result) {
-                is AppResult.Success -> _state.update { it.appendPage(nextPage, result.value, pageSize, shuffle) }
+                is AppResult.Success -> _state.update {
+                    it.appendPage(nextPage, shuffle(result.value), pageSize, ::nextCollectionVersion)
+                }
                 is AppResult.Failure -> _state.update { it.appendFailed(result.error.toUserMessage()) }
             }
         }
     }
+
+    /** 列表版本号只跟上一个 state 比：原地换掉 content 也要变，pages 才会重算。 */
+    private fun nextPagesVersion(): Long =
+        ((_state.value as? ShortPlayUiState.Content)?.pagesVersion ?: -1L) + 1L
+
+    /** 头部被裁掉会移动 pager 下标，只有这一种追加才动 collectionVersion。 */
+    private fun nextCollectionVersion(): Long = ++collectionVersion
 
     fun selectType(typeId: Int) {
         // 钉在播放里、或点的就是当前分类，都不换流。
@@ -257,6 +267,7 @@ class ShortPlayViewModel(
                 endReached = plays.size < pageSize,
                 currentPlayId = retainedId ?: shuffled.first().id,
                 collectionVersion = collectionVersion,
+                pagesVersion = nextPagesVersion(),
             )
         }
     }
@@ -284,6 +295,34 @@ class ShortPlayViewModel(
     }
 }
 
+/**
+ * 追加一页：合并去重，超出软上限就裁回窗口；不是 `Content` 原样返回。
+ *
+ * 两个版本号语义不同，由调用方用回调给：`collectionVersion` 只在头部被裁时变
+ * （pager 要重新定位），`pagesVersion` 每次换列表都变（信息流页据此重算分页）。
+ */
+private fun ShortPlayUiState.appendPage(
+    page: Int,
+    incoming: List<ShortPlay>,
+    pageSize: Int,
+    nextVersion: () -> Long,
+): ShortPlayUiState = if (this is ShortPlayUiState.Content) {
+    val merged = (plays + incoming).distinctBy { it.id }
+    val window = if (merged.size > PLAY_WINDOW_MAX) keepWindowAround(merged, currentPlayId) else merged
+    copy(
+        plays = window,
+        page = page,
+        isLoadingMore = false,
+        endReached = incoming.size < pageSize,
+        appendError = null,
+        // 从头部丢了一截就动了 pager 的下标：换版本号让它重新对到当前播放项
+        collectionVersion = if (window.size < merged.size) nextVersion() else collectionVersion,
+        pagesVersion = pagesVersion + 1,
+    )
+} else {
+    this
+}
+
 /** 首屏在途：已有内容就原地打刷新标记，还没有内容才落整屏 Loading。 */
 private fun ShortPlayUiState.refreshing(types: List<ShortPlayType>, selectedTypeId: Int): ShortPlayUiState =
     if (this is ShortPlayUiState.Content) {
@@ -303,23 +342,32 @@ private fun ShortPlayUiState.failed(
     ShortPlayUiState.Error(message, types, selectedTypeId)
 }
 
-/** 追加一页：合并去重，顺带更新是否到底。 */
-private fun ShortPlayUiState.appendPage(
-    page: Int,
+/**
+ * 把 [plays] 收进长度不超过 [limit] 的窗口，且窗口必须包含 [keepId]。
+ *
+ * 默认从头部丢最老的：用户往后刷时正片在尾部，丢的一定是已经看过的。
+ * 但当前播放项前面要留 [PLAY_WINDOW_LOOKBACK] 条——往回刷时那一批还在，
+ * 不会刚划上去就发现"上面没了"。播放项贴着列表头时改从尾部丢，
+ * 否则窗口里一条不剩，正在播的那条也会被裁掉。
+ */
+internal fun keepWindowAround(
     plays: List<ShortPlay>,
-    pageSize: Int,
-    shuffle: (List<ShortPlay>) -> List<ShortPlay>,
-): ShortPlayUiState = if (this is ShortPlayUiState.Content) {
-    copy(
-        plays = (this.plays + shuffle(plays)).distinctBy { it.id },
-        page = page,
-        isLoadingMore = false,
-        endReached = plays.size < pageSize,
-        appendError = null,
-    )
-} else {
-    this
+    keepId: Int?,
+    limit: Int = PLAY_WINDOW,
+): List<ShortPlay> {
+    if (limit <= 0 || plays.size <= limit) return plays
+    val anchor = plays.indexOfFirst { it.id == keepId }.coerceAtLeast(0)
+    val latestStart = plays.size - limit
+    val start = (anchor - PLAY_WINDOW_LOOKBACK).coerceIn(0, latestStart)
+    return plays.subList(start, start + limit).toList()
 }
+
+/** 列表软上限：一旦超过 [PLAY_WINDOW_MAX] 就裁回 [PLAY_WINDOW]。 */
+internal const val PLAY_WINDOW = 400
+internal const val PLAY_WINDOW_MAX = 500
+
+/** 裁剪时给当前播放项留的回看余量（条）。 */
+private const val PLAY_WINDOW_LOOKBACK = 100
 
 /** 追加失败：只挂错误文案，已经看到的内容留在原地。 */
 private fun ShortPlayUiState.appendFailed(message: String): ShortPlayUiState =

@@ -27,6 +27,14 @@ sealed interface ShortPlayUiState {
         val currentPlayId: Int? = plays.firstOrNull()?.id,
         /** 仅整份替换时变化，append 不要求 Pager 重新定位。 */
         val collectionVersion: Long = 0,
+        /**
+         * [plays] 每真正换一次内容就 +1（首屏 / 追加 / 裁剪 / 搜索落页），
+         * 进度、翻页、错误标记这些同在一个 state 里的字段都不动它。
+         *
+         * 信息流页拿它当 `remember` 键：拿整个 `plays` 当键时，每次重组都要对几百条
+         * 短剧做一次逐字段深比较，滚动期间持续吃主线程。
+         */
+        val pagesVersion: Long = 0,
     ) : ShortPlayUiState
 
     data class Empty(

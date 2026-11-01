@@ -223,9 +223,9 @@ class ShortPlayViewModelTest {
     }
 }
 
-private data class ShortPlayFeedCall(val typeId: Int?, val page: Int)
+internal data class ShortPlayFeedCall(val typeId: Int?, val page: Int)
 
-private class ShortPlayTestRepository(
+internal class ShortPlayTestRepository(
     val pages: MutableMap<Int, AppResult<List<ShortPlay>>> = mutableMapOf(),
     private val snapshots: Map<Int?, List<ShortPlay>> = emptyMap(),
     private val response: (suspend (ShortPlayFeedCall) -> AppResult<List<ShortPlay>>)? = null,
@@ -255,18 +255,18 @@ private class PendingShortPlayRepository {
     }
 }
 
-private fun stableShortPlayViewModel(
+internal fun stableShortPlayViewModel(
     repository: ShortPlayRepository,
     types: List<ShortPlayType> = emptyList(),
 ): ShortPlayViewModel = ShortPlayViewModel(repository, pageSize = 2, types = types, shuffle = { it })
 
-private fun shortPlay(id: Int) = ShortPlay(
+internal fun shortPlay(id: Int) = ShortPlay(
     id = id, title = "短剧$id", cover = null, episodeCount = 80,
     freeEpisodes = 0, category = "都市", blurb = null,
 )
 
-private fun ShortPlayViewModel.content(): ShortPlayUiState.Content = state.value as ShortPlayUiState.Content
+internal fun ShortPlayViewModel.content(): ShortPlayUiState.Content = state.value as ShortPlayUiState.Content
 
-private fun ShortPlayViewModel.playIds(): List<Int> = content().plays.map { it.id }
+internal fun ShortPlayViewModel.playIds(): List<Int> = content().plays.map { it.id }
 
 private fun shortPlayTypes() = listOf(ShortPlayType(21, "短剧"), ShortPlayType(22, "微短剧"))
