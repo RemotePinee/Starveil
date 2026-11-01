@@ -3,6 +3,7 @@ package com.starveil.feature.player
 import android.content.Context
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -12,8 +13,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.Dp
+import com.starveil.core.designsystem.component.BlurredCoverBackdrop
+import com.starveil.core.designsystem.token.Spacing
 
 /** 视频面归谁画。[FEED] = 整个 feed 唯一一份，页面只画覆盖层；[PAGE] = 本页自己画。 */
 enum class ShortPlayVideoHost { PAGE, FEED }
@@ -93,6 +97,8 @@ fun ShortPlayFeedVideoLayer(
     playback: ShortPlayFeedPlayback,
     covered: Boolean,
     modifier: Modifier = Modifier,
+    /** 视频层要避开的底部占位（dock 上沿到底边）；入口条高度由本层自己再加一次。 */
+    bottomInset: Dp = Spacing.none,
 ) {
     LaunchedEffect(playback, covered) { if (covered) playback.stopForCover() }
     val stage = playback.stage
@@ -101,16 +107,19 @@ fun ShortPlayFeedVideoLayer(
         // 内层 pager 换集时的平移）靠这层裁掉，不能被画到布局边界外。
         modifier = modifier.fillMaxSize().clipToBounds(),
     ) {
-        // 整页底：锚点页同一部剧的模糊封面，铺满整页（ContentScale.Crop）。视频仍然 Fit 居中、
-        // 一帧不裁，上下的空档由这张底接住——以前这里铺的是 VideoStage 自己的 scrimStrong，
-        // 那两条就是滑页时露出来的纯黑。
+        // 整页底：锚点页同一部剧的模糊封面，铺满整屏（ContentScale.Crop）。视频仍然 Fit 居中、
+        // 一帧不裁，上下的空档由这张底接住。它铺到屏幕最底边——入口条下面直到 dock 上沿
+        // 那一段也在里面，所以页面里不会再露出窗口底色。
         // 底只跟 feed 的滑页平移走（外层 FeedVideoLayer 已经加了那一段），不跟内层换集平移：
         // 换集时视频走一屏、底不动，空出来的位置仍是同一部剧的封面。
-        VerticalBlurredBackdrop(stage?.state?.cover)
+        BlurredCoverBackdrop(stage?.state?.cover)
         Box(
-            modifier = Modifier.fillMaxSize().graphicsLayer {
-                translationY = stage?.videoTranslationY() ?: 0f
-            },
+            // 取景矩形 = 整屏 − dock 占位 − 入口条，与页面里的 weight(1f) 同一个口径：
+            // feed 的画面下沿正好贴在入口条上沿，谁也不会压住谁。
+            // 位移仍按整屏算（滑页步长就是整屏），这里只缩取景范围，不改平移口径。
+            modifier = Modifier.fillMaxSize()
+                .padding(bottom = bottomInset + VerticalSeriesStripHeight)
+                .graphicsLayer { translationY = stage?.videoTranslationY() ?: 0f },
         ) {
             VideoStage(engine = playback.owner.engine)
         }

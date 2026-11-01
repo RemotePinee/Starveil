@@ -1,29 +1,20 @@
 package com.starveil.feature.shortplay
 
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.layout.ContentScale
-import coil3.compose.AsyncImage
-import com.starveil.core.designsystem.component.rememberScreenImageRequest
+import com.starveil.core.designsystem.component.BlurredCoverBackdrop
 import com.starveil.core.model.ShortPlay
 
 /**
- * 只短暂压在视频上的封面按半屏像素解码。
+ * 正被滑进屏幕的那一页自己铺的整屏底。
  *
- * 视频出画后这一层立刻被盖住，用户看到的是"色块对了、构图对了"的一瞬间；
- * 按整屏解是 1080×2400×4 ≈ 10.4MB 一张（真机实测记在 Graphics / EGL mtrack 上），
- * 半屏解只要 2.6MB，画面上看不出区别。整屏素材的说明见 [rememberScreenImageRequest]。
+ * 画的是**模糊**封面，不是清晰封面 Crop：视频层只喂锚点页，滑入页在落页前没有画面，
+ * 先铺原图再等模糊算完就会闪一下——拖动过程中看到的第一帧必须是最终那张模糊图。
+ * 与锚点页视频层里的底是同一份实现、同一个 URL、同一个缓存键（128px + 同一变换），
+ * 落页那一刻两边逐像素一致，接缝看不出来。
+ *
+ * 底色不透明：模糊位图没就绪时垫令牌里的深底，不会漏出页面底色。
  */
-private const val COVER_DECODE_FRACTION = 0.5f
-
-/** 视频出画前的全屏封面；元数据与播放入口完全交给 app 注入的播放器。 */
 @Composable
 internal fun ShortPlayBackdrop(play: ShortPlay) {
-    AsyncImage(
-        model = rememberScreenImageRequest(play.cover, COVER_DECODE_FRACTION),
-        contentDescription = null,
-        contentScale = ContentScale.Crop,
-        modifier = Modifier.fillMaxSize(),
-    )
+    BlurredCoverBackdrop(play.cover)
 }

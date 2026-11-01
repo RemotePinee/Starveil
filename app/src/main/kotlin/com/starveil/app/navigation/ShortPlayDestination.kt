@@ -107,7 +107,15 @@ private fun ShortPlayEntry(container: AppContainer, nav: NavHostController, orig
                 }
             },
             // 唯一视频面：广告整屏盖住时停掉内容解码（不释放），回到正片由页面重新 prepare。
-            videoLayer = { covered -> ShortPlayFeedVideoLayer(feedPlayback, covered) },
+            // 底栏占位从这一层传进去：视频的取景矩形要减掉 dock 与入口条，才能贴在入口条上沿。
+            videoLayer = { covered ->
+                ShortPlayFeedVideoLayer(
+                    playback = feedPlayback,
+                    covered = covered,
+                    // 与页面读到的同一个稳定值：转场那一帧两边口径不一致，画面会先跳一下。
+                    bottomInset = stablePadding.calculateBottomPadding(),
+                )
+            },
         )
     }
 }
