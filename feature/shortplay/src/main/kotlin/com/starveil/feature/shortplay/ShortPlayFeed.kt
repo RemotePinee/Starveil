@@ -191,10 +191,9 @@ private fun FeedPageContent(
 ) {
     when (page) {
         is FeedPage.Play -> Box(Modifier.fillMaxSize()) {
-            // 画面归本页（锚点页）时才留透明：视频就在这一层下面，无首帧时封面由视频层自己顶。
-            // 其余页是正被滑进来的那页，必须铺自己的**模糊**封面——视频层跟着锚点页走了，
-            // 透明就会露出 feed 底色，入口条下面那一大块正是这么漏出来的。
-            // 用模糊而不是清晰封面：拖动过程中看到的第一帧就是模糊的，不会先闪一帧原图。
+            // 画面归本页时才留透明：视频就在这一层下面，无首帧时封面由页面自己顶。
+            // 其余页（正被滑进来的那页）必须铺自己的封面——视频层跟着锚点页走了，
+            // 透明就会露出 feed 底色，入口条下面那一大块正是这么黑的。
             if (!showsVideo) ShortPlayBackdrop(page.play)
             playerContent(page.play, playing)
         }

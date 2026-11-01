@@ -3,10 +3,7 @@ package com.starveil.feature.player
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.PagerState
@@ -29,7 +26,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.starveil.core.designsystem.component.BlurredCoverBackdrop
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.TrySeeAccess
 
@@ -64,7 +60,7 @@ fun VerticalPlayRoute(
     // 引擎就绪再接管，页面不会比 dock 晚一拍出现。feed 页不建自己的，整条流共用外层那一台。
     val playback = rememberPlaybackSlot(feedPlayback, viewModel, playbackToken)
     if (playback == null) {
-        BlurredCoverBackdrop(state.cover, Modifier.fillMaxSize())
+        VerticalBlurredBackdrop(state.cover, Modifier.fillMaxSize())
         return
     }
     // VM 只读进度：播放器由组合层接进来，VM 自己不创建也不释放。
@@ -222,12 +218,7 @@ data class VerticalPlayStage(
     val hostsVideo: Boolean = true,
 )
 
-/**
- * 一页竖屏播放面：模糊封面垫满整页，视频区在上、入口条在下，两者各占自己的高度。
- *
- * 调用方的 modifier 是"可用区域"——它带着实测底栏占位，视频区与入口条都在它里面排，
- * 所以入口条的下沿正好落在 dock 上沿，视频区到入口条上沿为止。
- */
+/** 视频保留完整 viewport；调用方的 modifier 只让前景避开实测底栏与系统栏。 */
 @Composable
 internal fun VerticalPlayScreen(
     stage: VerticalPlayStage,
@@ -244,36 +235,22 @@ private fun VerticalStageContent(stage: VerticalPlayStage, contentModifier: Modi
     val state = stage.state
     val showsPages = !state.isLoading && state.episodes.isNotEmpty()
     Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
-        // 整页垫底：同一部剧的模糊封面从顶端一直铺到 dock 上沿。页面本体会画到 dock 底下
-        // （见 `ShortPlayEntry` 的 bleedBottom），所以这一层是"入口条下面也盖着封面"的唯一保证；
-        // 少了它，露出来的就是窗口底色那一块纯色。
+        // 整页底：同一部剧的模糊封面铺满整页（ContentScale.Crop）。视频按 Fit 居中、一帧不裁，
+        // 上下的空档由这张底填，滑页时它随整页一起走，入口条下面不会再露纯色块。
         // 画面归 feed 时这一层必须留透明：唯一的视频输出在 pager 下面，它自带同一张底。
-        if (stage.hostsVideo || !showsPages) BlurredCoverBackdrop(state.cover)
-        // 纵向两段：视频区（weight 1）与入口条。dock 占位只由 contentModifier 扣一次，
-        // 这里不再减第二遍——扣两次视频会凭空矮一条 dock。
-        Column(Modifier.fillMaxSize().then(contentModifier)) {
-            VerticalVideoArea(stage, showsPages, ownsPlayback)
-            // 入口条是布局流里的一条，占自己的高度：视频贴着它的上沿，不再被它盖住。
-            if (ownsPlayback) VerticalSeriesStrip(stage)
-        }
-        // 旧输出只读保留到旧目的地退场，不再接手势、面板或任何播放指令。
-        if (!ownsPlayback) return@Box
-        // 信息区与进度仍压在画面上，只让出入口条那一条高度，进度轨道底边正好落在它上沿。
-        Box(contentModifier.fillMaxSize().padding(bottom = VerticalSeriesStripHeight)) { OverlayLayer(stage) }
-        if (showsPages) PlaybackAccessLayer(stage)
-    }
-}
-
-/** 视频区：高度 = 可用高度 − 入口条（weight 1），Fit 的画面就坐在入口条上沿。 */
-@Composable
-private fun ColumnScope.VerticalVideoArea(stage: VerticalPlayStage, showsPages: Boolean, ownsPlayback: Boolean) {
-    Box(Modifier.fillMaxWidth().weight(1f).clipToBounds()) {
+        if (stage.hostsVideo || !showsPages) VerticalBlurredBackdrop(state.cover)
         // 常驻输出先绘制，逐页遮挡随后绘制；手势、URL、mode 都不改变输出组合身份。
         VerticalVideoOutput(stage, showPauseHint = ownsPlayback && showsPages)
-        if (ownsPlayback && showsPages) {
+        // 旧输出只读保留到旧目的地退场，不再接手势、面板或任何播放指令。
+        if (!ownsPlayback) return@Box
+        if (showsPages) {
             VerticalVideoPager(stage)
-            DanmuOverlay(items = stage.danmu, isPlaying = stage.state.isPlaying && stage.options.active)
+            DanmuOverlay(items = stage.danmu, isPlaying = state.isPlaying && stage.options.active)
         }
+        // 入口条是浮在整屏之上的 overlay（见 PlaybackChrome），页面底部不再垫实心色带：
+        // 滑页时入口条与它下面那条边同属一页，露出的永远是同一部剧的模糊封面。
+        Box(contentModifier.fillMaxSize()) { OverlayLayer(stage) }
+        if (showsPages) PlaybackAccessLayer(stage)
     }
 }
 
@@ -284,7 +261,7 @@ private fun DanmuOverlay(items: List<DanmuItem>, isPlaying: Boolean) {
     DanmuLayer(items = items, isPlaying = isPlaying, modifier = Modifier.fillMaxSize())
 }
 
-/** 预览控件让出外层 status bar 与推荐栏；视频仍按自己的视频区取景。 */
+/** 预览控件让出外层 status bar 与推荐栏；视频本身仍可延伸到全屏。 */
 @Composable
 private fun OverlayLayer(stage: VerticalPlayStage) {
     val reservedTop = if (stage.options.preview) {

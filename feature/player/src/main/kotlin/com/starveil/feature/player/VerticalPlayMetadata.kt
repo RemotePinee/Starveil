@@ -27,7 +27,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.zIndex
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.CaretDown
@@ -47,14 +47,15 @@ private const val LABEL_FULL_SERIES = "观看完整短剧"
 private const val LABEL_EXPAND = "展开"
 private const val STRIP_FADE_PHASES = 2f
 
+/** 进度条叠层：圆点下半要压在入口条之上，靠层级而不是改测量高度。 */
+private const val PROGRESS_LAYER = 1f
+
 /**
  * 底部信息与入口区。
  *
- * 版式参照红果：上段是标题 / 分类 / 简介与右栏，下段把进度压成一整块贴底区域——
- * 进度几乎贴着入口条上沿，两种模式共用随明暗主题变化的底色。
- *
- * 入口条**不在这一层里**：它是布局流里的一条（[VerticalSeriesStrip]），占自己的高度，
- * 视频区在它上面收边，两者不重叠。这里只剩浮在画面上的信息区与进度。
+ * 版式参照红果：上段是标题 / 分类 / 简介与右栏，下段把进度和入口条压成一整块贴底区域——
+ * 进度几乎贴着入口条上沿，入口条整幅贴底、不外加底部留白，两种模式共用随明暗主题变化的底色。
+ * 剧内态整组跟着底槽一起下移（进度始终贴着入口条），试看态保持原位，底槽等高。
  */
 @Composable
 internal fun BoxScope.VerticalBottomChrome(stage: VerticalPlayStage) {
@@ -63,8 +64,7 @@ internal fun BoxScope.VerticalBottomChrome(stage: VerticalPlayStage) {
         modifier = Modifier
             .align(Alignment.BottomCenter)
             .fillMaxWidth()
-            // 信息区与进度一起下移：进度始终贴着入口条，不空出黑槽。
-            // 入口条的位移由它自己带（同一个 seriesDockOffset），两层不会各走一段。
+            // 整组前景（信息区 / 进度 / 入口条）一起下移：进度始终贴着入口条，不空出黑槽。
             .graphicsLayer {
                 translationY = stage.options.seriesDockOffset.toPx() * expansion
             }
@@ -84,37 +84,24 @@ internal fun BoxScope.VerticalBottomChrome(stage: VerticalPlayStage) {
             VerticalSideRail(stage)
         }
         // 触摸区与入口条从首帧即占同一位置，不等详情回来再添加。
-        // 圆点下半探进入口条顶部，靠绘制顺序（入口条先画、前景后画）而不是改轨道中心线。
+        // 圆点下半探进入口条顶部，靠层级绘制而不是改轨道中心线。
         ProgressBar(
             state = stage.state,
             onSeek = stage.actions.onSeek,
-            modifier = Modifier.padding(top = Spacing.xs),
+            modifier = Modifier.zIndex(PROGRESS_LAYER).padding(top = Spacing.xs),
         )
+        SeriesBottomActions(stage)
     }
 }
 
-/** 入口条在布局流里占的高度：视频区 = 可用高度 − 它。页面与 feed 视频层共用这一份口径。 */
-internal val VerticalSeriesStripHeight: Dp = Spacing.rowHeight
-
-/**
- * 入口条：布局流里的一条，整幅贴底、不与视频重叠。
- *
- * 两个模式只替换这一行的内容（试看态"观看完整短剧 · 全N集" / 剧内态"选集、相关推荐"），
- * 高度恒为 [VerticalSeriesStripHeight]，所以视频区的高度不随模式变化，画面不会重新取景。
- *
- * 剧内态整组前景要让位给 dock 时，这一条跟着走同一段位移：位移挂在底色之前，
- * 挂在 `background` 之后只会移动子元素，原地留下一块空底。
- */
+/** 底槽等高、整幅贴底：两个模式只替换这一行，标题、右栏与进度位置完全共用。 */
 @Composable
-internal fun VerticalSeriesStrip(stage: VerticalPlayStage, modifier: Modifier = Modifier) {
-    val expansion = stage.options.seriesExpansion.coerceIn(0f, 1f)
+private fun SeriesBottomActions(stage: VerticalPlayStage) {
     Box(
-        modifier = modifier
+        // 位移由上层整组负责：这一条只负责贴底、裁切与底色。
+        modifier = Modifier
             .fillMaxWidth()
-            .height(VerticalSeriesStripHeight)
-            .graphicsLayer {
-                translationY = stage.options.seriesDockOffset.toPx() * expansion
-            }
+            .height(Spacing.rowHeight)
             .clipToBounds()
             .background(MaterialTheme.colorScheme.surfaceContainer),
     ) {
