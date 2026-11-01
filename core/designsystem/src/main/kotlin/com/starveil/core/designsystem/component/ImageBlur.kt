@@ -64,6 +64,10 @@ class ImageBlurTransformation(
  *
  * Coil 只要请求带变换就把位图压回 `ARGB_8888`（HARDWARE 不在 `VALID_TRANSFORMATION_CONFIGS` 里），
  * 所以 [Bitmap.getPixels] 一定读得到，不需要额外的软件位图开关。
+ *
+ * 键是显式给的（[blurredCoverCacheKey]）：解好的模糊位图要能被**同步**取出来，
+ * 见 [blurredCoverPainter]；Coil 现算的默认键含 `coil#size` 这类内部 extras，外部拼不出来。
+ * 它与卡片原图的键本来就不同（128px + 变换 vs 原图），所以这条路上取不到清晰位图。
  */
 fun blurredImageRequest(context: Context, url: String): ImageRequest =
     ImageRequest.Builder(context)
@@ -71,6 +75,7 @@ fun blurredImageRequest(context: Context, url: String): ImageRequest =
         .size(SAMPLE_MAX_EDGE)
         .scale(Scale.FIT)
         .transformations(ImageBlurTransformation())
+        .memoryCacheKey(blurredCoverCacheKey(url))
         .build()
 
 /** 一份位图的像素副本：尺寸与像素绑在一起，卷积函数不必每次再传两个标量。 */

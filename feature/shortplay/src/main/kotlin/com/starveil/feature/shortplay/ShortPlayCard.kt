@@ -11,8 +11,8 @@ import com.starveil.core.model.ShortPlay
  *
  * 走 [BlurredCoverBackdrop]：与视频层那条底用**同一个函数、同一个 URL**
  * （128px 解码 + `ImageBlurTransformation`），请求尺寸、变换与缓存键完全一致，
- * Coil 内存缓存直接命中。「换封面保留上一张模糊图」也在那里实现，
- * feed 换剧时这一层不会露出打底色。
+ * Coil 内存缓存直接命中。「切剧第一帧只能是模糊的」也在那里实现：命中就同步画，
+ * 没命中只铺打底色，不会拿原图或上一部剧的封面顶上去。
  */
 @Composable
 internal fun ShortPlayBackdrop(play: ShortPlay) {

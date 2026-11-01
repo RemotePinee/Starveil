@@ -62,7 +62,7 @@ private const val LOAD_MORE_PREFETCH = 2
  * 插进来之后 `plays` 的下标和 pager 的 page 不再相等，凡是还要按 play 定位的地方
  * （`currentPlayId` 回滚、settle 回调、触底加载）都必须走这个映射，否则滑动会错位。
  */
-private sealed interface FeedPage {
+internal sealed interface FeedPage {
     /** 广告的 key 跟着它前面那一批正片走，分页追加时不会把已显示的广告顶掉。 */
     val key: String
 
@@ -140,6 +140,9 @@ internal fun ShortPlayFeed(
     val lockedAdState = rememberLockedAdKey(pager, pages)
     val lockedAdKey = lockedAdState.value
     val covered = pages.getOrNull(pager.settledPage) is FeedPage.Ad
+
+    // 落页前后几屏的模糊封面先解好：切剧那一刻同步命中内存缓存，第一帧就是模糊的。
+    PrefetchBlurredCovers(pages, pager)
 
     LaunchedEffect(pager.currentPage, pages) {
         onAdVisible(pages.getOrNull(pager.currentPage) is FeedPage.Ad)

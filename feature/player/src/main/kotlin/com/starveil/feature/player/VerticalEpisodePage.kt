@@ -46,8 +46,8 @@ internal fun VerticalPlaybackBackdrop(cover: String?, revealed: Boolean, modifie
 /**
  * 封面先做真实高斯变换再显示；视频、标题与控件不参与模糊，两种底条复用同一缓存。
  *
- * "换封面保留上一张"的逻辑封在 [BlurredCoverBackdrop] 内部：本模块所有调用点
- * （旁页、页面级底、遮挡层）都走这一个入口，不必各自再写一份，也就不会漏。
+ * "第一帧只能是模糊的"封在 [BlurredCoverBackdrop] 内部：命中内存缓存就同步画，
+ * 没命中只铺打底色。本模块所有调用点（旁页、页面级底、遮挡层）都走这一个入口，不必各自再写一份。
  */
 @Composable
 internal fun VerticalBlurredBackdrop(cover: String?, modifier: Modifier = Modifier) {
