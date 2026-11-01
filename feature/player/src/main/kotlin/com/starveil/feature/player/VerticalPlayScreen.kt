@@ -13,7 +13,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,12 +68,14 @@ fun VerticalPlayRoute(
     DisposableEffect(owner) { onDispose { viewModel.detachPlayback(owner) } }
     val danmu = viewModel.danmu.collectAsStateWithLifecycle().value
     val engine = owner.engine
-    // 整页只有一个 VM，换剧后 state.vodId 变了：pager 必须重建，否则新剧会从旧剧那一集开播。
-    val pagerState = key(state.vodId) {
-        rememberPagerState(initialPage = state.currentIndex) {
-            state.episodes.size.coerceAtLeast(1)
-        }
+    // 整页只有一个 VM，换剧是 `load(vodId)` 原地换数据。pager 必须复位，但**不能**用
+    // `key(state.vodId)` 包住：PagerState 一换，pager 下所有页与排在它后面的入口条都换
+    // 组合身份，换剧那一帧整页重排——正是"全 52 集变全 60 集"时的闪黑。
+    // 现在 PagerState 常驻，换剧只做一次非动画 scrollToPage（见 [DramaPagerReset]）。
+    val pagerState = rememberPagerState(initialPage = state.currentIndex) {
+        state.episodes.size.coerceAtLeast(1)
     }
+    DramaPagerReset(vodId = state.vodId, page = state.currentIndex, pagerState = pagerState)
     var showEpisodes by rememberSaveable { mutableStateOf(false) }
     var showRecommendations by rememberSaveable { mutableStateOf(false) }
     var speed by rememberSaveable { mutableFloatStateOf(1f) }
@@ -115,6 +116,8 @@ fun VerticalPlayRoute(
     VerticalPagerSync(state, pagerState, viewModel, playbackToken, options)
     val prepared = owner.session.isPrepared(state)
     val rendered = prepared && engine.hasRenderedCurrentFrame
+    // 首帧回调只说明"已经渲染进输出"，撤遮挡要等它真的上屏；背景换深色跟它同一帧。
+    val revealed = rememberRevealedFrame(rendered)
     val stage = VerticalPlayStage(
         state = state,
         pagerState = pagerState,
@@ -127,6 +130,7 @@ fun VerticalPlayRoute(
         options = options,
         showRecommendations = showRecommendations,
         hasCurrentFrame = rendered,
+        hasRevealedFrame = revealed,
         // 共享引擎只认自己的 prepare 身份：不匹配时既不算"有帧"，也不参与平移。
         preparedMediaPage = owner.session.preparedMediaPage.takeIf { prepared },
         hasPreparedFrame = rendered,
@@ -134,6 +138,22 @@ fun VerticalPlayRoute(
     )
     FeedStagePublisher(playback, stage, publishing = videoHost == ShortPlayVideoHost.FEED, active = options.active)
     VerticalPlayScreen(stage = stage, modifier = modifier, ownsPlayback = ownsPlayback)
+}
+
+/**
+ * 换剧复位 pager：只改滚动位置，不重建组合。
+ *
+ * 只跟 [vodId]：`load()` 换剧时把 currentIndex 与 episodes 同一次推送出去，
+ * 所以这里读到的就是新剧的起点。同一部剧详情回来导致的集数变化不归这里管，
+ * 交给 `VerticalPagerSync`（它按集数重启），两条路径不抢同一个滚动。
+ */
+@Composable
+private fun DramaPagerReset(vodId: Int, page: Int, pagerState: PagerState) {
+    LaunchedEffect(vodId) {
+        val target = page.coerceAtLeast(0)
+        if (pagerState.currentPage == target && pagerState.currentPageOffsetFraction == 0f) return@LaunchedEffect
+        pagerState.scrollToPage(target)
+    }
 }
 
 /**
@@ -211,6 +231,8 @@ data class VerticalPlayStage(
     val showRecommendations: Boolean = false,
     /** 请求集的 source/revision 与当前输出首帧均匹配，不能把旧集帧称为新集起播。 */
     val hasCurrentFrame: Boolean = false,
+    /** 遮挡层可撤的时机：比 [hasCurrentFrame] 晚一档；背景换深色与遮挡撤除共用它。 */
+    val hasRevealedFrame: Boolean = false,
     val preparedMediaPage: Int? = null,
     /** 实际 prepared 源的帧，可随它自己的旧页退场，但不能露在请求的新页。 */
     val hasPreparedFrame: Boolean = false,
@@ -238,24 +260,33 @@ private fun VerticalStageContent(stage: VerticalPlayStage, contentModifier: Modi
         // 整页底常驻绘制，只按"这一页画不画视频"拨 alpha：起播时它的出现不该重新组合出封面。
         // 视频按 Fit 居中、一帧不裁，上下的空档由这张底填，滑页时它随整页一起走。
         // 画面归 feed 时这一层必须留透明：唯一的视频输出在 pager 下面，它自带同一张底。
+        // 换深色用延迟后的 hasRevealedFrame：与遮挡撤除同一帧，否则会"背景先黑、画面还盖着封面"。
         VerticalPlaybackBackdrop(
             cover = state.cover,
-            hasFrame = stage.hasCurrentFrame,
+            revealed = stage.hasRevealedFrame,
             modifier = Modifier.visibleAlpha(stage.hostsVideo || !showsPages),
         )
         // 常驻输出先绘制，逐页遮挡随后绘制；手势、URL、mode 都不改变输出组合身份。
         VerticalVideoOutput(stage, showPauseHint = ownsPlayback && showsPages)
         // 旧输出只读保留到旧目的地退场，不再接手势、面板或任何播放指令。
         if (!ownsPlayback) return@Box
-        if (showsPages) {
-            VerticalVideoPager(stage)
-            DanmuOverlay(items = stage.danmu, isPlaying = state.isPlaying && stage.options.active)
-        }
+        // 选集 pager 与试看层改成常驻调用、内部早退：以前是 `if (showsPages)` 条件组合，
+        // 详情回来的那一帧要在 Box 里插入两个节点，排在后面的入口条整组换组合身份、
+        // 重新组合一次——"全 N 集"文字跳变和闪黑落在同一帧，就是这条结构变化造成的。
+        VerticalEpisodeLayer(stage, showsPages)
         // 入口条是浮在整屏之上的 overlay（见 PlaybackChrome），页面底部不再垫实心色带：
         // 滑页时入口条与它下面那条边同属一页，露出的永远是同一部剧的模糊封面。
         Box(contentModifier.fillMaxSize()) { OverlayLayer(stage) }
-        if (showsPages) PlaybackAccessLayer(stage)
+        PlaybackAccessLayer(stage)
     }
+}
+
+/** 选集 pager 与弹幕层。条件收在函数内部：调用点的组合结构不随详情到达而变。 */
+@Composable
+private fun VerticalEpisodeLayer(stage: VerticalPlayStage, showsPages: Boolean) {
+    if (!showsPages) return
+    VerticalVideoPager(stage)
+    DanmuOverlay(items = stage.danmu, isPlaying = stage.state.isPlaying && stage.options.active)
 }
 
 /** 弹幕层。短剧默认没有弹幕来源，列表为空时 DanmuLayer 自己不画、也不驱动逐帧刷新。 */

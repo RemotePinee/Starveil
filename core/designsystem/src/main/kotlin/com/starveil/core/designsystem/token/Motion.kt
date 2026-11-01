@@ -19,6 +19,14 @@ object Motion {
     /** 骨架屏呼吸：单程时长，配合 Reverse 一个来回约 1.8s。 */
     const val BreathMs = 900
 
+    /**
+     * 首帧回调之后再捂这么久才撤遮挡。
+     *
+     * `onRenderedFirstFrame` 只说明这一帧已经渲染进输出；纹理真正上屏还要等下一次绘制遍历
+     * （TextureView 走 View 合成，差一帧以上）。早撤就会在模糊封面之后露出还没上屏的黑面。
+     */
+    const val FrameRevealMs = 90
+
     val standard: Easing = FastOutSlowInEasing
 
     /** 底栏与二级页推拉：M3 emphasized（cubic-bezier(0.2, 0, 0, 1)），起步快、落点稳。 */

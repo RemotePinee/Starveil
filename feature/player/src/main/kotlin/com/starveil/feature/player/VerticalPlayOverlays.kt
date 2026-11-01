@@ -19,6 +19,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,17 +62,24 @@ import com.starveil.core.model.TrySeeAccess
  * 要它消失只需盖住，不需要"挂上 / 撤掉"这一层。遮挡层因此常驻：children 恒为两个，
  * 换源只把 alpha 拨到 1。条件组合会让父 [Layout] 增删子节点，还会让封面重新走一次
  * 异步解码——换源那一帧露成打底色，看起来就是"闪一下"；常驻时它一直是上次解好的封面。
- * 新源出首帧后 `hasFrame` 变真、遮挡 alpha 归零，硬切到新画面。
+ * 新源首帧真正上屏后才撤遮挡（[revealed] 由 [rememberRevealedFrame] 延迟给出）：硬切，不做淡入。
  * 它没有 pointerInput，alpha 为 0 的帧既不显示也不吃触摸。
  */
 @OptIn(UnstableApi::class)
 @Composable
-internal fun VideoStage(engine: Media3Player, cover: String?, hasFrame: Boolean) {
+internal fun VideoStage(engine: Media3Player, cover: String?, revealed: Boolean) {
     val ratio = engine.videoAspectRatio
     Layout(
         content = {
             // 同一引擎跨集复用输出；换剧换引擎才重建，杜绝复用旧 TextureView 的跨剧残影。
+            // 验证点：换剧/切集时 attach 只该出现一次（首次建面）。整页被重建时这里会
+            // 成对出现 detach→attach，logcat 里直接看得见。
             key(engine) {
+                DisposableEffect(engine) {
+                    val id = System.identityHashCode(engine)
+                    PlayerLog.warn { "content frame attach engine=$id" }
+                    onDispose { PlayerLog.warn { "content frame detach engine=$id" } }
+                }
                 ContentFrame(
                     player = engine.mediaPlayer,
                     surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
@@ -81,7 +89,7 @@ internal fun VideoStage(engine: Media3Player, cover: String?, hasFrame: Boolean)
                 )
             }
             // 没出首帧就盖住整页：与底下那层模糊封面同尺寸、同裁切，边界看不出来。
-            VerticalBlurredBackdrop(cover = cover, modifier = Modifier.visibleAlpha(!hasFrame))
+            VerticalBlurredBackdrop(cover = cover, modifier = Modifier.visibleAlpha(!revealed))
         },
         modifier = Modifier.fillMaxSize(),
     ) { measurables, constraints ->

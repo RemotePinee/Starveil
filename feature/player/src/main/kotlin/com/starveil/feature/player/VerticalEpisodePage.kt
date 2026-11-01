@@ -37,13 +37,14 @@ internal fun Modifier.visibleAlpha(visible: Boolean): Modifier =
  * 播放页的整页底：还没出首帧时铺模糊封面，出了首帧就换纯深色。
  *
  * 播放起来之后背景不该再模糊：画面周围那几条留边只该是深色，模糊封面留给"起播中 / 换源中"
- * 这段还没有画面可看的时间。切换是硬切，不做淡入淡出——背景晚一百毫秒变化，人只会觉得卡了一下。
+ * 这段还没有画面可看的时间。切换用调用方给的 [revealed]：**延迟到首帧真正上屏之后**，
+ * 与遮挡层的撤除同一帧发生——提前换深色会出现"背景已经黑了、画面还盖着模糊封面"的跳变。
  * 深色底常驻，封面层也只拨 alpha：换源时不重新组合，才不会有一帧没有图的空档。
  */
 @Composable
-internal fun VerticalPlaybackBackdrop(cover: String?, hasFrame: Boolean, modifier: Modifier = Modifier) {
+internal fun VerticalPlaybackBackdrop(cover: String?, revealed: Boolean, modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize().background(starveilExtraColors.scrimStrong)) {
-        VerticalBlurredBackdrop(cover = cover, modifier = Modifier.visibleAlpha(!hasFrame))
+        VerticalBlurredBackdrop(cover = cover, modifier = Modifier.visibleAlpha(!revealed))
     }
 }
 

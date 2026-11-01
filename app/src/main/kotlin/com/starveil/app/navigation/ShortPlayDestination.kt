@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -97,14 +96,15 @@ private fun ShortPlayEntry(container: AppContainer, nav: NavHostController, orig
                 onFavorites = { nav.navigate(UserNavigation.FAVORITE_ROUTE) },
                 onFeedback = { nav.navigate(UserNavigation.FEEDBACK_ROUTE) },
             ),
+            // 不按 play.id 包 key：这一屏的组合身份已由 VerticalPager 的 page key 决定，
+            // 再套一层 key 只会让换剧时整屏（背景 / 入口条 / 选集 pager）一起重建；
+            // 页面内的换剧本来就是 load(vodId) 原地换数据，不需要新的组合身份。
             playerContent = { play, active ->
-                key(play.id) {
-                    VerticalPlayEntry(
-                        container, nav,
-                        origin.shortPlayPreviewRequest(play, active, nav, inlineMode),
-                        feedPlayback = feedPlayback,
-                    )
-                }
+                VerticalPlayEntry(
+                    container, nav,
+                    origin.shortPlayPreviewRequest(play, active, nav, inlineMode),
+                    feedPlayback = feedPlayback,
+                )
             },
             // 唯一视频面：广告整屏盖住时停掉内容解码（不释放），回到正片由页面重新 prepare。
             videoLayer = { covered -> ShortPlayFeedVideoLayer(feedPlayback, covered) },

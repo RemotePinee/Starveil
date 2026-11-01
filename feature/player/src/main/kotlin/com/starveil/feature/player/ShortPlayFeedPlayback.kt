@@ -27,7 +27,7 @@ enum class ShortPlayVideoHost { PAGE, FEED }
  *
  * 现在整条链路只有这一个创建点（[:app] 的 `ShortPlayEntry` 用 [rememberShortPlayFeedPlayback]
  * 建一次）。滑页只换媒体项：`setMediaItem` → `prepare` → `playWhenReady`，
- * 视频面从头到尾不动，所以换源时不会闪黑，也不会有第二个解码器。
+ * 视频面从头到尾不动，不会有第二个解码器；换源时唯一要等的是新源首帧真正上屏（见 [rememberRevealedFrame]）。
  */
 class ShortPlayFeedPlayback internal constructor(context: Context) {
 
@@ -97,7 +97,8 @@ fun ShortPlayFeedVideoLayer(
     LaunchedEffect(playback, covered) { if (covered) playback.stopForCover() }
     val stage = playback.stage
     // 请求的源还没出帧 = 起播中 / 换源中 / 首帧之前，这期间底和视频矩形都只该是封面。
-    val hasFrame = stage?.hasCurrentFrame == true
+    // 撤遮挡用延迟后的状态：首帧回调到真正上屏之间差一帧，早撤就是"模糊背景之后闪一下黑"。
+    val revealed = stage?.hasRevealedFrame == true
     Box(
         // 布局尺寸仍是整屏：画面要按整屏取景；越出边界的那部分（TextureView 的输出、
         // 内层 pager 换集时的平移）靠这层裁掉，不能被画到布局边界外。
@@ -107,13 +108,13 @@ fun ShortPlayFeedVideoLayer(
         // 一帧不裁，上下的空档由这张底接住；出首帧后这里换成纯深色，不再模糊。
         // 底只跟 feed 的滑页平移走（外层 FeedVideoLayer 已经加了那一段），不跟内层换集平移：
         // 换集时视频走一屏、底不动，空出来的位置仍是同一部剧的封面。
-        VerticalPlaybackBackdrop(cover = stage?.state?.cover, hasFrame = hasFrame)
+        VerticalPlaybackBackdrop(cover = stage?.state?.cover, revealed = revealed)
         Box(
             modifier = Modifier.fillMaxSize().graphicsLayer {
                 translationY = stage?.videoTranslationY() ?: 0f
             },
         ) {
-            VideoStage(engine = playback.owner.engine, cover = stage?.state?.cover, hasFrame = hasFrame)
+            VideoStage(engine = playback.owner.engine, cover = stage?.state?.cover, revealed = revealed)
         }
     }
 }
