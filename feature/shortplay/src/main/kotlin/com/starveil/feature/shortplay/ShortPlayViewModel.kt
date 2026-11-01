@@ -31,20 +31,23 @@ class ShortPlayViewModel(
     /** 顶部横滑条的分类（后台「短剧顶部 tab 分类 id」，一般 3-6 个）；空则顶部退回 [types]。 */
     val tabs: List<ShortPlayType> = emptyList(),
     private val searchTypeId: Int = 0,
+    /** 进页默认流用的父分类（后台「短剧搜索分类 id」）；0 = 没配，退回第一个子分类。 */
+    private val startTypeId: Int = 0,
     private val shuffle: (List<ShortPlay>) -> List<ShortPlay> = { it.shuffled() },
 ) : ViewModel() {
     /**
-     * 进页默认分类：顶部第一个 tab → 全量分类第一个 → 0（「全部」），见 [defaultShortPlayTypeId]。
-     *
-     * 顶部条只认这一个值判选中，所以进页时第一个 chip 本来就是选中的，不必等用户点。
+     * 进页的默认流：配了父分类就直接拉父分类（服务端查父分类会带上全部子分类），
+     * 没配才退回到第一个子分类。
      */
-    private var selectedTypeId: Int = defaultShortPlayTypeId(tabs, types)
+    private var selectedTypeId: Int = if (startTypeId > 0) startTypeId else types.firstOrNull()?.id ?: 0
     private val _state = MutableStateFlow<ShortPlayUiState>(ShortPlayUiState.Loading(types, selectedTypeId))
     val state: StateFlow<ShortPlayUiState> = _state.asStateFlow()
     private var loadJob: Job? = null
     private var generation = 0L
     private var collectionVersion = 0L
     private var pinnedPlaybackId: Int? = null
+    /** 父分类兜底是否已经用过：整页生命周期只退一次，见 [fallbackToFirstType]。 */
+    private var fallbackUsed = false
     private val _suggestions = MutableStateFlow<List<ShortPlay>>(emptyList())
     val suggestions: StateFlow<List<ShortPlay>> = _suggestions.asStateFlow()
     private var suggestJob: Job? = null
@@ -156,8 +159,8 @@ class ShortPlayViewModel(
     fun selectType(typeId: Int) {
         // 钉在播放里、或点的就是当前分类，都不换流。
         if (pinnedPlaybackId != null || typeId == selectedTypeId) return
-        // 不能只认全量分类：顶部 tab 不在那一组里。
-        // 全量分类与顶部 tab 都算合法目标，其余 id 直接忽略。
+        // 不能只认全量分类：顶部 tab 与进页的父分类都不在那一组里。
+        // 全量分类、顶部 tab、进页父分类三者都算合法目标，其余 id 直接忽略。
         if (!isSelectable(typeId)) return
         selectedTypeId = typeId
         searchKeyword = ""
@@ -167,9 +170,9 @@ class ShortPlayViewModel(
         loadFirstPage(resetPosition = false)
     }
 
-    /** 全量分类与顶部 tab 都是合法目标；脏 id 不该把当前流打断。 */
+    /** 全量分类、顶部 tab 与进页父分类都是合法目标；脏 id 不该把当前流打断。 */
     private fun isSelectable(typeId: Int): Boolean =
-        types.any { it.id == typeId } || tabs.any { it.id == typeId }
+        typeId == startTypeId || types.any { it.id == typeId } || tabs.any { it.id == typeId }
 
     private fun loadFirstPage(resetPosition: Boolean) {
         if (pinnedPlaybackId != null) return
@@ -181,7 +184,7 @@ class ShortPlayViewModel(
             val result = fetchPlays(requestType.takeIf { it > 0 }, FIRST_PAGE)
             if (!isCurrentRequest(requestType, requestGeneration)) return@launch
             when (result) {
-                is AppResult.Success -> applyFirstPage(result.value, resetPosition)
+                is AppResult.Success -> applyFirstPageOrFallback(result.value, resetPosition)
                 is AppResult.Failure ->
                     _state.update { it.failed(result.error.toUserMessage(), types, selectedTypeId) }
             }
@@ -190,6 +193,40 @@ class ShortPlayViewModel(
 
     private fun isCurrentRequest(typeId: Int, requestGeneration: Long): Boolean =
         typeId == selectedTypeId && requestGeneration == generation
+
+    /**
+     * 父分类兜底：进页按父分类拉全部子分类，首屏**成功但一条都没有**（父分类 id 填错、
+     * 或这个父分类下确实没内容）时换成第一个子分类再拉一次。不这么做页面就停在
+     * 「暂无短剧」，用户只能自己换分类——而这时他根本不知道是配置错了。
+     * 只在 [fallbackToFirstType] 里退一次，见那里的说明。
+     */
+    private fun applyFirstPageOrFallback(plays: List<ShortPlay>, resetPosition: Boolean) {
+        if (plays.isEmpty() && fallbackToFirstType()) return
+        applyFirstPage(plays, resetPosition)
+    }
+
+    /**
+     * 退回全量分类里的第一个子分类，返回是否真的退了。
+     *
+     * 三个条件缺一不可：还没退过（[fallbackUsed]）、进页确实用了父分类、当前仍在父分类上。
+     * 只退一次是硬要求：父分类和第一个子分类都空时不能继续往后挨个试，
+     * 那是十几个并发请求换一屏"暂无短剧"。
+     */
+    private fun fallbackToFirstType(): Boolean {
+        val first = types.firstOrNull()?.id.takeIf { isFallbackDue() } ?: return false
+        fallbackUsed = true
+        selectedTypeId = first
+        seedFromSnapshot()
+        // 这段代码就跑在 loadJob 的协程里：先清空再走常规首屏路径，
+        // 否则 loadFirstPage 里的 loadJob?.cancel() 会把正在跑的自己取消掉。
+        loadJob = null
+        loadFirstPage(resetPosition = false)
+        return true
+    }
+
+    /** 兜底只在「还没退过 + 进页确实用了父分类 + 当前仍停在父分类上」时成立。 */
+    private fun isFallbackDue(): Boolean =
+        !fallbackUsed && startTypeId > 0 && selectedTypeId == startTypeId
 
     /** 搜索与分类流共用同一条首屏/追加路径，只有数据源不同。 */
     private suspend fun fetchPlays(typeId: Int?, page: Int): AppResult<List<ShortPlay>> =
@@ -243,6 +280,7 @@ class ShortPlayViewModel(
             types: List<ShortPlayType> = emptyList(),
             tabs: List<ShortPlayType> = emptyList(),
             searchTypeId: Int = 0,
+            startTypeId: Int = 0,
         ): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 ShortPlayViewModel(
@@ -250,23 +288,12 @@ class ShortPlayViewModel(
                     types = types,
                     tabs = tabs,
                     searchTypeId = searchTypeId,
+                    startTypeId = startTypeId,
                 )
             }
         }
     }
 }
-
-/**
- * 短剧页进页默认分类：顶部 tab 第一个 → 全量分类第一个 → 0（「全部」）。
- *
- * 只在这里算一次：顶部横条的选中态、首屏请求的分类、快照预热都拿它的结果，
- * 页面上不会出现「拉的是 A、选中态画的是 B」。
- *
- * `0` 是「全部」的唯一表示（仓库按 null/0 落到后台配的默认分类），
- * 两个列表都空时才落到它，与改造前一致。
- */
-fun defaultShortPlayTypeId(tabs: List<ShortPlayType>, types: List<ShortPlayType>): Int =
-    (tabs.firstOrNull { it.id > 0 } ?: types.firstOrNull { it.id > 0 })?.id ?: 0
 
 /**
  * 追加一页：合并去重，超出软上限就裁回窗口；不是 `Content` 原样返回。
