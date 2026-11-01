@@ -6,6 +6,7 @@ import com.starveil.core.model.ShortPlayType
 /** 分类信息属于所有状态，首屏失败或空列表时顶部仍能显示分类、也能进分类页换一个。 */
 sealed interface ShortPlayUiState {
     val types: List<ShortPlayType>
+    /** 当前分类（顶部 tab 或全量分类的 id）；`0` 是「全部」的唯一表示，只有两边都没配才会出现。 */
     val selectedTypeId: Int
 
     data class Loading(

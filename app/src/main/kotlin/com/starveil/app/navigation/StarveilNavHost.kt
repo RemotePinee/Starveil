@@ -64,6 +64,7 @@ import com.starveil.feature.player.PlayerEvent
 import com.starveil.feature.player.VERTICAL_PLAY_ROUTE_PATTERN
 import androidx.compose.material3.ScaffoldDefaults
 import com.starveil.feature.shortplay.SHORT_PLAY_ROUTE
+import com.starveil.feature.shortplay.defaultShortPlayTypeId
 import androidx.compose.foundation.layout.WindowInsets
 import com.starveil.core.designsystem.token.Motion
 import androidx.compose.animation.fadeOut
@@ -283,12 +284,14 @@ fun StarveilNavHost(container: AppContainer) {
  * 冷启动预热剧场：第一页写进快照，首个短剧的详情也一起拉好。
  *
  * 用户点短剧 tab 时列表与详情都已在本地，页面首帧直接铺内容、不必先转圈；
+ * 预热的分类与进页默认分类同源（[defaultShortPlayTypeId]），否则快照对不上、首帧还得转圈。
  * 失败静默，页面自己会重试。
  */
 private suspend fun prefetchShortPlay(container: AppContainer, startup: StartupConfig?) {
     if (startup == null) return
-    val typeId = startup.shortplayTypes.firstOrNull()?.id
-    val feed = container.shortPlayRepository.feed(typeId = typeId) as? AppResult.Success ?: return
+    val typeId = defaultShortPlayTypeId(startup.shortplayTabs, startup.shortplayTypes)
+    val feed = container.shortPlayRepository.feed(typeId = typeId.takeIf { it > 0 })
+        as? AppResult.Success ?: return
     feed.value.firstOrNull()?.let { play -> container.vodRepository.detail(play.id) }
 }
 @Composable
