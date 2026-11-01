@@ -26,6 +26,14 @@ data class Vod(
      * 后端不下发该字段；空串与 null 同义，都当作"没有分类名"。
      */
     val typeName: String? = null,
+    /**
+     * 后端 `type_parent_name`，父分类名。`mac_vod.type_id` 指向末级分类，
+     * 父分类名由后端按 `mac_type.type_pid` 再查一次下发。
+     *
+     * 空串与 null 同义：分类本身就是根、父分类已删、或老后端没有该字段。
+     * 播放页据此决定显示「父 + 子」两个标签还是一个标签。
+     */
+    val typeParentName: String? = null,
 ) {
 
     /**

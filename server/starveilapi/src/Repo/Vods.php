@@ -334,6 +334,9 @@ final class Vods
             return null;
         }
         $dto = $this->toDto($row, $this->typeNameMap([$row]));
+        // 分类两级下发：`type_name` 是末级分类，父分类名单独一个字段。
+        // 客户端把「父 + 子」显示成两个视觉元素，不自己拼「父·子」一个串。
+        $dto['type_parent_name'] = $this->parentTypeName((int)($row['type_id'] ?? 0));
         $dto['vod_content'] = (string)($row['vod_content'] ?? '');
         // 一个实例走完整个详情：会员判定与订单结果按实例缓存，别在两处各 new 一个
         $playback = new Playback();
@@ -580,6 +583,35 @@ final class Vods
         $map = Db::name('type')->whereIn('type_id', array_keys($ids))->column('type_name', 'type_id');
 
         return array_map(static fn ($name): string => (string)$name, $map);
+    }
+
+    /**
+     * 末级分类的父分类名：`mac_vod.type_id` -> `mac_type.type_pid` -> 父分类的 `type_name`。
+     *
+     * `mac_vod.type_id` 永远指向末级分类，父分类名只能再查一次 `mac_type`。
+     * **只读**：不建分类、不改 `type_pid`、不写任何表——分类是运营在后台自己建的，
+     * 这里只把已有的层级读出来交给客户端。
+     *
+     * 三种情况给空串，客户端据此只显示一个分类标签：`type_pid = 0`（本身就是根分类）、
+     * 父分类已被删（查不到行）、`type_id` 非法。
+     *
+     * 用两次 `find()` 而不是 join：`Db::name()` 会自动套表前缀，手写 join 里的表名
+     * 拿不到前缀。TP 5.0.24 的 `select()` 直接返回数组，`find()` 也是数组或 null，
+     * 不需要 `->toArray()`。
+     */
+    private function parentTypeName(int $typeId): string
+    {
+        if ($typeId <= 0) {
+            return '';
+        }
+        $row = Db::name('type')->where('type_id', $typeId)->field('type_pid')->find();
+        $parentId = (int)($row['type_pid'] ?? 0);
+        if ($parentId <= 0) {
+            return '';
+        }
+        $parent = Db::name('type')->where('type_id', $parentId)->field('type_name')->find();
+
+        return (string)($parent['type_name'] ?? '');
     }
 
     /**

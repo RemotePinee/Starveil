@@ -147,19 +147,52 @@ private fun SeriesSummary(stage: VerticalPlayStage, modifier: Modifier = Modifie
         VerticalPlaybackStatus(stage)
         SeriesTitle(stage)
         if (stage.state.category.isNotBlank()) {
-            // 分类是标签而不是分组标题：真正药丸形，底色用既有 chip 令牌，不叠半透明。
-            Text(
-                text = stage.state.category,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.clip(AppShape.full)
-                    .background(starveilExtraColors.chipBackground)
-                    .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
-            )
+            CategoryTags(category = stage.state.category, parent = stage.state.categoryParent)
         }
         if (stage.state.description.isNotBlank()) {
             SynopsisLine(stage)
         }
+    }
+}
+
+/**
+ * 分类标签：父分类与子分类是两个视觉元素，不拼成「父·子」一个字符串。
+ *
+ * 父分类用 `labelSmall` + [starveilExtraColors.onImageSubtle]（压在画面上的次级文字，
+ * 比标题的纯白低一档），不铺底；子分类保持原来的药丸样式与 `labelMedium`。
+ * 没有父分类（后端 `type_parent_name` 为空）时只剩药丸，与改造前逐字一致。
+ *
+ * 两个 Text 都限一行、各占一份权重：分类名再长也只在自己那一半里省略，
+ * 不会把剧名 / 简介挤出列宽。
+ */
+@Composable
+private fun CategoryTags(category: String, parent: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        if (parent.isNotBlank()) {
+            Text(
+                text = parent,
+                style = MaterialTheme.typography.labelSmall,
+                color = starveilExtraColors.onImageSubtle,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+        }
+        Text(
+            text = category,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false)
+                .clip(AppShape.full)
+                .background(starveilExtraColors.chipBackground)
+                .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+        )
     }
 }
 

@@ -27,6 +27,7 @@ fun VodDto.toDomain(): Vod = Vod(
     playSources = playSources.mapIndexed { index, dto -> dto.toDomain(index) },
     typeId = typeId,
     typeName = typeName,
+    typeParentName = typeParentName,
 )
 
 fun PlaySourceDto.toDomain(index: Int): PlaySource = PlaySource(

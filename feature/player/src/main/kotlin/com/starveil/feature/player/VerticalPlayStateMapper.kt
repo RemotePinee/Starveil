@@ -19,6 +19,7 @@ internal fun verticalStateOf(vod: Vod): VerticalPlayUiState {
         cover = vod.poster,
         description = vod.blurb.orEmpty(),
         category = vod.typeName.orEmpty(),
+        categoryParent = vod.typeParentName.orEmpty(),
         typeId = vod.typeId,
         episodes = episodes,
         isLoading = false,
@@ -37,6 +38,7 @@ internal fun verticalInitialState(
     cover = preview?.cover ?: cached?.poster,
     description = preview?.blurb ?: cached?.blurb.orEmpty(),
     category = preview?.category ?: cached?.typeName.orEmpty(),
+    categoryParent = cached?.typeParentName.orEmpty(),
     typeId = cached?.typeId ?: 0,
     episodeCountHint = preview?.episodeCount
         ?: cached?.playSources?.getOrNull(VERTICAL_PLAY_SOURCE_INDEX)?.episodes?.size ?: 0,
@@ -44,6 +46,7 @@ internal fun verticalInitialState(
 
 internal fun VerticalPlayUiState.metadataOnly(): VerticalPlayUiState = VerticalPlayUiState(
     vodId = vodId,
-    title = title, cover = cover, description = description, category = category, typeId = typeId,
+    title = title, cover = cover, description = description,
+    category = category, categoryParent = categoryParent, typeId = typeId,
     episodeCountHint = episodeCount,
 )

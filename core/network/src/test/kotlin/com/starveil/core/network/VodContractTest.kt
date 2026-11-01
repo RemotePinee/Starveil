@@ -101,6 +101,8 @@ class VodContractTest {
 
         assertEquals("短剧", items[0].typeName)
         assertNull(items[1].typeName)
+        // 列表接口不下发父分类名：默认值兜底，不能因此解析失败
+        assertNull(items[1].typeParentName)
     }
 
     @Test
@@ -112,6 +114,8 @@ class VodContractTest {
         // type_id 来自 VodBean.type_id，详情页拿它拉相关推荐
         assertEquals(3, vod.typeId)
         assertEquals("科幻片", vod.typeName)
+        // 父分类名单独下发：播放页据此把「电影 + 科幻片」显示成两个元素
+        assertEquals("电影", vod.typeParentName)
 
         assertEquals(0, source.index)
         assertEquals("线路一", source.name)

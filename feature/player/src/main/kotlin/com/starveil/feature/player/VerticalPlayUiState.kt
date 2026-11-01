@@ -49,6 +49,11 @@ data class VerticalPlayUiState(
     val blockedAccess: TrySeeAccess? = null,
     val description: String = "",
     val category: String = "",
+    /**
+     * 父分类名（后端 `type_parent_name`）。空串表示没有父分类——分类本身就是根、
+     * 父分类已删、或老后端没下发——此时只渲染 [category] 一个标签。
+     */
+    val categoryParent: String = "",
     val typeId: Int = 0,
     /** 同地址重试的媒体修订；普通 seek 不重建媒体源或清空缓冲。 */
     val playbackRevision: Long = 0L,

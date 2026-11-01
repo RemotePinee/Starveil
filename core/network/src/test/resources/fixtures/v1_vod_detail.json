@@ -12,6 +12,7 @@
     "vod_blurb": "简介文本",
     "type_id": 3,
     "type_name": "科幻片",
+    "type_parent_name": "电影",
     "vod_play_list": [
       {
         "sid": 1,

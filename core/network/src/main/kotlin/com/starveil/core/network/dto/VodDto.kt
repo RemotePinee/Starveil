@@ -30,6 +30,12 @@ data class VodDto(
      * 后端没有这个字段，默认 null，UI 不得据 null 推断"无分类"以外的含义。
      */
     @SerialName("type_name") val typeName: String? = null,
+    /**
+     * 后端 `type_parent_name`，父分类名（`mac_type.type_pid` 那一级）。
+     * 老后端不返回该字段，默认 null；父分类是根或已删时后端给空串。
+     * 两者都当"没有父分类"，播放页只显示一个标签。
+     */
+    @SerialName("type_parent_name") val typeParentName: String? = null,
     @SerialName("vod_play_list") val playSources: List<PlaySourceDto> = emptyList(),
 )
 
