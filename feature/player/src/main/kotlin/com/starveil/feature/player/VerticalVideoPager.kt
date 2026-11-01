@@ -20,22 +20,24 @@ import kotlinx.coroutines.withTimeoutOrNull
 /** 只有绘制坐标随 pager 改变；包装层、视频尺寸与 TextureView 的组合身份始终稳定。 */
 @Composable
 internal fun VerticalVideoOutput(stage: VerticalPlayStage, showPauseHint: Boolean) {
-    Box(
-        modifier = Modifier.fillMaxSize().graphicsLayer {
-            val pager = stage.pagerState
-            val layout = pager.layoutInfo
-            translationY = verticalVideoTranslationY(
-                mediaPage = stage.preparedMediaPage,
-                currentPage = pager.currentPage,
-                offsetFraction = pager.currentPageOffsetFraction,
-                pageStridePx = layout.pageSize + layout.pageSpacing,
-                preview = stage.options.preview,
-            )
-        },
-    ) {
-        VideoStage(engine = stage.engine)
+    Box(modifier = Modifier.fillMaxSize().graphicsLayer { translationY = stage.videoTranslationY() }) {
+        // 视频面归 feed 时这里只留暂停提示；画面由 feed 级唯一输出负责，避免两个 TextureView 抢同一个 Surface。
+        if (stage.hostsVideo) VideoStage(engine = stage.engine)
         if (showPauseHint) PlaybackHint(stage)
     }
+}
+
+/** 视频输出与 feed 级输出共用同一条平移口径，两者必须逐帧一致。 */
+internal fun VerticalPlayStage.videoTranslationY(): Float {
+    val pager = pagerState
+    val layout = pager.layoutInfo
+    return verticalVideoTranslationY(
+        mediaPage = preparedMediaPage,
+        currentPage = pager.currentPage,
+        offsetFraction = pager.currentPageOffsetFraction,
+        pageStridePx = layout.pageSize + layout.pageSpacing,
+        preview = options.preview,
+    )
 }
 
 /** 暂停提示与单个视频输出共用 pager 平移，切集时随旧集离场而非悬在新集正中。 */

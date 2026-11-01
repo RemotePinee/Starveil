@@ -106,6 +106,14 @@ internal fun ShortPlayFeed(
     presentation: ShortPlayPresentation = ShortPlayPresentation(),
     /** 当前停的这页是不是广告屏：外层据此收掉顶部菜单/分类/搜索。 */
     onAdVisible: (Boolean) -> Unit = {},
+    /**
+     * feed 级唯一视频层。非空表示播放面由外层持有：整个 feed 一台播放器、一块 TextureView，
+     * 页面自己只画覆盖层与封面，滑页只换媒体项。
+     *
+     * 参数是"当前落页被整屏广告盖住"：广告占着播放面时停掉内容解码（不释放播放器），
+     * 回到正片由那一页重新 prepare。
+     */
+    videoLayer: (@Composable (Boolean) -> Unit)? = null,
 ) {
     val feed = LocalAdPlacements.current.feed
     // 素材缺失时 creative 为空，下面的构建函数就不会插任何广告屏（后台没配=不占位）
@@ -130,6 +138,7 @@ internal fun ShortPlayFeed(
     val canPlay = synchronized && visible && (stablePage || presentation.interactionLocked)
     val lockedAdState = rememberLockedAdKey(pager, pages)
     val lockedAdKey = lockedAdState.value
+    val covered = pages.getOrNull(pager.settledPage) is FeedPage.Ad
 
     LaunchedEffect(pager.currentPage, pages) {
         onAdVisible(pages.getOrNull(pager.currentPage) is FeedPage.Ad)
@@ -141,10 +150,16 @@ internal fun ShortPlayFeed(
     }
     ShortPlayPageWatcher(pager, FeedWatcher(pages, state, actions, synchronized))
     Box(Modifier.fillMaxSize()) {
+        // 视频面铺在 pager 下面：整条信息流只创建这一次，换剧/换集都不重建。
+        FeedVideoLayer(videoLayer, covered)
         VerticalPager(
             state = pager,
             modifier = Modifier.fillMaxSize(),
             key = { pages[it].key },
+            // 相邻页不组合：整个 feed 只有一台播放器，多铺一页不会多一个解码器，
+            // 但会让邻居页在手势期间抢同一块 TextureView、并且提前画自己的封面。
+            // 滑页期间邻居页只负责滑动动画，落页后由它接管媒体项。
+            beyondViewportPageCount = 0,
             // 停在广告页且还没到强制停留时间时锁住翻页
             userScrollEnabled = !presentation.interactionLocked && lockedAdKey == null,
         ) { page ->
@@ -155,10 +170,19 @@ internal fun ShortPlayFeed(
                     if (lockedAdState.value == key) lockedAdState.value = null
                 },
                 playerContent = playerContent,
+                hasVideoLayer = videoLayer != null,
             )
         }
         ShortPlayFeedStatus(state, actions.onRetry, Modifier.align(Alignment.TopCenter))
     }
+}
+
+/**
+ * 视频层由外层注入时铺在 pager 下面；null 表示没有 feed 级播放面，页面自己垫封面。
+ */
+@Composable
+private fun FeedVideoLayer(layer: (@Composable (Boolean) -> Unit)?, covered: Boolean) {
+    if (layer != null) layer(covered)
 }
 
 /** 一屏内容：正片交给 app 注入的播放器，广告屏画自己的整屏。 */
@@ -168,10 +192,12 @@ private fun FeedPageContent(
     playing: Boolean,
     adLock: AdLock,
     playerContent: @Composable (ShortPlay, Boolean) -> Unit,
+    hasVideoLayer: Boolean = false,
 ) {
     when (page) {
         is FeedPage.Play -> Box(Modifier.fillMaxSize()) {
-            ShortPlayBackdrop(page.play)
+            // 有 feed 级视频层时不再垫封面：视频就在这一层下面，无首帧时封面由页面自己顶。
+            if (!hasVideoLayer) ShortPlayBackdrop(page.play)
             playerContent(page.play, playing)
         }
 

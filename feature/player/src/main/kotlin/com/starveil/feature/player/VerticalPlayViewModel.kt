@@ -77,7 +77,18 @@ class VerticalPlayViewModel(
     /** 可写状态流：装载链路（[VerticalPlayLoading]）在这里推进状态，与类内写法保持一份。 */
     internal val stateFlow: MutableStateFlow<VerticalPlayUiState> get() = _state
 
-    internal val playback = VerticalPlaybackStore(::ownsPlayback)
+    /**
+     * 播放器插槽：只由组合层写入（`VerticalPlayRoute` 的 SideEffect），VM 自己不建、不释放。
+     *
+     * 整个短剧 feed 共用一台引擎，所以这里不再是"每部剧一台播放器"的存根；
+     * 写不进来时交接层退回状态里已有的进度，功能不受影响。
+     */
+    internal val playback = VerticalPlaybackStore()
+
+    /** 本页上屏时把共享播放器接进来；离场 detach，交接层随即不再读它。 */
+    internal fun attachPlayback(owner: VerticalPlaybackOwner) = playback.attach(owner)
+
+    internal fun detachPlayback(owner: VerticalPlaybackOwner) = playback.detach(owner)
 
     /** 预览交接 / 原地全集的编排；语义与顺序见 [VerticalPreviewCoordinator]。 */
     private val handoff = VerticalPreviewCoordinator(
@@ -101,9 +112,20 @@ class VerticalPlayViewModel(
     fun endPreviewHandoff(token: Any): Boolean = handoff.endPreviewHandoff(token)
 
     override fun onCleared() {
-        playback.clear()
         handoff.clear()
         super.onCleared()
+    }
+
+    /**
+     * 这一屏退出组合：放掉它自己的字节级预取与弹幕时间轴。
+     *
+     * 播放器**不在这里归还**——整条 feed 只有一台，归 `ShortPlayFeedPlayback` 的
+     * DisposableEffect；这些 VM 要到整个短剧页出栈才 onCleared，所以每屏顺手把
+     * 预取池（几十到几百 KB 的头部/材料）放掉，滑过 50 屏不会攒 50 份。
+     */
+    fun onLeaving() {
+        preloader.clear()
+        danmuController.reset()
     }
 
     init {

@@ -42,6 +42,8 @@ import com.starveil.feature.player.VERTICAL_PLAY_ROUTE_PATTERN
 import com.starveil.feature.player.VERTICAL_PLAY_SOURCE_INDEX
 import com.starveil.feature.player.VerticalPlayRoute
 import com.starveil.feature.player.VerticalPlayViewModel
+import com.starveil.feature.player.ShortPlayFeedPlayback
+import com.starveil.feature.player.ShortPlayVideoHost
 import com.starveil.feature.player.VerticalPlayUiState
 import com.starveil.feature.player.verticalPlayEpisode
 import com.starveil.feature.player.verticalPlayRoute
@@ -115,7 +117,11 @@ internal data class VerticalPlayRequest(
     val origin: NavBackStackEntry? = null,
     val inlineMode: ShortPlayInlineMode? = null,
     val initialMetadata: com.starveil.core.model.ShortPlay? = null,
-)
+) {
+    /** 信息流里的一屏：播放面归 feed 那一份；目的地页自己画。 */
+    val videoHost: ShortPlayVideoHost
+        get() = if (inlineMode == null) ShortPlayVideoHost.PAGE else ShortPlayVideoHost.FEED
+}
 
 @Composable
 internal fun VerticalPlayEntry(
@@ -124,12 +130,17 @@ internal fun VerticalPlayEntry(
     request: VerticalPlayRequest,
     modifier: Modifier = Modifier,
     handoff: ShortPlayHandoff? = null,
+    /** feed 级共享播放器；非空表示这是信息流里的一屏，播放面由 feed 持有。 */
+    feedPlayback: ShortPlayFeedPlayback? = null,
 ) {
     val showRewardAd = LocalRewardAd.current
     var gateRefresh by remember { mutableIntStateOf(0) }
     // 评论抽屉是目的地内的本地弹层：打开它不导航、不重建播放器，视频照常播。
     var showComments by rememberSaveable(request.vodId) { mutableStateOf(false) }
     val viewModel = rememberVerticalPlayViewModel(container, request, handoff)
+    // 信息流里一屏一个 VM（key = shortplay-vod-<id>），共享 origin entry 的 store，直到短剧页
+    // 出栈才 onCleared。播放器已经提到 feed 层（整条流共用一台），这里只收这一屏的预取与弹幕。
+    DisposableEffect(viewModel) { onDispose { viewModel.onLeaving() } }
     // 旧 observer 只归还跨 destination 的 handoff，绝不能结束原地 inline session。
     if (request.inlineMode == null) request.origin?.let { ObserveShortPlayPreview(it, viewModel, nav) }
     val playbackToken = handoff?.token ?: viewModel.defaultPlaybackToken
@@ -168,6 +179,8 @@ internal fun VerticalPlayEntry(
             unlock = container.shortPlayUnlockOptions(gate),
             playbackToken = playbackToken,
             options = options,
+            feedPlayback = feedPlayback,
+            videoHost = request.videoHost,
             onWatchAd = {
                 RewardRequestContext.begin(
                     container.sessionSnapshot()?.userId, request.vodId, gateRequest.episodeNumber,

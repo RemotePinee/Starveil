@@ -111,6 +111,14 @@ class Media3Player(context: Context) {
     val hasError: Boolean get() = errored
 
     /**
+     * 已释放：释放之后到达的任何播放指令都是空操作。
+     *
+     * 目的地页与 feed 的清理顺序不固定（组合的 onDispose、交接归还、页面退场回调），
+     * 这里挡住第二次 release 与释放后才到的 pause/seek，避免访问已释放播放器。
+     */
+    private var released = false
+
+    /**
      * 当前视频的真实宽高比，用来自己算画面矩形。
      *
      * 不让 `PlayerView` 内部去居中：它的 `AspectRatioFrameLayout` 和我们的容器各算一套，
@@ -156,6 +164,7 @@ class Media3Player(context: Context) {
         )
         // media3 里"耳机拔出/蓝牙断开"就是这个开关（系统 becoming noisy 广播）
         player.setHandleAudioBecomingNoisy(true)
+        PlayerInstances.onCreate()
     }
 
     internal fun clearListener(expected: Listener) {
@@ -181,6 +190,7 @@ class Media3Player(context: Context) {
      * 带 `Referer` 的线路（解析站下发的防盗链流）还要换 UA，原因见 [userAgentFor]。
      */
     fun prepare(url: String, headers: Map<String, String>, audioUrl: String? = null) {
+        if (released) return
         lastUrl = url
         lastHeaders = headers
         lastAudioUrl = audioUrl
@@ -199,6 +209,11 @@ class Media3Player(context: Context) {
         } else {
             MergingMediaSource(videoSource, buildSource(audioUrl, dataSource))
         }
+        // 换源只换媒体项，不 new 播放器：先停掉当前源让 Media3 归还上一套硬件解码器，
+        // 清空队列后再挂新 source。短剧页曾因"每部剧一个播放器"把解码器堆到 839 个
+        // （OOM 在 MediaCodec.getBuffer），这条路径是唯一允许换源的地方。
+        player.stop()
+        player.clearMediaItems()
         player.setMediaSource(source)
         player.prepare()
         player.playWhenReady = desiredPlay
@@ -213,8 +228,8 @@ class Media3Player(context: Context) {
      */
     fun recoverIfNeeded(positionMs: Long) {
         // 错误态交给调用方重新解析，这里只处理"source 掉了"（IDLE）
-        if (player.playbackState != Player.STATE_IDLE) return
         val url = lastUrl ?: return
+        if (released || player.playbackState != Player.STATE_IDLE) return
         prepare(url, lastHeaders, lastAudioUrl)
         player.playWhenReady = desiredPlay
         player.seekTo(positionMs.coerceAtLeast(0L))
@@ -251,6 +266,7 @@ class Media3Player(context: Context) {
     }
 
     fun seekTo(positionMs: Long) {
+        if (released) return
         endedFramePositionMs = null
         frames.output.acknowledgeSeek()
         player.seekTo(positionMs)
@@ -260,26 +276,43 @@ class Media3Player(context: Context) {
 
 
     fun setSpeed(speed: Float) {
+        if (released) return
         player.setPlaybackSpeed(speed)
     }
 
     fun play() {
+        if (released) return
         desiredPlay = true
         player.playWhenReady = true
     }
 
     fun pause() {
+        if (released) return
         desiredPlay = false
         player.playWhenReady = false
     }
 
+    /**
+     * 停播并归还硬件解码器，但**保留**播放器实例与媒体项。
+     *
+     * 广告整屏盖住播放面时用这个而不是 [release]：回来时 [prepare] 重新挂同一条地址即可，
+     * 不必重建播放器、不必重走 `ExoPlayer.Builder` 的线程与音频焦点配置。
+     */
+    fun stop() {
+        if (released) return
+        player.stop()
+    }
+
     fun release() {
+        if (released) return
+        released = true
         listener = null
         // 预取协程与缓存客户端一起收：进程里留一条后台下载没有意义
         videoHttp.release()
         frames.release()
         player.removeListener(mediaListener)
         player.release()
+        PlayerInstances.onRelease()
     }
 
     /** 起播计时起点；0 表示当前没有在等起播。 */

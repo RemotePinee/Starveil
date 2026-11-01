@@ -78,6 +78,8 @@ fun ShortPlayRoute(
     playerContent: @Composable (ShortPlay, Boolean) -> Unit = { _, _ -> },
     navigation: ShortPlayNavigation = ShortPlayNavigation(),
     presentation: ShortPlayPresentation = ShortPlayPresentation(),
+    /** feed 级唯一视频层；非空时播放面由外层持有，页面只画覆盖层。 */
+    videoLayer: (@Composable (Boolean) -> Unit)? = null,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val suggestions by viewModel.suggestions.collectAsStateWithLifecycle()
@@ -97,6 +99,7 @@ fun ShortPlayRoute(
             onPickResult = viewModel::playFromSearch,
         ),
         modifier = modifier,
+        videoLayer = videoLayer,
         playerContent = playerContent,
         navigation = navigation,
         presentation = presentation,
@@ -125,6 +128,8 @@ fun ShortPlayScreen(
     playerContent: @Composable (ShortPlay, Boolean) -> Unit = { _, _ -> },
     navigation: ShortPlayNavigation = ShortPlayNavigation(),
     presentation: ShortPlayPresentation = ShortPlayPresentation(),
+    /** feed 级唯一视频层；非空时播放面由外层持有，页面只画覆盖层。 */
+    videoLayer: (@Composable (Boolean) -> Unit)? = null,
 ) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     var searchOverlayVisible by rememberSaveable { mutableStateOf(false) }
@@ -164,6 +169,7 @@ fun ShortPlayScreen(
                     state, actions, drawerClosed, playerContent, presentation,
                     // 广告屏是全屏素材，顶部菜单/分类/搜索要收掉。
                     onAdVisible = { adVisible = it },
+                    videoLayer = videoLayer,
                 )
                 is ShortPlayUiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     StarveilLoading()

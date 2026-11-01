@@ -25,6 +25,9 @@ internal interface VerticalPlaybackOutput {
     fun pause()
     fun recover(positionMs: Long)
     fun setSpeed(speed: Float)
+
+    /** 停掉解码但保留播放器；fake 沿用默认空实现即可。 */
+    fun stop() {}
 }
 
 internal class VerticalPlaybackSession(
@@ -92,6 +95,20 @@ internal class VerticalPlaybackSession(
         }
         return canSuspend
     }
+
+    /**
+     * 广告整屏盖住播放面：停掉解码、丢掉已准备的媒体身份，但不动播放器实例。
+     *
+     * 丢掉身份就是"回到正片时重新 setMediaItem"的全部实现——下一次 [update] 发现
+     * `source != preparedSource` 会重新 prepare 并 seek 回状态里的进度。
+     */
+    fun stopForCover() {
+        enabled = false
+        output.pause()
+        output.stop()
+        preparedSource = null
+        appliedSeekRevision = -1L
+    }
 }
 
 internal class VerticalMedia3Output(private val engine: Media3Player) : VerticalPlaybackOutput {
@@ -103,5 +120,5 @@ internal class VerticalMedia3Output(private val engine: Media3Player) : Vertical
     override fun pause() = engine.pause()
     override fun recover(positionMs: Long) = engine.recoverIfNeeded(positionMs)
     override fun setSpeed(speed: Float) = engine.setSpeed(speed)
-
+    override fun stop() = engine.stop()
 }

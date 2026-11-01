@@ -11,6 +11,8 @@ import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -21,6 +23,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -29,11 +32,11 @@ import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.TrySeeAccess
 
 /**
- * 竖屏播放页入口：ViewModel + 单实例 [Media3Player] + 纯 UI 三者接线。
+ * 竖屏播放页入口：ViewModel + 共享 [ShortPlayFeedPlayback] + 纯 UI 三者接线。
  *
- * 播放器与 prepare 会话归 ViewModel 所有，导航暂离不释放；切集只换媒体源。
- * 视频面也只有一个（[VideoStage]），不在 pager 页或 URL/加载条件里创建销毁；
- * 真实画面跟随所属页滑动，其余页在自己的当前源首帧前始终使用不透明遮挡。
+ * 播放器不归本页创建：feed 页由 `ShortPlayEntry` 注入整条信息流唯一的一台，目的地页
+ * 自己 `remember` 一台（见 [rememberVerticalPlayback]）。换集只换媒体项，VM 只读进度。
+ * 视频面在 feed 里也只有一份（[ShortPlayVideoHost.FEED]），页面只画覆盖层。
  */
 @Composable
 fun VerticalPlayRoute(
@@ -48,18 +51,26 @@ fun VerticalPlayRoute(
     onWatchAd: () -> Unit = {},
     options: VerticalPlayOptions = VerticalPlayOptions(),
     playbackToken: Any = viewModel.defaultPlaybackToken,
+    /** feed 级共享播放器；null 表示本页自持（目的地页）。 */
+    feedPlayback: ShortPlayFeedPlayback? = null,
+    /** 视频面归谁画。feed 页用 [ShortPlayVideoHost.FEED]，画面由 pager 下面那一份负责。 */
+    videoHost: ShortPlayVideoHost = ShortPlayVideoHost.PAGE,
 ) {
     val ownsPlayback = viewModel.ownsPlayback(playbackToken)
     val state = viewModel.state.collectAsStateWithLifecycle().value
-    // 引擎创建（Media3 构造成本在低端机可达数百毫秒）放到首帧之后：
-    // 进入剧场先立刻铺封面，引擎就绪再接管，页面不会比 dock 晚一拍出现。
-    val playback = rememberVerticalPlayback(viewModel, playbackToken)
+    // 引擎创建（Media3 构造成本在低端机可达数百毫秒）放到首帧之后：进入剧场先立刻铺封面，
+    // 引擎就绪再接管，页面不会比 dock 晚一拍出现。feed 页不建自己的，整条流共用外层那一台。
+    val playback = rememberPlaybackSlot(feedPlayback, viewModel, playbackToken)
     if (playback == null) {
         VerticalBlurredBackdrop(state.cover, Modifier.fillMaxSize())
         return
     }
+    // VM 只读进度：播放器由组合层接进来，VM 自己不创建也不释放。
+    val owner = playback.owner
+    SideEffect { viewModel.attachPlayback(owner) }
+    DisposableEffect(owner) { onDispose { viewModel.detachPlayback(owner) } }
     val danmu = viewModel.danmu.collectAsStateWithLifecycle().value
-    val engine = playback.engine
+    val engine = owner.engine
     val pagerState = rememberPagerState(initialPage = state.currentIndex) {
         state.episodes.size.coerceAtLeast(1)
     }
@@ -91,7 +102,7 @@ fun VerticalPlayRoute(
         onWatchAd = onWatchAd,
         onSpeedSelect = { speed = it },
         onAction = options.onAction,
-        onOpenSeries = { playback.openSeries(viewModel, options) },
+        onOpenSeries = { owner.openSeries(viewModel, options) },
         onToggleRecommendations = {
             showEpisodes = false
             showRecommendations = !showRecommendations
@@ -99,45 +110,76 @@ fun VerticalPlayRoute(
         },
         onSeek = viewModel::onSeekTo,
     )
-    VerticalEngineEffects(playback, state, viewModel, options, speed, pagerState, playbackToken)
+    VerticalEngineEffects(owner, state, viewModel, options, speed, pagerState, playbackToken)
     VerticalPagerSync(state, pagerState, viewModel, playbackToken, options)
-    VerticalPlayScreen(
-        stage = VerticalPlayStage(
-            state = state,
-            pagerState = pagerState,
-            actions = actions,
-            engine = engine,
-            showEpisodes = showEpisodes,
-            danmu = danmu,
-            unlock = unlock,
-            speed = speed,
-            options = options,
-            showRecommendations = showRecommendations,
-            hasCurrentFrame = playback.session.isPrepared(state) && engine.hasRenderedCurrentFrame,
-            preparedMediaPage = playback.session.preparedMediaPage,
-            hasPreparedFrame = engine.hasRenderedCurrentFrame,
-        ),
-        modifier = modifier,
-        ownsPlayback = ownsPlayback,
+    val prepared = owner.session.isPrepared(state)
+    val rendered = prepared && engine.hasRenderedCurrentFrame
+    val stage = VerticalPlayStage(
+        state = state,
+        pagerState = pagerState,
+        actions = actions,
+        engine = engine,
+        showEpisodes = showEpisodes,
+        danmu = danmu,
+        unlock = unlock,
+        speed = speed,
+        options = options,
+        showRecommendations = showRecommendations,
+        hasCurrentFrame = rendered,
+        // 共享引擎只认自己的 prepare 身份：不匹配时既不算"有帧"，也不参与平移。
+        preparedMediaPage = owner.session.preparedMediaPage.takeIf { prepared },
+        hasPreparedFrame = rendered,
+        hostsVideo = videoHost == ShortPlayVideoHost.PAGE,
     )
+    FeedStagePublisher(playback, stage, publishing = videoHost == ShortPlayVideoHost.FEED, active = options.active)
+    VerticalPlayScreen(stage = stage, modifier = modifier, ownsPlayback = ownsPlayback)
 }
 
 /**
  * 首次得权才获取引擎，且不在组合里同步构造：Media3 播放器创建要上百毫秒，
  * 放在首帧内会让整页比 dock 晚一拍出来。这里先返回 null，下一帧再交付实例。
+ *
+ * 只有目的地页走这条：它自己就是整个播放面。feed 页由 `ShortPlayEntry` 注入同一台。
  */
 @Composable
-private fun rememberVerticalPlayback(viewModel: VerticalPlayViewModel, token: Any): VerticalPlaybackOwner? {
-    val context = LocalContext.current
-    val holder = remember(viewModel, token) { mutableStateOf<VerticalPlaybackOwner?>(null) }
+private fun rememberPlaybackSlot(
+    shared: ShortPlayFeedPlayback?,
+    viewModel: VerticalPlayViewModel,
+    token: Any,
+): ShortPlayFeedPlayback? {
+    if (shared != null) return shared
+    return rememberVerticalPlayback(viewModel, token)
+}
+
+@Composable
+private fun rememberVerticalPlayback(viewModel: VerticalPlayViewModel, token: Any): ShortPlayFeedPlayback? {
+    val context = LocalContext.current.applicationContext
+    val holder = remember(viewModel, token) { mutableStateOf<ShortPlayFeedPlayback?>(null) }
     LaunchedEffect(viewModel, token) {
         if (holder.value == null && viewModel.ownsPlayback(token)) {
-            holder.value = viewModel.playback.get(context)
+            holder.value = ShortPlayFeedPlayback(context)
         }
     }
+    // 谁创建谁释放：feed 那台由 ShortPlayEntry 的 DisposableEffect 收。
+    DisposableEffect(viewModel, token) { onDispose { holder.value?.release() } }
     // 不要因为这一刻"没有播放权"就交回 null：转场/失焦那一帧交回 null 会让整页
     // 退化成封面，贴底那组（标题 / 右栏 / 观看完整短剧条）瞬间消失，看着就是"跳走了"。
     return holder.value
+}
+
+/** 把本页的渲染输入交给 feed 级唯一输出；不是落页就不占槽位。 */
+@Composable
+private fun FeedStagePublisher(
+    playback: ShortPlayFeedPlayback,
+    stage: VerticalPlayStage,
+    publishing: Boolean,
+    active: Boolean,
+) {
+    val token = remember(playback) { Any() }
+    SideEffect {
+        if (publishing && active) playback.publish(token, stage) else playback.unpublish(token)
+    }
+    DisposableEffect(playback, token) { onDispose { playback.unpublish(token) } }
 }
 
 private fun VerticalPlaybackOwner.openSeries(viewModel: VerticalPlayViewModel, options: VerticalPlayOptions) {
@@ -171,6 +213,8 @@ data class VerticalPlayStage(
     val preparedMediaPage: Int? = null,
     /** 实际 prepared 源的帧，可随它自己的旧页退场，但不能露在请求的新页。 */
     val hasPreparedFrame: Boolean = false,
+    /** 视频面是否归本页画：feed 页由 pager 下面那一份负责，页面只画覆盖层。 */
+    val hostsVideo: Boolean = true,
 )
 
 /** 视频保留完整 viewport；调用方的 modifier 只让前景避开实测底栏与系统栏。 */
@@ -190,7 +234,7 @@ private fun VerticalStageContent(stage: VerticalPlayStage, contentModifier: Modi
     val state = stage.state
     Box(
         modifier = Modifier.fillMaxSize()
-            .clipToBounds().background(starveilExtraColors.scrimStrong),
+            .clipToBounds().background(stageBackdrop(stage.hostsVideo)),
     ) {
         // 常驻输出先绘制，逐页遮挡随后绘制；手势、URL、mode 都不改变输出组合身份。
         VerticalVideoOutput(stage, showPauseHint = ownsPlayback && !state.isLoading && state.episodes.isNotEmpty())
@@ -208,6 +252,11 @@ private fun VerticalStageContent(stage: VerticalPlayStage, contentModifier: Modi
         }
     }
 }
+
+/** 视频面归 feed 时这里不能再铺不透明底：整页会盖住 pager 下面唯一的那块输出。 */
+@Composable
+private fun stageBackdrop(hostsVideo: Boolean): Color =
+    if (hostsVideo) starveilExtraColors.scrimStrong else Color.Transparent
 
 /** 弹幕层。短剧默认没有弹幕来源，列表为空时 DanmuLayer 自己不画、也不驱动逐帧刷新。 */
 @Composable

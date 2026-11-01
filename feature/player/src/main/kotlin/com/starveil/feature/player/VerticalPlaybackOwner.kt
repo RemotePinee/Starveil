@@ -25,12 +25,24 @@ internal class VerticalPlaybackController {
     }
 }
 
-/** 导航暂离保留解码器与 prepare 身份；推荐页移出组合时由调用方主动回收，避免无限累积。 */
-internal class VerticalPlaybackStore(private val isOwner: (Any) -> Boolean) {
+/**
+ * VM 与"此刻那一台共享播放器"之间的插槽：只由组合层写入，VM 自己不创建、不释放。
+ *
+ * 短剧 feed 整个页面共用一个 [VerticalPlaybackOwner]（见 `ShortPlayFeedPlayback`），
+ * 所以 VM 不能再按需建引擎——那正是"每部剧一个播放器、解码器只增不减"的来源。
+ * 写入方离场即清空：交接层读不到引擎时退回状态里已有的进度，不会读到已释放的播放器。
+ */
+internal class VerticalPlaybackStore {
+
     private var current: VerticalPlaybackOwner? = null
 
-    fun get(context: Context): VerticalPlaybackOwner =
-        current ?: VerticalPlaybackOwner(context, isOwner).also { current = it }
+    fun attach(owner: VerticalPlaybackOwner) {
+        current = owner
+    }
+
+    fun detach(owner: VerticalPlaybackOwner) {
+        if (current === owner) current = null
+    }
 
     /** 原地切换只读取真实进度，不能暂停会话或改变 prepare/seek 身份。 */
     fun snapshot(state: VerticalPlayUiState): VerticalPlayUiState {
@@ -45,15 +57,5 @@ internal class VerticalPlaybackStore(private val isOwner: (Any) -> Boolean) {
     fun capture(state: VerticalPlayUiState): VerticalPlayUiState {
         current?.session?.suspendPlayback()
         return snapshot(state)
-    }
-
-    fun release(owner: VerticalPlaybackOwner) {
-        if (current !== owner) return
-        current = null
-        owner.release()
-    }
-
-    fun clear() {
-        current?.let(::release)
     }
 }

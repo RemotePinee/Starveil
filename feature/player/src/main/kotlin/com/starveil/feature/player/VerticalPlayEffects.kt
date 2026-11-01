@@ -59,25 +59,30 @@ internal fun VerticalEngineEffects(
         )
     }
     val enabled = canPlayVertical(options.active, resumed, pagerState.isReadyFor(state, options.preview))
-    DisposableEffect(engine, lifecycle, bridge) {
+    // 只有落页那一屏能驱动共享播放器：相邻页也在同一台引擎上，谁都能写就等于互相抢输出。
+    // attach 之后立刻 update 一次，不依赖 SideEffect 与 DisposableEffect 的先后顺序。
+    DisposableEffect(engine, lifecycle, bridge, options.active) {
         val observer = LifecycleEventObserver { _, _ ->
             resumed = lifecycle.currentState == Lifecycle.State.RESUMED
             if (!resumed) bridge.suspendPlayback()
         }
-        bridge.attach()
         lifecycle.addObserver(observer)
+        if (options.active) {
+            bridge.attach()
+            bridge.update(speed)
+        }
+        // detach 是幂等的：没 attach 过的页在这里空转，不会碰别人接管的播放器。
         onDispose {
             lifecycle.removeObserver(observer)
-            bridge.detach(lifecycle)
+            bridge.detach()
         }
     }
-    SideEffect {
-        bridge.update(speed)
-    }
+    SideEffect { bridge.update(speed) }
     // 预取接下来两集的清单与首个分片：用户滑得快时只预取一集来不及落地，
     // 两集能把命中率从约 1/4 抬起来（实测命中时起播 260ms，未命中 2.1s）。
     // 只在切片后触发，避免和当前集抢带宽。
-    LaunchedEffect(state.currentIndex, state.playingUrl) {
+    LaunchedEffect(state.currentIndex, state.playingUrl, options.active) {
+        if (!options.active) return@LaunchedEffect
         val upcoming = state.episodes.drop(state.currentIndex + 1).take(PREFETCH_AHEAD)
         upcoming.forEach { engine.prefetch(it.url, state.headers) }
     }
@@ -140,11 +145,9 @@ private class VerticalPlayerBridge(
         engine.setListener(this)
     }
 
-    fun detach(lifecycle: Lifecycle) {
+    fun detach() {
         suspendPlayback()
         engine.clearListener(this)
-        val mayRelease = gate.ownsPlayback() && !viewModel.hasPreviewHandoff
-        if (mayRelease && lifecycle.currentState == Lifecycle.State.RESUMED) viewModel.playback.release(playback)
         playback.controller.clear(controller)
     }
 

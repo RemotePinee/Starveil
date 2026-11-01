@@ -40,16 +40,15 @@ internal class VideoHttp(private val context: Context) {
         HongguoGateDataSource.appContext = context.applicationContext
     }
 
-    private val client: OkHttpClient = OkHttpClient.Builder()
-        // 连接与读取都给到 15 秒：资源站首包偶尔要十几秒，8 秒会把还能连上的线路判死。
-        .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(15, TimeUnit.SECONDS)
-        // 池子要够大：红果头部解密会开 4 条并行的 Range 请求，加上播放流本身，
-        // 原来只有 4 条会被迫边下边淘汰，等于每集都重做一遍 TLS 握手。
-        .connectionPool(ConnectionPool(8, 10, TimeUnit.MINUTES))
-        // 连接失败直接报错，不自动重试：重试会悄悄把首帧拖长几秒，而我们宁可立刻降级
-        .retryOnConnectionFailure(false)
-        .build()
+    /**
+     * 进程内唯一的播放 HTTP 客户端，见 [SharedVideoClient]。
+     *
+     * 曾经是每个 [VideoHttp] 各建一个：一个播放器 = 一套 Dispatcher 线程池 + 8 条连接的
+     * 连接池 + 一份 TLS 会话。而 [release] 只取消预取协程，关不掉这些线程与连接，
+     * 于是短剧页每滑一屏就多留一份——native 内存随滑动线性上涨的另一条链路。
+     * 客户端本身线程安全，请求头按 Factory 逐次构造，共享不改变任何请求语义。
+     */
+    private val client: OkHttpClient get() = SharedVideoClient.instance
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var job: Job? = null
@@ -175,4 +174,23 @@ internal class VideoHttp(private val context: Context) {
         /** 只预取首片：短剧首帧靠它，取多了浪费流量。 */
         const val SEGMENT_PREFETCH = 2
     }
+}
+
+/**
+ * 播放链路的共享 OkHttp 客户端。
+ *
+ * 不跟着播放器生命周期走：连接池、Dispatcher 与 TLS 会话都是进程级资源，
+ * 以播放器为单位复制一份既吃 native 内存，又让同一部剧的相邻集反复重做握手。
+ */
+private object SharedVideoClient {
+    val instance: OkHttpClient = OkHttpClient.Builder()
+        // 连接与读取都给到 15 秒：资源站首包偶尔要十几秒，8 秒会把还能连上的线路判死。
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        // 池子要够大：红果头部解密会开 4 条并行的 Range 请求，加上播放流本身，
+        // 原来只有 4 条会被迫边下边淘汰，等于每集都重做一遍 TLS 握手。
+        .connectionPool(ConnectionPool(8, 10, TimeUnit.MINUTES))
+        // 连接失败直接报错，不自动重试：重试会悄悄把首帧拖长几秒，而我们宁可立刻降级
+        .retryOnConnectionFailure(false)
+        .build()
 }

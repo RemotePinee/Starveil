@@ -29,6 +29,8 @@ import com.starveil.feature.shortplay.SHORT_PLAY_ROUTE
 import com.starveil.feature.shortplay.ShortPlayNavigation
 import com.starveil.feature.user.UserNavigation
 import com.starveil.feature.player.VerticalPlayOptions
+import com.starveil.feature.player.ShortPlayFeedVideoLayer
+import com.starveil.feature.player.rememberShortPlayFeedPlayback
 import com.starveil.feature.shortplay.ShortPlayRoute
 import com.starveil.feature.shortplay.ShortPlayPresentation
 import com.starveil.feature.shortplay.ShortPlayViewModel
@@ -74,6 +76,9 @@ private fun ShortPlayEntry(container: AppContainer, nav: NavHostController, orig
     val stablePadding = rememberStableWhileCurrent(contentPadding, isOriginCurrent)
     // 宿主扣掉的 dock 占位由短剧页自己铺回来：切 tab 那一帧的高度必须和稳态一致。
     val bleed = rememberStableWhileCurrent(LocalHostBottomInset.current, isOriginCurrent)
+    // 整个短剧 feed 一台播放器（一个 ViewModel/一屏一台正是解码器只增不减的根源），
+    // 视频面也只在 pager 下面创建一次，滑页只换媒体项。
+    val feedPlayback = rememberShortPlayFeedPlayback()
     CompositionLocalProvider(LocalAppContentPadding provides stablePadding) {
         ShortPlayRoute(
             viewModel = feed,
@@ -94,9 +99,15 @@ private fun ShortPlayEntry(container: AppContainer, nav: NavHostController, orig
             ),
             playerContent = { play, active ->
                 key(play.id) {
-                    VerticalPlayEntry(container, nav, origin.shortPlayPreviewRequest(play, active, nav, inlineMode))
+                    VerticalPlayEntry(
+                        container, nav,
+                        origin.shortPlayPreviewRequest(play, active, nav, inlineMode),
+                        feedPlayback = feedPlayback,
+                    )
                 }
             },
+            // 唯一视频面：广告整屏盖住时停掉内容解码（不释放），回到正片由页面重新 prepare。
+            videoLayer = { covered -> ShortPlayFeedVideoLayer(feedPlayback, covered) },
         )
     }
 }
