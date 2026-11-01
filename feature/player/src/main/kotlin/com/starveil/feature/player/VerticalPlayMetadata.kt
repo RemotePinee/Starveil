@@ -156,13 +156,22 @@ private fun SeriesSummary(stage: VerticalPlayStage, modifier: Modifier = Modifie
 }
 
 /**
- * 分类标签：父分类与子分类是两个视觉元素，不拼成「父·子」一个字符串。
+ * 分类标签：父分类与子分类是两个药丸，不拼成「父·子」一个字符串。
  *
- * 父分类用 `labelSmall` + [starveilExtraColors.onImageSubtle]（压在画面上的次级文字，
- * 比标题的纯白低一档），不铺底；子分类保持原来的药丸样式与 `labelMedium`。
- * 没有父分类（后端 `type_parent_name` 为空）时只剩药丸，与改造前逐字一致。
+ * 两者形状、底色与内边距完全一致（[AppShape.full] + `chipBackground`），只在文字上分层：
+ * 父分类 `labelSmall` + [starveilExtraColors.textFaint]（比子分类再淡一档），
+ * 子分类 `labelMedium` + `colorScheme.onSurfaceVariant`。层级靠字号与字色区分，
+ * 不靠"一个有底一个没底"——父分类掉了底色就只剩一行说明文字，不再读作分类。
+ * 没有父分类（后端 `type_parent_name` 为空）时只剩子分类一个药丸。
  *
- * 两个 Text 都限一行、各占一份权重：分类名再长也只在自己那一半里省略，
+ * 子分类名里若带着品牌前缀，**不在这里剥离**：真机数据是
+ * `type_parent_name = 短剧`、`type_name = 河马·甜宠言情`。「河马·」不是父分类名，
+ * 是内容方写进分类名里的品牌前缀，剥掉等于改用户数据。只有名字确实以父名加间隔号
+ * 开头（父名本身就是那段前缀）时才该剥，那时在下面加一行：
+ * `val label = category.removePrefix("$parent·")`，条件是 `category.startsWith("$parent·")`
+ * 且 `parent.isNotBlank()`——两者缺一不可，否则「短剧」会把「短剧推荐」也切掉。
+ *
+ * 两个药丸都限一行、各占一份权重：分类名再长也只在自己那一半里省略，
  * 不会把剧名 / 简介挤出列宽。
  */
 @Composable
@@ -173,27 +182,48 @@ private fun CategoryTags(category: String, parent: String) {
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
         if (parent.isNotBlank()) {
-            Text(
-                text = parent,
-                style = MaterialTheme.typography.labelSmall,
-                color = starveilExtraColors.onImageSubtle,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            CategoryPill(
+                label = parent,
                 modifier = Modifier.weight(1f, fill = false),
+                emphasized = false,
             )
         }
-        Text(
-            text = category,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false)
-                .clip(AppShape.full)
-                .background(starveilExtraColors.chipBackground)
-                .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
-        )
+        CategoryPill(label = category, modifier = Modifier.weight(1f, fill = false))
     }
+}
+
+/**
+ * 分类药丸：父 / 子共用形状、底色与内边距，只在字号与字色上分层。
+ *
+ * [emphasized] 为真是子分类（当前分类）：`labelMedium` + 二级文字色；
+ * 为假是父分类：掉到 `labelSmall` + 三级文字色 [starveilExtraColors.textFaint]，
+ * 与禁用态按钮同一档（见 `PayBottomBar`），仍压在 `chipBackground` 上可读。
+ */
+@Composable
+private fun CategoryPill(
+    label: String,
+    modifier: Modifier = Modifier,
+    emphasized: Boolean = true,
+) {
+    Text(
+        text = label,
+        style = if (emphasized) {
+            MaterialTheme.typography.labelMedium
+        } else {
+            MaterialTheme.typography.labelSmall
+        },
+        color = if (emphasized) {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        } else {
+            starveilExtraColors.textFaint
+        },
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .clip(AppShape.full)
+            .background(starveilExtraColors.chipBackground)
+            .padding(horizontal = Spacing.sm, vertical = Spacing.xxs),
+    )
 }
 
 @Composable
