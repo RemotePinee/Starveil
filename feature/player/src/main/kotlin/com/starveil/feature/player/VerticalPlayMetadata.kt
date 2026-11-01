@@ -158,9 +158,9 @@ private fun SeriesSummary(stage: VerticalPlayStage, modifier: Modifier = Modifie
 /**
  * 分类标签：父分类与子分类是两个药丸，不拼成「父·子」一个字符串。
  *
- * 两者形状、底色与内边距完全一致（[AppShape.full] + `chipBackground`），只在文字上分层：
- * 父分类 `labelSmall` + [starveilExtraColors.textFaint]（比子分类再淡一档），
- * 子分类 `labelMedium` + `colorScheme.onSurfaceVariant`。层级靠字号与字色区分，
+ * 两者形状、底色、内边距与文字完全一致（[AppShape.full] + `chipBackground`、
+ * `labelMedium` + `colorScheme.onSurfaceVariant`），不按父 / 子再分档：
+ * 字号与字色一有差异，真机上就读成两个层级，看不出它们是一对分类。
  * 不靠"一个有底一个没底"——父分类掉了底色就只剩一行说明文字，不再读作分类。
  * 没有父分类（后端 `type_parent_name` 为空）时只剩子分类一个药丸。
  *
@@ -185,38 +185,19 @@ private fun CategoryTags(category: String, parent: String) {
             CategoryPill(
                 label = parent,
                 modifier = Modifier.weight(1f, fill = false),
-                emphasized = false,
             )
         }
         CategoryPill(label = category, modifier = Modifier.weight(1f, fill = false))
     }
 }
 
-/**
- * 分类药丸：父 / 子共用形状、底色与内边距，只在字号与字色上分层。
- *
- * [emphasized] 为真是子分类（当前分类）：`labelMedium` + 二级文字色；
- * 为假是父分类：掉到 `labelSmall` + 三级文字色 [starveilExtraColors.textFaint]，
- * 与禁用态按钮同一档（见 `PayBottomBar`），仍压在 `chipBackground` 上可读。
- */
+/** 分类药丸：父 / 子两个药丸完全一致——同字号、同字色、同形状与内边距。 */
 @Composable
-private fun CategoryPill(
-    label: String,
-    modifier: Modifier = Modifier,
-    emphasized: Boolean = true,
-) {
+private fun CategoryPill(label: String, modifier: Modifier = Modifier) {
     Text(
         text = label,
-        style = if (emphasized) {
-            MaterialTheme.typography.labelMedium
-        } else {
-            MaterialTheme.typography.labelSmall
-        },
-        color = if (emphasized) {
-            MaterialTheme.colorScheme.onSurfaceVariant
-        } else {
-            starveilExtraColors.textFaint
-        },
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         maxLines = 1,
         overflow = TextOverflow.Ellipsis,
         modifier = modifier
