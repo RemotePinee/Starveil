@@ -4,15 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.painter.ColorPainter
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
-import coil3.compose.AsyncImage
-import com.starveil.core.designsystem.component.blurredImageRequest
+import com.starveil.core.designsystem.component.BlurredCoverBackdrop
 import com.starveil.core.designsystem.starveilExtraColors
 
 /** 旁页保持不透明；只有当前媒体的有效帧可以透出常驻视频输出。换页只拨 alpha，不重建封面。 */
@@ -48,26 +43,13 @@ internal fun VerticalPlaybackBackdrop(cover: String?, revealed: Boolean, modifie
     }
 }
 
-/** 封面先做真实高斯变换再显示；视频、标题与控件不参与模糊，两种底条复用同一缓存。 */
+/**
+ * 封面先做真实高斯变换再显示；视频、标题与控件不参与模糊，两种底条复用同一缓存。
+ *
+ * "换封面保留上一张"的逻辑封在 [BlurredCoverBackdrop] 内部：本模块所有调用点
+ * （旁页、页面级底、遮挡层）都走这一个入口，不必各自再写一份，也就不会漏。
+ */
 @Composable
 internal fun VerticalBlurredBackdrop(cover: String?, modifier: Modifier = Modifier) {
-    val context = LocalContext.current
-    val request = remember(context, cover) {
-        cover?.takeIf(String::isNotBlank)?.let { blurredImageRequest(context, it) }
-    }
-    val scrim = starveilExtraColors.scrimStrong
-    Box(modifier = modifier.fillMaxSize().clipToBounds().background(scrim)) {
-        if (request != null) {
-            AsyncImage(
-                model = request,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                // 换剧时旧封面已撤、新封面还没解出来：这一帧必须是实色打底，不是透明。
-                placeholder = ColorPainter(scrim),
-                error = ColorPainter(scrim),
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
-        Box(Modifier.fillMaxSize().background(starveilExtraColors.playerControlBackground))
-    }
+    BlurredCoverBackdrop(cover = cover, modifier = modifier)
 }
