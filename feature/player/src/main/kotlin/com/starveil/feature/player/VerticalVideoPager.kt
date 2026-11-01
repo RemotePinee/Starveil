@@ -22,7 +22,9 @@ import kotlinx.coroutines.withTimeoutOrNull
 internal fun VerticalVideoOutput(stage: VerticalPlayStage, showPauseHint: Boolean) {
     Box(modifier = Modifier.fillMaxSize().graphicsLayer { translationY = stage.videoTranslationY() }) {
         // 视频面归 feed 时这里只留暂停提示；画面由 feed 级唯一输出负责，避免两个 TextureView 抢同一个 Surface。
-        if (stage.hostsVideo) VideoStage(engine = stage.engine)
+        if (stage.hostsVideo) {
+            VideoStage(engine = stage.engine, cover = stage.state.cover, hasFrame = stage.hasCurrentFrame)
+        }
         if (showPauseHint) PlaybackHint(stage)
     }
 }

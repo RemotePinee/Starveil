@@ -80,10 +80,10 @@ fun rememberShortPlayFeedPlayback(): ShortPlayFeedPlayback {
  * feed 的唯一视频输出，铺在 pager 下面。
  *
  * 合成身份不随滑动、换剧、换集改变：`VideoStage` 里的 `ContentFrame` 只认这一台引擎，
- * 所以整页只创建一个 TextureView/SurfaceTexture，换源时复用同一个（`keepContentOnReset`
- * 还会把上一帧留在屏幕上，避免换源的一两帧露出底色）。
- * 视频层自带的整页底是同一部剧的模糊封面：片源比容器宽时 Fit 会上下留条，那两条必须由
- * 封面填住，否则滑页时露出的就是根布局的纯黑。
+ * 所以整页只创建一个 TextureView/SurfaceTexture，换源时复用同一个。
+ * 视频层自带的整页底跟着"有没有首帧"切换：起播/换源这一段铺同一部剧的模糊封面
+ * （片源比容器宽时 Fit 会在上下留条，那两条必须由封面填住，否则滑页时露出的就是纯黑），
+ * 出首帧之后换成纯深色——播放起来还挂着模糊背景，视觉上就是脏的。
  *
  * [covered] 为真是"当前落页是整屏广告"：停掉内容解码（不释放），
  * 回到正片时由那一页的会话重新 prepare 同一条地址。
@@ -96,23 +96,24 @@ fun ShortPlayFeedVideoLayer(
 ) {
     LaunchedEffect(playback, covered) { if (covered) playback.stopForCover() }
     val stage = playback.stage
+    // 请求的源还没出帧 = 起播中 / 换源中 / 首帧之前，这期间底和视频矩形都只该是封面。
+    val hasFrame = stage?.hasCurrentFrame == true
     Box(
         // 布局尺寸仍是整屏：画面要按整屏取景；越出边界的那部分（TextureView 的输出、
         // 内层 pager 换集时的平移）靠这层裁掉，不能被画到布局边界外。
         modifier = modifier.fillMaxSize().clipToBounds(),
     ) {
-        // 整页底：锚点页同一部剧的模糊封面，铺满整页（ContentScale.Crop）。视频仍然 Fit 居中、
-        // 一帧不裁，上下的空档由这张底接住——以前这里铺的是 VideoStage 自己的 scrimStrong，
-        // 那两条就是滑页时露出来的纯黑。
+        // 整页底：锚点页同一部剧的封面，铺满整页（ContentScale.Crop）。视频仍然 Fit 居中、
+        // 一帧不裁，上下的空档由这张底接住；出首帧后这里换成纯深色，不再模糊。
         // 底只跟 feed 的滑页平移走（外层 FeedVideoLayer 已经加了那一段），不跟内层换集平移：
         // 换集时视频走一屏、底不动，空出来的位置仍是同一部剧的封面。
-        VerticalBlurredBackdrop(stage?.state?.cover)
+        VerticalPlaybackBackdrop(cover = stage?.state?.cover, hasFrame = hasFrame)
         Box(
             modifier = Modifier.fillMaxSize().graphicsLayer {
                 translationY = stage?.videoTranslationY() ?: 0f
             },
         ) {
-            VideoStage(engine = playback.owner.engine)
+            VideoStage(engine = playback.owner.engine, cover = stage?.state?.cover, hasFrame = hasFrame)
         }
     }
 }

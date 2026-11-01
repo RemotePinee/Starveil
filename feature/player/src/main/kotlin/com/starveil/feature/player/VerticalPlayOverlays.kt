@@ -56,33 +56,44 @@ import com.starveil.core.model.TrySeeAccess
  *
  * 底色归调用方：这里必须留透明。片源比容器宽时 Fit 会在上下各留一条，铺底色就等于把
  * 那两条画成纯黑；调用方在本层下面垫的是同一部剧的模糊封面，空档自然接得住。
+ *
+ * 换源不能留着上一部/上一集的帧：`keepContentOnReset = true` 的语义就是"重置时把最后一帧
+ * 留在屏幕上"，换剧那 200~500ms 里看到的就是上一部的画面。置 false 之后 Media3 不再替我们
+ * 保帧；但 TextureView 上那一帧并不会自己消失（shutter 传空等于没有遮挡），所以没有首帧时
+ * 由 [VerticalBlurredBackdrop] 盖住视频矩形——清空的一瞬间看到的是封面，不是黑屏。
  */
 @OptIn(UnstableApi::class)
 @Composable
-internal fun VideoStage(engine: Media3Player) {
+internal fun VideoStage(engine: Media3Player, cover: String?, hasFrame: Boolean) {
     val ratio = engine.videoAspectRatio
     Layout(
         content = {
-            // 同一引擎跨集保帧；换剧换引擎才重建输出，杜绝复用旧 TextureView 的跨剧残影。
+            // 同一引擎跨集复用输出；换剧换引擎才重建，杜绝复用旧 TextureView 的跨剧残影。
             key(engine) {
                 ContentFrame(
                     player = engine.mediaPlayer,
                     surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
                     contentScale = ContentScale.FillBounds,
-                    keepContentOnReset = true,
+                    keepContentOnReset = false,
                     shutter = {},
                 )
             }
+            // 没出首帧就盖住整页：与底下那层模糊封面同尺寸、同裁切，边界看不出来。
+            if (!hasFrame) VerticalBlurredBackdrop(cover)
         },
         modifier = Modifier.fillMaxSize(),
     ) { measurables, constraints ->
         val frame = fitVerticalVideo(constraints.maxWidth, constraints.maxHeight, ratio)
-        val surface = measurables.single().measure(Constraints.fixed(frame.width, frame.height))
+        // 顺序由 ContentFrame 决定：它恒定发出一个视频面，遮挡只可能排在第二个。
+        val surface = measurables.first().measure(Constraints.fixed(frame.width, frame.height))
+        val coverBox = measurables.getOrNull(1)
+            ?.measure(Constraints.fixed(constraints.maxWidth, constraints.maxHeight))
         layout(constraints.maxWidth, constraints.maxHeight) {
             surface.placeRelative(
                 (constraints.maxWidth - frame.width) / 2,
                 (constraints.maxHeight - frame.height) / 2,
             )
+            coverBox?.placeRelative(0, 0)
         }
     }
 }

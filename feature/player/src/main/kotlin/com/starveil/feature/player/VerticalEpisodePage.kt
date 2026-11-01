@@ -21,6 +21,21 @@ internal fun VerticalEpisodePage(cover: String?, showCover: Boolean, modifier: M
     }
 }
 
+/**
+ * 播放页的整页底：还没出首帧时铺模糊封面，出了首帧就换纯深色。
+ *
+ * 播放起来之后背景不该再模糊：画面周围那几条留边只该是深色，模糊封面留给"起播中 / 换源中"
+ * 这段还没有画面可看的时间。切换是硬切，不做淡入淡出——背景晚一百毫秒变化，人只会觉得卡了一下。
+ */
+@Composable
+internal fun VerticalPlaybackBackdrop(cover: String?, hasFrame: Boolean, modifier: Modifier = Modifier) {
+    if (hasFrame) {
+        Box(modifier = modifier.fillMaxSize().background(starveilExtraColors.scrimStrong))
+    } else {
+        VerticalBlurredBackdrop(cover, modifier)
+    }
+}
+
 /** 封面先做真实高斯变换再显示；视频、标题与控件不参与模糊，两种底条复用同一缓存。 */
 @Composable
 internal fun VerticalBlurredBackdrop(cover: String?, modifier: Modifier = Modifier) {
