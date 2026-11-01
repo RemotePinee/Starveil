@@ -39,10 +39,19 @@ import kotlinx.coroutines.delay
 /** logo 呼吸一次（透明度来回）的时长。 */
 private const val BREATHE_MS = 1_400
 
-/** 第二屏最短停留：首页来得太快也让动画走完一轮，否则看着像抽搐。 */
+/**
+ * 第二屏最短停留：动画播完前也不许一闪而过。
+ *
+ * 只在素材解析失败时才成为实际的时间窗——正常路径由「动画播完」把着，比它长得多。
+ */
 private const val BRAND_MIN_MS = 900L
 
-/** 第二屏最多等多久（含图与首页）：超时就退场，不能把用户永久挡在这里。 */
+/**
+ * 第二屏最多等多久：**只兜 Lottie 卡死**，正常路径到不了。
+ *
+ * 3.0s 动画（`res/raw/splash_movie_theatre.json`：fr 32 × op 96）+ 0.32s 淡出 ≈ 3.4s，
+ * 素材解析与首帧都在剩下 1.6s 里。换更长的动画要同步抬高这个值，否则会切在动画中段。
+ */
 private const val BRAND_MAX_MS = 5_000L
 
 /** 第二屏淡出时长。 */
@@ -131,30 +140,39 @@ private fun SplashBrandAnimation(onAnimationEnd: () -> Unit, modifier: Modifier 
     )
 }
 
-/** 退场判定：三件事都齐了才走；等满 [BRAND_MAX_MS] 无条件放行，不能永久挡住用户。 */
+/**
+ * 退场判定：**动画播完是硬条件**，首页与开屏素材只在播完之后才参与判定。
+ *
+ * [BRAND_MAX_MS] 是唯一的提前出口，只在 Lottie 卡死（`animate()` 一直不返回）时命中；
+ * 正常路径 3.0s 动画 + 0.32s 淡出远小于它。
+ */
 private fun brandLayerCanLeave(startedAt: Long, animationDone: Boolean): Boolean {
-    if (SystemClock.elapsedRealtime() - startedAt > BRAND_MAX_MS) return true
+    val timedOut = SystemClock.elapsedRealtime() - startedAt > BRAND_MAX_MS
     val contentReady = AdSplashGate.homeReady() && AdSplashGate.splashArtReady()
-    return animationDone && contentReady
+    return timedOut || (animationDone && contentReady)
 }
 
 /**
  * 第二屏的挂载与退场。
  *
- * 等三件事都就绪才退：首页画出内容、开屏素材进了缓存、品牌动画播完一次。退场动画播完才置位
- * [AdSplashGate.markBrandLayerGone]——开屏倒计时读这个栅栏，否则它在本层还盖着
- * 的时候就开始扣秒，用户真正看见广告时只剩两三秒。
+ * **每次冷启动都无条件显示**：不看首页是否已就绪、也不看有没有快照，Lottie 从第 0 帧播到
+ * 结束，播完才允许退场（见 [brandLayerCanLeave]）。上一轮按 `homeReady()` 跳过整层的写法
+ * 在这里是致命的——`AdSplashGate.homeReady` 是进程级、从不复位的标记，首页有本地快照时
+ * 它在本层组合前就是 true，于是 `SplashBrandLayer` 根本没被组合，`rememberLottieComposition`
+ * 不曾运行，一秒动画都放不出来。
+ *
+ * 退场动画播完才置位 [AdSplashGate.markBrandLayerGone]——开屏倒计时读这个栅栏，否则它在
+ * 本层还盖着的时候就开始扣秒，用户真正看见广告时只剩两三秒。
  */
 @Composable
 internal fun SplashBrandOverlay() {
-    // 首页首帧已经画出时这层不出现，也就没有"等动画播完"这回事
-    val layerShown = !AdSplashGate.homeReady()
-    var visible by remember { mutableStateOf(layerShown) }
-    var animationDone by remember { mutableStateOf(!layerShown) }
+    // 无条件显示：动画没播完就不退场，首页快慢都不影响这一层出现
+    var visible by remember { mutableStateOf(true) }
+    // 初值必须是 false：只有 animate() 真的返回、或确认解析失败，才允许置 true
+    var animationDone by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         val started = SystemClock.elapsedRealtime()
-        // 首页或开屏图就绪，或者等满上限就退场：后台把数据清空时首页会停在 Empty，
-        // 没有这层兜底就一直卡在这里。Empty/Error 也算就绪（见 HomeViewModel）。
+        // 动画播完是硬栅栏；之后再看首页与开屏素材。等满上限才强制放行（Lottie 卡死兜底）。
         while (!brandLayerCanLeave(started, animationDone)) delay(POLL_MS)
         val remaining = BRAND_MIN_MS - (SystemClock.elapsedRealtime() - started)
         if (remaining > 0) delay(remaining)
