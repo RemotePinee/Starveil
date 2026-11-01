@@ -82,6 +82,10 @@ internal fun SplashBrandLayer() {
         LottieAnimation(
             composition = composition,
             iterations = LottieConstants.IterateForever,
+            // 素材里 6 个形状图层用了 merge paths，不显式开启时 Lottie 直接跳过这些图层，
+            // 只剩一条地面和一块黄色——在 168dp 里看着就是"没有动画"。
+            // logcat 会打印 "Animation contains merge paths ... must be manually enabled"。
+            enableMergePaths = true,
             modifier = Modifier
                 .align(Alignment.Center)
                 .size(Spacing.splashAnimation),
