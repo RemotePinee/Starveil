@@ -118,7 +118,9 @@ internal fun SplashBrandLayer(onAnimationEnd: () -> Unit) {
 @Composable
 private fun SplashBrandAnimation(onAnimationEnd: () -> Unit, modifier: Modifier = Modifier) {
     val compositionResult = rememberLottieComposition(
-        LottieCompositionSpec.RawRes(R.raw.splash_movie_theatre),
+        // 放 assets 而不是 res/raw：release 开了 isShrinkResources，R8 会把 R.raw 的
+        // 引用内联成常量，资源 shrinker 看不到引用就把文件删了（debug 包有、release 没有）。
+        LottieCompositionSpec.Asset("splash_movie_theatre.json"),
     )
     val animatable = rememberLottieAnimatable()
     // 播完（或确认解析失败）才通知上层：倒计时栅栏读的就是这个信号
