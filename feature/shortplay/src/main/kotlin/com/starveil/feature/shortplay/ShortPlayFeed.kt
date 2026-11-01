@@ -181,7 +181,9 @@ internal fun ShortPlayFeed(
                     if (lockedAdState.value == key) lockedAdState.value = null
                 },
                 playerContent = playerContent,
-                showsVideo = videoOwnsPage(videoLayer != null, page, anchorPage),
+                // 滑动中锚点页也要画封面：视频已跟着 pager 滑走，那块透明会露出根容器
+                showsVideo = videoOwnsPage(videoLayer != null, page, anchorPage) &&
+                    !pager.isScrollInProgress,
             )
         }
         ShortPlayFeedStatus(state, actions.onRetry, Modifier.align(Alignment.TopCenter))
