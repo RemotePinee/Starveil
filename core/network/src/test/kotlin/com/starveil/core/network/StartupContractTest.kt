@@ -63,6 +63,11 @@ class StartupContractTest {
         assertEquals(11, config.shortplayTypeId)
         // 搜索专用父分类：填了它搜索一次请求就覆盖全部子分类，0 才是"逐个查"
         assertEquals(21, config.shortplaySearchTypeId)
+        // 分类树：一级父分类 + 直接子分类（mac_type.type_pid），叶子分类的 children 为空
+        assertEquals(listOf(11, 21), config.shortplayCategories.map { it.id })
+        assertEquals(listOf(12, 13), config.shortplayCategories.first().children.map { it.id })
+        assertEquals("都市豪门", config.shortplayCategories.first().children.first().name)
+        assertTrue(config.shortplayCategories.last().children.isEmpty())
         assertEquals(2, config.payments.size)
         assertEquals("alipay", config.payments.first().code)
     }

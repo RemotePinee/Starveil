@@ -100,23 +100,39 @@ data class StartupConfig(
     /**
      * 短剧页**顶部横滑分类条**（`shortplay_tabs`）。
      *
-     * 与 [shortplayTypes] 是两组：顶部只放后台单独配的 3-6 个，抽屉里才是全量。
+     * 与 [shortplayTypes] 是两组：顶部只放后台单独配的 3-6 个，分类页才是全量。
      * 空表示后台没配，顶部条退回用 [shortplayTypes]——所以这里不继承它的兜底。
      */
     val shortplayTabs: List<ShortPlayType> = emptyList(),
+    /**
+     * 短剧分类树（`shortplay_categories`）：一级是父分类，[ShortPlayType.children] 是它的子分类。
+     *
+     * 服务端从 macCMS `mac_type.type_pid` 只读归拢，客户端不改语义、不改数量。
+     * 空表示后台没配两级结构（或还是老后端），客户端退回 [shortplayTypes] 的单层列表，
+     * 分类页照样有东西可展示。
+     */
+    val shortplayCategories: List<ShortPlayType> = emptyList(),
 ) {
 
     /**
-     * 后台配置的短剧分类 id 集合：单个 `shortplay_type_id` 与多选 `shortplay_types` 合并。
+     * 后台配置的短剧分类 id 集合：单个 `shortplay_type_id`、多选 `shortplay_types`
+     * 与分类树的父/子分类合并。
      *
      * 判断"这部片是不是短剧"只能靠它，不能看 `typeName` 里有没有"短剧"两个字：
      * 短剧内容大多挂在子分类下（古装仙侠、现代都市…），名字里压根没有"短剧"，
      * 按名字判会把它们全送进详情页的 16:9 播放器。
+     *
+     * 分类树要连子分类一起收：后台只填父分类时，影片的 `type_id` 落在子分类上，
+     * 少收一层就会把短剧误判成普通影片。
      */
     val shortplayTypeIds: Set<Int>
         get() = buildSet {
             if (shortplayTypeId > 0) add(shortplayTypeId)
             shortplayTypes.forEach { add(it.id) }
+            shortplayCategories.forEach { parent ->
+                add(parent.id)
+                parent.children.forEach { add(it.id) }
+            }
         }
     companion object {
         /** 旧默认：`ui_home_data` 非 "2" 时强制 3 列。 */

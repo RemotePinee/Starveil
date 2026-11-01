@@ -187,8 +187,8 @@ private fun AppBottomBar(navController: NavHostController, state: AppShellState)
 /**
  * 短剧 dock 覆盖全高内容；移动时只裁 dock 自身，不裁播放器 viewport。
  *
- * dock 不在侧栏打开时消失：它一旦透明，露出来的是页面底色，底栏位置会变成一条
- * 黑带。侧栏自己让出 dock 高度（`ShortPlayPresentation.dockInset`），两边都不切。
+ * dock 是始终在位的入口条：它一旦透明，露出来的是页面底色，底栏位置会变成一条
+ * 黑带。短剧页用 `bleedBottom` 把 dock 占位自己补回来，两边都不切。
  */
 @Composable
 private fun InlineShortPlayBottomBar(

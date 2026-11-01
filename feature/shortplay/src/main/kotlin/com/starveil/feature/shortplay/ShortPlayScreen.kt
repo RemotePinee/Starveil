@@ -3,72 +3,44 @@ package com.starveil.feature.shortplay
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Button
-import androidx.compose.material3.DrawerState
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.semantics.semantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.adamglin.PhosphorIcons
-import com.adamglin.phosphoricons.Regular
-import com.adamglin.phosphoricons.Bold
-import com.adamglin.phosphoricons.bold.List
 import com.starveil.core.designsystem.component.StarveilLoading
-import com.adamglin.phosphoricons.regular.MagnifyingGlass
-import com.starveil.core.designsystem.interaction.HapticKind
-import com.starveil.core.designsystem.interaction.rememberHaptics
 import com.starveil.core.designsystem.starveilExtraColors
+import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Motion
 import com.starveil.core.designsystem.token.Spacing
-import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.model.ShortPlay
 import com.starveil.core.model.ShortPlayType
-import kotlinx.coroutines.launch
 
 /** 播放器由 app 注入，播放与进入全集的操作由播放器负责。 */
 @Composable
@@ -87,7 +59,7 @@ fun ShortPlayRoute(
     ShortPlayScreen(
         state = state,
         suggestions = suggestions,
-        // 顶部横滑条的分类：后台单独配的一小组，与抽屉的全量分类不是同一组。
+        // 顶部横滑条的分类：后台单独配的一小组，与分类页的全量分类不是同一组。
         tabs = viewModel.tabs,
         actions = ShortPlayActions(
             onTypeSelect = viewModel::selectType,
@@ -133,73 +105,45 @@ fun ShortPlayScreen(
     /** 当前落页被整屏广告盖住：外层据此还掉解码器（不释放播放器）。 */
     onCoveredChange: (Boolean) -> Unit = {},
 ) {
-    val drawer = rememberDrawerState(DrawerValue.Closed)
+    var adVisible by remember { mutableStateOf(false) }
     var searchOverlayVisible by rememberSaveable { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+    // 全集面板展开 / 开合动画期间：菜单与分类条不可点，避免叠出第二套导航。
     val menuLocked = presentation.seriesExpanded || presentation.interactionLocked
-    val drawerClosed = drawer.isClosed()
-    LaunchedEffect(menuLocked) {
-        if (menuLocked) drawer.close()
-    }
-    ModalNavigationDrawer(
-        drawerState = drawer,
-        gesturesEnabled = !drawerClosed && !menuLocked,
-        drawerContent = {
-            ShortPlayDrawer(
-                state = state,
-                actions = actions,
-                navigation = navigation,
-                dockInset = presentation.dockInset,
-                onClose = { scope.launch { drawer.close() } },
-                // 抽屉里的搜索入口：先关抽屉，再让顶部胶囊展开并聚焦。
-                onSearchClick = { searchOverlayVisible = true },
-                onAction = { action ->
-                    scope.launch {
-                        drawer.close()
-                        action()
-                    }
-                },
+    Box(modifier.fillMaxSize().background(starveilExtraColors.scrimStrong)) {
+        when (state) {
+            is ShortPlayUiState.Content -> ShortPlayFeed(
+                state, actions, playerContent, presentation,
+                // 广告屏是全屏素材，顶部菜单/分类/搜索要收掉。
+                onAdVisible = { adVisible = it },
+                onCoveredChange = onCoveredChange,
             )
-        },
-        // 关闭的抽屉仍布局在页面左侧；裁掉页外内容，导航横滑时才不会把它带回屏幕。
-        modifier = modifier.fillMaxSize().clipToBounds(),
-    ) {
-        var adVisible by remember { mutableStateOf(false) }
-        Box(Modifier.fillMaxSize().background(starveilExtraColors.scrimStrong)) {
-            when (state) {
-                is ShortPlayUiState.Content -> ShortPlayFeed(
-                    state, actions, drawerClosed, playerContent, presentation,
-                    // 广告屏是全屏素材，顶部菜单/分类/搜索要收掉。
-                    onAdVisible = { adVisible = it },
-                    onCoveredChange = onCoveredChange,
-                )
-                is ShortPlayUiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    StarveilLoading()
-                }
-                is ShortPlayUiState.Empty -> ShortPlayNotice(state.message, "换一批", actions.onRefresh)
-                is ShortPlayUiState.Error -> ShortPlayNotice(state.message, "重试", actions.onRetry)
+            is ShortPlayUiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                StarveilLoading()
             }
-            // 广告屏是全屏素材：顶部整块收掉，而不是留一条半透明菜单在素材上。
-            AnimatedVisibility(visible = !adVisible) {
-                ShortPlayHeader(
-                    ui = ShortPlayHeaderUi(
-                        // 顶部只用后台单独配的那一小组成；没配才退回抽屉的全量分类。
-                        categories = tabs.ifEmpty { state.types },
-                        selectedTypeId = state.selectedTypeId,
-                        onMenu = { scope.launch { drawer.open() } },
-                        onTypeSelect = actions.onTypeSelect,
-                        locked = menuLocked,
-                        expansion = presentation.expansion,
-                        // 顶部只留图标；点开的是独立窗口里的搜索浮层。
-                        search = ShortPlaySearchState(
-                            expanded = false,
-                            onExpandedChange = { open -> searchOverlayVisible = open && drawerClosed },
-                            onSubmit = {},
-                        ),
+            is ShortPlayUiState.Empty -> ShortPlayNotice(state.message, "换一批", actions.onRefresh)
+            is ShortPlayUiState.Error -> ShortPlayNotice(state.message, "重试", actions.onRetry)
+        }
+        // 广告屏是全屏素材：顶部整块收掉，而不是留一条半透明菜单在素材上。
+        AnimatedVisibility(visible = !adVisible) {
+            ShortPlayHeader(
+                ui = ShortPlayHeaderUi(
+                    // 顶部只用后台单独配的那一小组成；没配才退回全量分类。
+                    categories = tabs.ifEmpty { state.types },
+                    selectedTypeId = state.selectedTypeId,
+                    // 菜单不再是"打开抽屉"，而是进入独立的短剧分类页。
+                    onMenu = navigation.onCategories,
+                    onTypeSelect = actions.onTypeSelect,
+                    locked = menuLocked,
+                    expansion = presentation.expansion,
+                    // 顶部只留图标；点开的是独立窗口里的搜索浮层。
+                    search = ShortPlaySearchState(
+                        expanded = false,
+                        onExpandedChange = { open -> searchOverlayVisible = open },
+                        onSubmit = {},
                     ),
-                    modifier = Modifier.align(Alignment.TopCenter),
-                )
-            }
+                ),
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
         }
         ShortPlaySearchOverlay(
             visible = searchOverlayVisible,
@@ -249,7 +193,7 @@ private fun ShortPlayHeader(ui: ShortPlayHeaderUi, modifier: Modifier = Modifier
             .padding(start = Spacing.sm, top = Spacing.sm, end = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // 整页唯一进抽屉的入口：36dp 触控区包 24dp 图标，压在视频上也看得清。
+        // 整页唯一进分类页的入口：36dp 触控区包 24dp 图标，压在视频上也看得清。
         Box(
             modifier = Modifier
                 .size(IconSize.xl)
@@ -300,7 +244,6 @@ private fun ShortPlayHeader(ui: ShortPlayHeaderUi, modifier: Modifier = Modifier
     }
 }
 
-
 @Composable
 private fun ShortPlayNotice(message: String, actionLabel: String, onAction: () -> Unit) {
     Box(Modifier.fillMaxSize().padding(Spacing.pageHorizontal), Alignment.Center) {
@@ -313,8 +256,3 @@ private fun ShortPlayNotice(message: String, actionLabel: String, onAction: () -
         }
     }
 }
-
-
-/** 抽屉是否完全关闭：抽成函数是为了把两个 && 从 `ShortPlayScreen` 的圈复杂度里挪出去。 */
-private fun DrawerState.isClosed(): Boolean =
-    currentValue == DrawerValue.Closed && targetValue == DrawerValue.Closed

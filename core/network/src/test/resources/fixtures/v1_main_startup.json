@@ -18,6 +18,13 @@
     "push_enabled": 1,
     "shortplay_type_id": 11,
     "shortplay_search_type_id": 21,
+    "shortplay_categories": [
+      { "id": 11, "name": "红果短剧", "children": [
+        { "id": 12, "name": "都市豪门" },
+        { "id": 13, "name": "逆袭爽剧" }
+      ] },
+      { "id": 21, "name": "微短剧", "children": [] }
+    ],
     "app_login_type": "0",
     "search_hot": ["示例关键词一", "示例关键词二"],
     "payments": [

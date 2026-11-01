@@ -16,6 +16,7 @@ import com.starveil.core.model.LoginMethod
 import com.starveil.core.model.RegisterMethod
 import com.starveil.core.model.StartupConfig
 import com.starveil.core.network.dto.AdSlotDto
+import com.starveil.core.network.dto.ShortPlayCategoryDto
 import com.starveil.core.network.dto.ShortPlayTypeDto
 import com.starveil.core.network.dto.StartupAdsDto
 import com.starveil.core.network.dto.StartupDto
@@ -79,7 +80,39 @@ fun StartupDto.toDomain(localThemeOverride: String? = null): StartupConfig = Sta
     // 顶部 tab：后台没配就是空列表，不拿 shortplayTypes 硬顶 —— 两者是不同的一组，
     // 顶部条的"退回全量"由页面自己决定（见 ShortPlayScreen）。
     shortplayTabs = shortplayTabs.map { ShortPlayType(id = it.typeId, name = it.typeName) }.filter { it.id > 0 },
+    // 分类树：两级结构原样下发，客户端只做展示与联动；
+    // 老后端 / 后台没配两级结构时用上面的单层列表兜成"一个父分类"，分类页照样能联动
+    shortplayCategories = shortplayCategories.treeOrFlat(
+        flat = shortPlayTypesOf(shortplayTypes, shortplayTypeId),
+    ),
 )
+
+/**
+ * 分类树节点的映射：id 非正的脏节点整枝丢掉，名字留空由页面给默认文案。
+ *
+ * 递归只到后端给的那一层——服务端按 `type_pid` 只下发直接子分类，不会有环。
+ */
+private fun ShortPlayCategoryDto.toDomain(): ShortPlayType? {
+    if (id <= 0) return null
+    return ShortPlayType(
+        id = id,
+        name = name,
+        children = children.mapNotNull { it.toDomain() },
+    )
+}
+
+/**
+ * 分类树兜底：后端没下发 `shortplay_categories`（老后端），或树是空的（后台还没建两级
+ * 分类）时，把单层 [ShortPlayType] 列表包成**一个隐形父分类**（id 0）。
+ *
+ * 这样分类页永远只有一套渲染逻辑：父分类只有一个 → 顶部那一行自动隐藏，直接显示子分类条。
+ * 两者都为空时返回空列表，页面显示「后台暂无分类」并按仓库默认分类出一屏内容。
+ */
+private fun List<ShortPlayCategoryDto>.treeOrFlat(flat: List<ShortPlayType>): List<ShortPlayType> {
+    val tree = mapNotNull { it.toDomain() }
+    if (tree.isNotEmpty() || flat.isEmpty()) return tree
+    return listOf(ShortPlayType(id = 0, name = "", children = flat))
+}
 
 private fun StartupDto.detailSectionsOf(): DetailSections = DetailSections(
     recommend = detailSections?.recommend != 0,

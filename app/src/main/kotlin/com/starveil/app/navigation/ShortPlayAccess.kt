@@ -39,7 +39,7 @@ internal data class ShortPlayAccess(
     val active: Boolean,
 )
 
-/** 权限按集、会话及真实前台周期隔离；手势与抽屉的短暂 inactive 只暂停请求和播放。 */
+/** 权限按集、会话及真实前台周期隔离；手势与页面切换的短暂 inactive 只暂停请求和播放。 */
 @Composable
 internal fun rememberShortPlayGate(
     container: AppContainer,

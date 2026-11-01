@@ -102,9 +102,12 @@ final class Startup
             // 父分类：客户端搜索一次请求就覆盖全部子分类，进短剧页也用它拉默认流；
             // 0 = 没配，搜索退回按下面的 shortplay_types 逐个搜，进页用第一个分类。
             'shortplay_search_type_id' => max(0, Setting::int('shortplay_search_type_id', 0)),
-            // 顶部横滑条：单独配的一小组子分类（一般 3-6 个），与抽屉里的全量分类不同。
+            // 顶部横滑条：单独配的一小组子分类（一般 3-6 个），与分类页的全量分类不同。
             // 空数组 = 没配，客户端顶部直接用上面的 shortplay_types。
             'shortplay_tabs' => $this->shortplayTypes('shortplay_tab_type_ids'),
+            // 分类树：一级父分类 + 直接子分类（mac_type.type_pid）。分类页据此做两级联动；
+            // 只读归拢，不写库、不建分类。空数组 = 后台没配（客户端退回 shortplay_types）。
+            'shortplay_categories' => $this->shortplayCategories(),
             'bottom_tabs' => $this->bottomTabs(),
             // 底栏是否显示图标：关闭后客户端只画文字，并按 tab 数量自动放大字号
             'bottom_tab_icons' => Setting::int('bottom_tab_icons', 1),
@@ -308,7 +311,7 @@ final class Startup
     }
 
     /**
-     * 短剧分类的 id + 名字，按后台填写顺序下发（抽屉分类 / 顶部 tab 都用它）。
+     * 短剧分类的 id + 名字，按后台填写顺序下发（分类页 / 顶部 tab 都用它）。
      *
      * 表里查不到（分类被删）就跳过，不拿 id 拼假名字。
      *
@@ -330,6 +333,55 @@ final class Startup
             }
         }
 
-        return $list;
+
+
+    }
+    /**
+     * 短剧分类树：后台配的一级分类 + 它们在 mac_type 里的直接子分类。
+     *
+     * 只读 `mac_type`（`type_id` / `type_name` / `type_pid`）：两级结构是用户在后台自己
+     * 建的，这里只按 `type_pid` 归拢下发，**不写库、不新建分类、不改任何分类数据**。
+     * 子分类按 `type_id` 升序，与 macCMS 后台的显示顺序一致。
+     *
+     * 配的 id 若本身就是子分类（老配置只填了叶子），它会作为一级节点下发、children 为空，
+     * 客户端据此隐藏只有「全部」的第二行，行为与单层列表一致。
+     *
+     * @return array<int,array{id:int,name:string,children:array<int,array{id:int,name:string}>}>
+     */
+    private function shortplayCategories(): array
+    {
+        $roots = $this->shortplayTypeIds();
+        if ($roots === []) {
+            return [];
+        }
+        $names = Db::name('type')
+            ->whereIn('type_id', $roots)
+            ->column('type_name', 'type_id');
+        $childRows = Db::name('type')
+            ->whereIn('type_pid', $roots)
+            ->order('type_id', 'asc')
+            ->field('type_id,type_name,type_pid')
+            ->select()
+            ->toArray();
+        $children = [];
+        foreach ($childRows as $row) {
+            $children[(int)$row['type_pid']][] = [
+                'id' => (int)$row['type_id'],
+                'name' => (string)$row['type_name'],
+            ];
+        }
+        $tree = [];
+        foreach ($roots as $id) {
+            if (!isset($names[$id])) {
+                continue;
+            }
+            $tree[] = [
+                'id' => $id,
+                'name' => (string)$names[$id],
+                'children' => $children[$id] ?? [],
+            ];
+        }
+
+        return $tree;
     }
 }

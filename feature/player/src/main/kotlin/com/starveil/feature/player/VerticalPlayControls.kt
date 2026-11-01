@@ -52,7 +52,7 @@ import com.starveil.core.model.TrySeeAccess
  *
  * 右栏只把点击上抛成字符串，真实能力归应用壳（AGENTS 第 1 节：feature 不持有导航与仓库）。
  * 标签集中在这里，`ShortPlayInteractions` 与评论抽屉按常量分流，避免两端各写一份中文字面量。
- * 「反馈」已从右栏撤掉：它的入口留在短剧抽屉（`ShortPlayDrawer`）。
+ * 「反馈」已从右栏撤掉：它的入口留在短剧分类页底部的快捷入口。
  */
 const val VERTICAL_ACTION_FAVORITE = "收藏"
 const val VERTICAL_ACTION_COMMENT = "评论"

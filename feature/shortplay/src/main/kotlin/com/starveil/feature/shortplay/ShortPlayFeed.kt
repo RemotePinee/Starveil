@@ -102,7 +102,6 @@ private fun buildFeedPages(
 internal fun ShortPlayFeed(
     state: ShortPlayUiState.Content,
     actions: ShortPlayActions,
-    drawerClosed: Boolean,
     /**
      * 一屏的播放器内容：(短剧, 本屏可播, 本屏画视频)。
      *
@@ -137,7 +136,7 @@ internal fun ShortPlayFeed(
     val synchronized = synchronizedVersion == state.collectionVersion
     val stablePage = pager.isStableShortPlayPage()
 
-    val visible = drawerClosed && lifecycle == Lifecycle.State.RESUMED
+    val visible = lifecycle == Lifecycle.State.RESUMED
     // 锁手势只禁滚动：已落页的那页必须继续播放，不能因锁定把 canPlay 打成 false。
     val canPlay = synchronized && visible && (stablePage || presentation.interactionLocked)
     val lockedAdState = rememberLockedAdKey(pager, pages)
@@ -236,7 +235,7 @@ private fun rememberLockedAdKey(pager: PagerState, pages: List<FeedPage>): Mutab
  * 信息流广告整屏：素材铺满、左上角「广告」角标、底部标题与副标题。
  *
  * 三个位置都是踩过的坑：
- * - 角标让开顶部工具栏高度，否则被抽屉按钮压住；
+ * - 角标让开顶部工具栏高度，否则被菜单按钮压住；
  * - 标题压在图片左下角，但要留出一整个工具栏高度给底部 dock，不然会贴住底栏；
  * - 后台配了强制停留秒数时右上角走倒计时，走完之前不允许往上滑。
  */
@@ -276,13 +275,13 @@ private fun ShortPlayAdPage(
             // 只靠角标、倒计时、标题各自的半透明底保证可读，不给图片留边。
             modifier = Modifier.fillMaxSize(),
         )
-        // 与顶部工具栏同高：抽屉按钮就在那一行里，角标要跟它水平对齐
+        // 与顶部工具栏同高：菜单按钮就在那一行里，角标要跟它水平对齐
         Row(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .statusBarsPadding()
                 .heightIn(min = Spacing.rowHeight)
-                // 往下压一点：文字行高比抽屉按钮矮，纯居中会比按钮偏上
+                // 往下压一点：文字行高比菜单按钮矮，纯居中会比按钮偏上
                 .padding(top = Spacing.xs, end = Spacing.pageHorizontal),
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,

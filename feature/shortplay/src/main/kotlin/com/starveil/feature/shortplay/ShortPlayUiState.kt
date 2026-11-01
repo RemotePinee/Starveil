@@ -3,7 +3,7 @@ package com.starveil.feature.shortplay
 import com.starveil.core.model.ShortPlay
 import com.starveil.core.model.ShortPlayType
 
-/** 分类信息属于所有状态，首屏失败或空列表时仍可从抽屉切换分类。 */
+/** 分类信息属于所有状态，首屏失败或空列表时顶部仍能显示分类、也能进分类页换一个。 */
 sealed interface ShortPlayUiState {
     val types: List<ShortPlayType>
     val selectedTypeId: Int

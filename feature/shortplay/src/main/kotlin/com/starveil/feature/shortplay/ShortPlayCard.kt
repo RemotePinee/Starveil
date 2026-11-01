@@ -1,9 +1,24 @@
 package com.starveil.feature.shortplay
 
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
+import coil3.compose.AsyncImage
 import com.starveil.core.designsystem.component.BlurredCoverBackdrop
+import com.starveil.core.designsystem.starveilExtraColors
+import com.starveil.core.designsystem.token.AppShape
+import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.ShortPlay
 
 /**
@@ -18,3 +33,49 @@ import com.starveil.core.model.ShortPlay
 internal fun ShortPlayBackdrop(play: ShortPlay) {
     BlurredCoverBackdrop(cover = play.cover, modifier = Modifier.fillMaxSize())
 }
+
+/**
+ * 分类页网格里的一格：竖版封面 + 剧名 + 集数。
+ *
+ * 剧场页是全屏播放的一屏一条，没有可以复用的"卡片"；分类页是浏览态，
+ * 所以卡片与它放在同一个文件里，封面比例沿用首页海报墙那一档。
+ */
+@Composable
+internal fun ShortPlayPosterCard(
+    play: ShortPlay,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.clickable(onClick = onClick)) {
+        AsyncImage(
+            model = play.cover,
+            contentDescription = play.title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(POSTER_RATIO)
+                .clip(AppShape.small),
+        )
+        Spacer(Modifier.height(Spacing.xs))
+        Text(
+            text = play.title,
+            style = MaterialTheme.typography.bodyMedium,
+            // 分类页与剧场页共用同一块深底：标题用画面级白色，不跟主题明暗
+            color = starveilExtraColors.onImage,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (play.episodeCount > 0) {
+            Text(
+                text = "共 ${play.episodeCount} 集",
+                style = MaterialTheme.typography.labelSmall,
+                color = starveilExtraColors.textFaint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** 竖版封面比例：短剧按竖屏出图，与首页海报墙同一档。 */
+private const val POSTER_RATIO = 0.66f

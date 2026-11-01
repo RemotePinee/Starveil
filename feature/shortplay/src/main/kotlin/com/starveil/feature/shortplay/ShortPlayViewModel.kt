@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
 class ShortPlayViewModel(
     private val repository: ShortPlayRepository,
     private val pageSize: Int = PAGE_SIZE,
-    /** 抽屉里的全量分类（后台「短剧分类 id」）。 */
+    /** 全量分类（后台「短剧分类 id」）：顶部横条没配时退回这一组，分类页也用这一份。 */
     private val types: List<ShortPlayType> = emptyList(),
     /** 顶部横滑条的分类（后台「短剧顶部 tab 分类 id」，一般 3-6 个）；空则顶部退回 [types]。 */
     val tabs: List<ShortPlayType> = emptyList(),
@@ -37,7 +37,7 @@ class ShortPlayViewModel(
 ) : ViewModel() {
     /**
      * 进页的默认流：配了父分类就直接拉父分类（服务端查父分类会带上全部子分类），
-     * 没配才退回抽屉里的第一个子分类。
+     * 没配才退回到第一个子分类。
      */
     private var selectedTypeId: Int = if (startTypeId > 0) startTypeId else types.firstOrNull()?.id ?: 0
     private val _state = MutableStateFlow<ShortPlayUiState>(ShortPlayUiState.Loading(types, selectedTypeId))
@@ -159,8 +159,8 @@ class ShortPlayViewModel(
     fun selectType(typeId: Int) {
         // 钉在播放里、或点的就是当前分类，都不换流。
         if (pinnedPlaybackId != null || typeId == selectedTypeId) return
-        // 不能只认抽屉的 types：顶部 tab 与进页的父分类都不在那一组里。
-        // 抽屉分类、顶部 tab、进页父分类三者都算合法目标，其余 id 直接忽略。
+        // 不能只认全量分类：顶部 tab 与进页的父分类都不在那一组里。
+        // 全量分类、顶部 tab、进页父分类三者都算合法目标，其余 id 直接忽略。
         if (!isSelectable(typeId)) return
         selectedTypeId = typeId
         searchKeyword = ""
@@ -170,7 +170,7 @@ class ShortPlayViewModel(
         loadFirstPage(resetPosition = false)
     }
 
-    /** 抽屉分类、顶部 tab 与进页父分类都是合法目标；脏 id 不该把当前流打断。 */
+    /** 全量分类、顶部 tab 与进页父分类都是合法目标；脏 id 不该把当前流打断。 */
     private fun isSelectable(typeId: Int): Boolean =
         typeId == startTypeId || types.any { it.id == typeId } || tabs.any { it.id == typeId }
 
@@ -197,7 +197,7 @@ class ShortPlayViewModel(
     /**
      * 父分类兜底：进页按父分类拉全部子分类，首屏**成功但一条都没有**（父分类 id 填错、
      * 或这个父分类下确实没内容）时换成第一个子分类再拉一次。不这么做页面就停在
-     * 「暂无短剧」，用户只能自己点开抽屉换分类——而这时他根本不知道是配置错了。
+     * 「暂无短剧」，用户只能自己换分类——而这时他根本不知道是配置错了。
      * 只在 [fallbackToFirstType] 里退一次，见那里的说明。
      */
     private fun applyFirstPageOrFallback(plays: List<ShortPlay>, resetPosition: Boolean) {
@@ -206,7 +206,7 @@ class ShortPlayViewModel(
     }
 
     /**
-     * 退回抽屉里的第一个子分类，返回是否真的退了。
+     * 退回全量分类里的第一个子分类，返回是否真的退了。
      *
      * 三个条件缺一不可：还没退过（[fallbackUsed]）、进页确实用了父分类、当前仍在父分类上。
      * 只退一次是硬要求：父分类和第一个子分类都空时不能继续往后挨个试，
@@ -331,7 +331,7 @@ private fun ShortPlayUiState.refreshing(types: List<ShortPlayType>, selectedType
         ShortPlayUiState.Loading(types, selectedTypeId)
     }
 
-/** 首屏失败：有内容只挂提示条，没内容才落整屏错误态（分类仍保留，能从抽屉切走）。 */
+/** 首屏失败：有内容只挂提示条，没内容才落整屏错误态（分类仍保留，能从顶部切走）。 */
 private fun ShortPlayUiState.failed(
     message: String,
     types: List<ShortPlayType>,
@@ -373,7 +373,8 @@ private const val PLAY_WINDOW_LOOKBACK = 100
 private fun ShortPlayUiState.appendFailed(message: String): ShortPlayUiState =
     if (this is ShortPlayUiState.Content) copy(isLoadingMore = false, appendError = message) else this
 
-private fun AppError.toUserMessage(): String = when (this) {
+/** 错误文案：剧场页与分类页共用同一套口径。 */
+internal fun AppError.toUserMessage(): String = when (this) {
     is AppError.Network -> "网络异常，点此重试"
     is AppError.Http -> "服务异常（$code）"
     is AppError.Business -> message.ifBlank { "请求被拒绝" }

@@ -78,10 +78,17 @@ data class StartupDto(
     /**
      * 短剧页**顶部横滑分类条**（后台「短剧顶部 tab 分类 id」，逗号串）。
      *
-     * 与 [shortplayTypes] 不是同一组：顶部只放 3-6 个，抽屉里才是全量。
+     * 与 [shortplayTypes] 不是同一组：顶部只放 3-6 个，分类页才是全量。
      * 空数组 = 后台没配，由页面退回用 [shortplayTypes]；这里不拿它硬顶。
      */
     @SerialName("shortplay_tabs") val shortplayTabs: List<ShortPlayTypeDto> = emptyList(),
+    /**
+     * 短剧分类树（`shortplay_categories`）：一级父分类 + `children` 子分类。
+     *
+     * 服务端按 macCMS `mac_type.type_pid` 归拢，只读；老后端没有这个字段时为空数组，
+     * 客户端退回 [shortplayTypes] 的单层列表。
+     */
+    @SerialName("shortplay_categories") val shortplayCategories: List<ShortPlayCategoryDto> = emptyList(),
     @SerialName("bottom_tabs") val bottomTabs: List<BottomTabDto> = emptyList(),
     /** 底栏是否显示图标；老后端不返回时按「显示」处理。 */
     @SerialName("bottom_tab_icons") val bottomTabIcons: JsonPrimitive? = null,
@@ -203,4 +210,17 @@ data class BottomTabDto(
 data class ShortPlayTypeDto(
     @SerialName("type_id") val typeId: Int = 0,
     @SerialName("type_name") val typeName: String = "",
+)
+
+/**
+ * 短剧分类树节点（`shortplay_categories`）。
+ *
+ * 字段名用 `id` / `name` 而不是 `type_id` / `type_name`：这是新加的接口结构，
+ * 不背 `shortplay_types` 的历史包袱。`children` 为空即叶子分类。
+ */
+@Serializable
+data class ShortPlayCategoryDto(
+    @SerialName("id") val id: Int = 0,
+    @SerialName("name") val name: String = "",
+    @SerialName("children") val children: List<ShortPlayCategoryDto> = emptyList(),
 )

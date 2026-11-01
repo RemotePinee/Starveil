@@ -19,19 +19,27 @@ import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.compose.composable
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.starveil.app.AppContainer
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.ShortPlay
 import com.starveil.feature.player.FIRST_EPISODE_NUMBER
 import com.starveil.feature.shortplay.SHORT_PLAY_ROUTE
+import com.starveil.feature.shortplay.SHORT_PLAY_CATEGORY_ARG_TYPE_ID
+import com.starveil.feature.shortplay.SHORT_PLAY_CATEGORY_ROUTE_PATTERN
 import com.starveil.feature.shortplay.ShortPlayNavigation
 import com.starveil.feature.user.UserNavigation
 import com.starveil.feature.player.VerticalPlayOptions
 import com.starveil.feature.player.rememberShortPlayFeedPlayback
+import com.starveil.feature.player.verticalPlayRoute
 import com.starveil.feature.shortplay.ShortPlayRoute
 import com.starveil.feature.shortplay.ShortPlayPresentation
 import com.starveil.feature.shortplay.ShortPlayViewModel
+import com.starveil.feature.shortplay.ShortPlayCategoryRoute
+import com.starveil.feature.shortplay.ShortPlayCategoryViewModel
+import com.starveil.feature.shortplay.shortPlayCategoryRoute
 
 /** 推荐与直属全集共享 origin feed 的同剧 VM；外部入口仍由自己的导航 entry 持有。 */
 internal fun NavGraphBuilder.shortPlayDestination(
@@ -39,6 +47,52 @@ internal fun NavGraphBuilder.shortPlayDestination(
     container: AppContainer,
 ) {
     composable(SHORT_PLAY_ROUTE) { entry -> ShortPlayEntry(container, nav, entry) }
+    composable(
+        // 分类页是独立一页：顶部分类条 + 卡片网格，取代原来的剧场页侧边抽屉。
+        route = SHORT_PLAY_CATEGORY_ROUTE_PATTERN,
+        arguments = listOf(
+            navArgument(SHORT_PLAY_CATEGORY_ARG_TYPE_ID) {
+                type = NavType.IntType
+                defaultValue = 0
+            },
+        ),
+        // 与详情页同一套 push 转场：从剧场页推进来，返回时向右退出
+        enterTransition = { pushEnter() },
+        exitTransition = { pushExit() },
+        popEnterTransition = { pushPopEnter() },
+        popExitTransition = { pushPopExit() },
+    ) { entry ->
+        val initialTypeId = entry.arguments?.getInt(SHORT_PLAY_CATEGORY_ARG_TYPE_ID) ?: 0
+        ShortPlayCategoryEntry(container = container, nav = nav, initialTypeId = initialTypeId)
+    }
+}
+
+/** 短剧分类页：分类条 + 卡片网格。点卡片进竖屏播放器，返回回到剧场页。 */
+@Composable
+private fun ShortPlayCategoryEntry(
+    container: AppContainer,
+    nav: NavHostController,
+    initialTypeId: Int,
+) {
+    val categoryViewModel: ShortPlayCategoryViewModel = viewModel(
+        factory = ShortPlayCategoryViewModel.factory(
+            repository = container.shortPlayRepository,
+            // 与剧场页同源：后台下发的两级分类（mac_type.type_pid），客户端不改语义、不改数量
+            parents = container.startupRepository.cached()?.shortplayCategories.orEmpty(),
+            initialTypeId = initialTypeId,
+        ),
+    )
+    ShortPlayCategoryRoute(
+        viewModel = categoryViewModel,
+        onBack = { nav.popBackStack() },
+        onPlay = { play -> nav.navigate(verticalPlayRoute(play.id, FIRST_EPISODE_NUMBER)) },
+        navigation = ShortPlayNavigation(
+            onSearch = { nav.navigate("search") },
+            onHistory = { nav.navigate(UserNavigation.HISTORY_ROUTE) },
+            onFavorites = { nav.navigate(UserNavigation.FAVORITE_ROUTE) },
+            onFeedback = { nav.navigate(UserNavigation.FEEDBACK_ROUTE) },
+        ),
+    )
 }
 
 @Composable
@@ -87,13 +141,14 @@ private fun ShortPlayEntry(container: AppContainer, nav: NavHostController, orig
                 seriesExpanded = session.expanded,
                 interactionLocked = session.expanded,
                 expansion = expansion,
-                dockInset = stablePadding.calculateBottomPadding(),
             ),
             navigation = ShortPlayNavigation(
                 onSearch = { nav.navigate("search") },
                 onHistory = { nav.navigate(UserNavigation.HISTORY_ROUTE) },
                 onFavorites = { nav.navigate(UserNavigation.FAVORITE_ROUTE) },
                 onFeedback = { nav.navigate(UserNavigation.FEEDBACK_ROUTE) },
+                // 顶部菜单：进入独立分类页，落点就是当前分类
+                onCategories = { nav.navigate(shortPlayCategoryRoute(feed.state.value.selectedTypeId)) },
             ),
             // 不按 play.id 包 key：这一屏的组合身份已由 VerticalPager 的 page key 决定，
             // 再套一层 key 只会让换剧时整屏（背景 / 入口条 / 选集 pager）一起重建；
