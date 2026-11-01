@@ -235,12 +235,14 @@ private fun VerticalStageContent(stage: VerticalPlayStage, contentModifier: Modi
     val state = stage.state
     val showsPages = !state.isLoading && state.episodes.isNotEmpty()
     Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
-        // 整页底：没有首帧时铺同一部剧的模糊封面（ContentScale.Crop），出了首帧换纯深色。
+        // 整页底常驻绘制，只按"这一页画不画视频"拨 alpha：起播时它的出现不该重新组合出封面。
         // 视频按 Fit 居中、一帧不裁，上下的空档由这张底填，滑页时它随整页一起走。
         // 画面归 feed 时这一层必须留透明：唯一的视频输出在 pager 下面，它自带同一张底。
-        if (stage.hostsVideo || !showsPages) {
-            VerticalPlaybackBackdrop(state.cover, hasFrame = stage.hasCurrentFrame)
-        }
+        VerticalPlaybackBackdrop(
+            cover = state.cover,
+            hasFrame = stage.hasCurrentFrame,
+            modifier = Modifier.visibleAlpha(stage.hostsVideo || !showsPages),
+        )
         // 常驻输出先绘制，逐页遮挡随后绘制；手势、URL、mode 都不改变输出组合身份。
         VerticalVideoOutput(stage, showPauseHint = ownsPlayback && showsPages)
         // 旧输出只读保留到旧目的地退场，不再接手势、面板或任何播放指令。

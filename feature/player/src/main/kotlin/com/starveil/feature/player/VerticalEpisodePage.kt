@@ -7,32 +7,43 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
 import com.starveil.core.designsystem.component.blurredImageRequest
 import com.starveil.core.designsystem.starveilExtraColors
 
-/** 旁页保持不透明；只有当前媒体的有效帧可以透出常驻视频输出。 */
+/** 旁页保持不透明；只有当前媒体的有效帧可以透出常驻视频输出。换页只拨 alpha，不重建封面。 */
 @Composable
 internal fun VerticalEpisodePage(cover: String?, showCover: Boolean, modifier: Modifier = Modifier) {
     Box(modifier = modifier.fillMaxSize().clipToBounds()) {
-        if (showCover) VerticalBlurredBackdrop(cover)
+        VerticalBlurredBackdrop(cover = cover, modifier = Modifier.visibleAlpha(showCover))
     }
 }
+
+/**
+ * 常驻层只改绘制 alpha，不增删节点。
+ *
+ * 用 `if (visible)` 条件组合整块封面，每次切源都会重新组合出一个 `AsyncImage`：它的
+ * painter 从 Empty 起步，要等 Coil 下一轮才出图，那一帧露出来的是打底色或视频面——
+ * 就是"闪一下"。节点留着、只把 alpha 拨到 0，封面始终是上一次已经解好的那张位图。
+ */
+internal fun Modifier.visibleAlpha(visible: Boolean): Modifier =
+    graphicsLayer { alpha = if (visible) 1f else 0f }
 
 /**
  * 播放页的整页底：还没出首帧时铺模糊封面，出了首帧就换纯深色。
  *
  * 播放起来之后背景不该再模糊：画面周围那几条留边只该是深色，模糊封面留给"起播中 / 换源中"
  * 这段还没有画面可看的时间。切换是硬切，不做淡入淡出——背景晚一百毫秒变化，人只会觉得卡了一下。
+ * 深色底常驻，封面层也只拨 alpha：换源时不重新组合，才不会有一帧没有图的空档。
  */
 @Composable
 internal fun VerticalPlaybackBackdrop(cover: String?, hasFrame: Boolean, modifier: Modifier = Modifier) {
-    if (hasFrame) {
-        Box(modifier = modifier.fillMaxSize().background(starveilExtraColors.scrimStrong))
-    } else {
-        VerticalBlurredBackdrop(cover, modifier)
+    Box(modifier = modifier.fillMaxSize().background(starveilExtraColors.scrimStrong)) {
+        VerticalBlurredBackdrop(cover = cover, modifier = Modifier.visibleAlpha(!hasFrame))
     }
 }
 
@@ -43,12 +54,16 @@ internal fun VerticalBlurredBackdrop(cover: String?, modifier: Modifier = Modifi
     val request = remember(context, cover) {
         cover?.takeIf(String::isNotBlank)?.let { blurredImageRequest(context, it) }
     }
-    Box(modifier = modifier.fillMaxSize().clipToBounds().background(starveilExtraColors.scrimStrong)) {
+    val scrim = starveilExtraColors.scrimStrong
+    Box(modifier = modifier.fillMaxSize().clipToBounds().background(scrim)) {
         if (request != null) {
             AsyncImage(
                 model = request,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
+                // 换剧时旧封面已撤、新封面还没解出来：这一帧必须是实色打底，不是透明。
+                placeholder = ColorPainter(scrim),
+                error = ColorPainter(scrim),
                 modifier = Modifier.fillMaxSize(),
             )
         }

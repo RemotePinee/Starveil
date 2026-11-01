@@ -58,11 +58,11 @@ import com.starveil.core.model.TrySeeAccess
  * 那两条画成纯黑；调用方在本层下面垫的是同一部剧的模糊封面，空档自然接得住。
  *
  * 换源**不清帧**：`keepContentOnReset = true` 让上一部的最后一帧留在 TextureView 上，
- * 可它不会自己消失，而遮挡层要等下一次重组才挂上来，中间那一帧正好用它垫着——清空才会
- * 露出空白/U 型黑边。换源期间看到的是 [VerticalBlurredBackdrop]：它从
- * `starveilExtraColors.scrimStrong`（不透明）打底，旧帧一个像素都透不出来；新源出首帧后
- * `hasFrame` 变真、遮挡整块撤掉，硬切到新画面。`shutter` 传空等于没有遮挡，真正挡住旧帧
- * 的只有这一层，所以它必须排在视频面之后绘制。
+ * 要它消失只需盖住，不需要"挂上 / 撤掉"这一层。遮挡层因此常驻：children 恒为两个，
+ * 换源只把 alpha 拨到 1。条件组合会让父 [Layout] 增删子节点，还会让封面重新走一次
+ * 异步解码——换源那一帧露成打底色，看起来就是"闪一下"；常驻时它一直是上次解好的封面。
+ * 新源出首帧后 `hasFrame` 变真、遮挡 alpha 归零，硬切到新画面。
+ * 它没有 pointerInput，alpha 为 0 的帧既不显示也不吃触摸。
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -81,12 +81,12 @@ internal fun VideoStage(engine: Media3Player, cover: String?, hasFrame: Boolean)
                 )
             }
             // 没出首帧就盖住整页：与底下那层模糊封面同尺寸、同裁切，边界看不出来。
-            if (!hasFrame) VerticalBlurredBackdrop(cover)
+            VerticalBlurredBackdrop(cover = cover, modifier = Modifier.visibleAlpha(!hasFrame))
         },
         modifier = Modifier.fillMaxSize(),
     ) { measurables, constraints ->
         val frame = fitVerticalVideo(constraints.maxWidth, constraints.maxHeight, ratio)
-        // 顺序由 ContentFrame 决定：它恒定发出一个视频面，遮挡只可能排在第二个。
+        // 顺序由 ContentFrame 决定：它恒定发出一个视频面，遮挡恒定排在第二个。
         val surface = measurables.first().measure(Constraints.fixed(frame.width, frame.height))
         val coverBox = measurables.getOrNull(1)
             ?.measure(Constraints.fixed(constraints.maxWidth, constraints.maxHeight))
