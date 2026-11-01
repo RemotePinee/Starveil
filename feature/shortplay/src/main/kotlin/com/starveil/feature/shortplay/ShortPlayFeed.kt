@@ -150,11 +150,11 @@ internal fun ShortPlayFeed(
         synchronizedVersion = state.collectionVersion
     }
     ShortPlayPageWatcher(pager, FeedWatcher(pages, state, actions, synchronized))
+    val anchorPage = rememberFeedVideoAnchor(pager)
     Box(Modifier.fillMaxSize()) {
-        // 视频面铺在 pager 下面：整条信息流只创建这一次，换剧/换集都不重建。
-        // 铺满整页不再裁底边：让位只发生一次、在页面前景（入口条贴 dock 上沿），
-        // 那一条由页面自己的 dock 让位带铺住，抬高时露不出画面。
-        FeedVideoLayer(videoLayer, covered)
+        // 视频面铺在 pager 下面、只创建这一次；滑动时它跟着当前页一起走，
+        // 铺满整页不裁底边，让位只由页面前景做一次（多出来的部分压在 dock 下面）。
+        FeedVideoLayer(videoLayer, covered, anchorPage, pager)
         VerticalPager(
             state = pager,
             modifier = Modifier.fillMaxSize(),
@@ -173,23 +173,11 @@ internal fun ShortPlayFeed(
                     if (lockedAdState.value == key) lockedAdState.value = null
                 },
                 playerContent = playerContent,
-                hasVideoLayer = videoLayer != null,
+                showsVideo = videoOwnsPage(videoLayer != null, page, anchorPage),
             )
         }
         ShortPlayFeedStatus(state, actions.onRetry, Modifier.align(Alignment.TopCenter))
     }
-}
-
-/**
- * 视频层由外层注入时铺在 pager 下面；null 表示没有 feed 级播放面，页面自己垫封面。
- *
- * 这里不裁底边：裁绘制虽然不改测量，但它和页面前景的上收是同一条让位的第二次实现，
- * 两条边一旦用不同口径算（令牌 vs 实测 dock 高度）就会在入口条下面留出一块纯色。
- * 让位只由页面前景做一次，视频照常铺到屏幕底，多出来的部分压在 dock 与让位带下面。
- */
-@Composable
-private fun FeedVideoLayer(layer: (@Composable (Boolean) -> Unit)?, covered: Boolean) {
-    if (layer != null) layer(covered)
 }
 
 /** 一屏内容：正片交给 app 注入的播放器，广告屏画自己的整屏。 */
@@ -199,12 +187,14 @@ private fun FeedPageContent(
     playing: Boolean,
     adLock: AdLock,
     playerContent: @Composable (ShortPlay, Boolean) -> Unit,
-    hasVideoLayer: Boolean = false,
+    showsVideo: Boolean = false,
 ) {
     when (page) {
         is FeedPage.Play -> Box(Modifier.fillMaxSize()) {
-            // 有 feed 级视频层时不再垫封面：视频就在这一层下面，无首帧时封面由页面自己顶。
-            if (!hasVideoLayer) ShortPlayBackdrop(page.play)
+            // 画面归本页时才留透明：视频就在这一层下面，无首帧时封面由页面自己顶。
+            // 其余页（正被滑进来的那页）必须铺自己的封面——视频层跟着锚点页走了，
+            // 透明就会露出 feed 底色，入口条下面那一大块正是这么黑的。
+            if (!showsVideo) ShortPlayBackdrop(page.play)
             playerContent(page.play, playing)
         }
 
