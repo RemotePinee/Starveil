@@ -30,7 +30,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.animateLottieCompositionAsState
 import com.airbnb.lottie.compose.rememberLottieAnimatable
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.starveil.app.ads.AdSplashGate
@@ -123,23 +122,20 @@ private fun SplashBrandAnimation(onAnimationEnd: () -> Unit, modifier: Modifier 
         // 引用内联成常量，资源 shrinker 看不到引用就把文件删了（debug 包有、release 没有）。
         LottieCompositionSpec.Asset("splash_movie_theatre.json"),
     )
-    // 进度必须走 animateLottieCompositionAsState：它返回 State<Float>，读它才会订阅重绘。
-    // 用 rememberLottieAnimatable().progress 时那是普通 Float，进度变化不触发重组，
-    // 画面永远停在第 0 帧——这个素材第 0 帧是空的，看起来就像"动画没显示"。
-    val progress by animateLottieCompositionAsState(
-        composition = compositionResult.value,
-        iterations = 1,
-        isPlaying = compositionResult.value != null,
-    )
-    LaunchedEffect(progress, compositionResult.isFailure) {
-        // 解析失败也算结束：LottieAnimation 一帧都不画，也没有完成回调，
-        // 把启动流程卡在这里比少一个动画严重得多。
-        if (compositionResult.isFailure) onAnimationEnd()
-        else if (progress >= 1f) onAnimationEnd()
+    val animatable = rememberLottieAnimatable()
+    // 播完（或确认解析失败）才通知上层：倒计时栅栏读的就是这个信号
+    LaunchedEffect(compositionResult.value, compositionResult.isFailure) {
+        val composition = compositionResult.value
+        if (composition == null) {
+            if (compositionResult.isFailure) onAnimationEnd()
+            return@LaunchedEffect
+        }
+        animatable.animate(composition = composition, iterations = 1)
+        onAnimationEnd()
     }
     LottieAnimation(
         composition = compositionResult.value,
-        progress = { progress },
+        progress = { animatable.progress },
         // 方形素材在任意高度的容器里按原比例居中，不拉伸变形
         contentScale = ContentScale.Fit,
         modifier = modifier.size(Spacing.splashAnimation),
