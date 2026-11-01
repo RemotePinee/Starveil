@@ -13,8 +13,6 @@ import androidx.navigation.NavHostController
 import com.starveil.feature.player.VerticalPlayViewModel
 import com.starveil.feature.shortplay.SHORT_PLAY_ROUTE
 
-internal fun shortPlayViewModelKey(vodId: Int): String = "shortplay-vod-$vodId"
-
 /** 只存于真正 origin feed entry 的 ViewModelStore，不按路由字符串寻找任意历史同剧。 */
 internal data class ShortPlayHandoff(
     val origin: NavBackStackEntry,

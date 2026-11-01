@@ -107,7 +107,7 @@ internal fun AppScaffold(
         content = { padding ->
             // 切走时路由先变、页面还在转场：沿用上一帧的短剧前景占位，
             // 否则入口条会先跳到底再被滑出，看起来像"那栏先消失"。
-            val foregroundPadding = rememberStableForegroundPadding(state)
+            val foregroundPadding = rememberStableForegroundPadding(state, padding)
             CompositionLocalProvider(LocalAppContentPadding provides foregroundPadding) {
                 Box(Modifier.fillMaxSize()) { content(padding) }
             }
@@ -116,20 +116,20 @@ internal fun AppScaffold(
 }
 
 /**
- * 短剧前景的底槽高度：只等于 dock 的固定内容高度。
+ * 短剧前景的底槽高度：dock 的实测高度，与宿主从 NavHost 扣掉的那条同源。
  *
- * 不读 Scaffold 的 bottom padding，也不叠加导航栏 inset——dock 自己已经含 inset；
- * 切 tab 那一帧 Scaffold 的 bottomBar 已换成目标页的，padding 会突增，
- * 贴底那组（标题 / 右栏 / 观看完整短剧条）就被顶上去，下面留出一条黑带。
+ * 不用 `Spacing.tabBarHeight*` 令牌：dock 自己还带 `navigationBars` 内边距，令牌只是
+ * 内容高度。两者不一致时，页面前景的底边与 dock 上沿会差出导航栏那一截——差一条就是
+ * 入口条被 dock 压住，差多条就是在入口条下面留出一块纯色。切 tab 那一帧的突增由
+ * [rememberStableForegroundPadding] 的沿用处理，所以这里读 Scaffold 的结果是安全的。
  */
 @Composable
-private fun playerForegroundPadding(state: AppShellState): PaddingValues = when {
-    !state.isShortPlayPage() -> PaddingValues()
-    state.currentRoute == SHORT_PLAY_ROUTE && state.isTabPage() -> PaddingValues(
-        bottom = if (state.showTabIcons) Spacing.tabBarHeightIcons else Spacing.tabBarHeightText,
-    )
-    else -> PaddingValues()
-}
+private fun playerForegroundPadding(state: AppShellState, scaffold: PaddingValues): PaddingValues =
+    if (state.isShortPlayPage()) {
+        PaddingValues(bottom = scaffold.calculateBottomPadding())
+    } else {
+        PaddingValues()
+    }
 
 /**
  * 短剧页的前景占位在离开路由时保持不变：转场期间页面仍在组合，
@@ -138,8 +138,9 @@ private fun playerForegroundPadding(state: AppShellState): PaddingValues = when 
 @Composable
 private fun rememberStableForegroundPadding(
     state: AppShellState,
+    scaffold: PaddingValues,
 ): PaddingValues {
-    val current = playerForegroundPadding(state)
+    val current = playerForegroundPadding(state, scaffold)
     val retained = remember { mutableStateOf(current) }
     if (state.isShortPlayPage()) retained.value = current
     return retained.value

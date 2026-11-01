@@ -27,6 +27,11 @@ data class VerticalEpisode(
  */
 @Immutable
 data class VerticalPlayUiState(
+    /**
+     * 这份状态属于哪部剧。整个短剧页只有一个 VM，切剧靠它区分"数据换过来了没有"，
+     * pager 也按它重建：沿用上一部剧的页号会让新剧从旧剧那一集开播。
+     */
+    val vodId: Int = 0,
     val title: String = "",
     val cover: String? = null,
     val episodes: List<VerticalEpisode> = emptyList(),

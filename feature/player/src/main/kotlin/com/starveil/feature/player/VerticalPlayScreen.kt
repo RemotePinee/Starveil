@@ -16,6 +16,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -73,8 +74,11 @@ fun VerticalPlayRoute(
     DisposableEffect(owner) { onDispose { viewModel.detachPlayback(owner) } }
     val danmu = viewModel.danmu.collectAsStateWithLifecycle().value
     val engine = owner.engine
-    val pagerState = rememberPagerState(initialPage = state.currentIndex) {
-        state.episodes.size.coerceAtLeast(1)
+    // 整页只有一个 VM，换剧后 state.vodId 变了：pager 必须重建，否则新剧会从旧剧那一集开播。
+    val pagerState = key(state.vodId) {
+        rememberPagerState(initialPage = state.currentIndex) {
+            state.episodes.size.coerceAtLeast(1)
+        }
     }
     var showEpisodes by rememberSaveable { mutableStateOf(false) }
     var showRecommendations by rememberSaveable { mutableStateOf(false) }
@@ -248,9 +252,9 @@ private fun VerticalStageContent(stage: VerticalPlayStage, contentModifier: Modi
             VerticalVideoPager(stage)
             DanmuOverlay(items = stage.danmu, isPlaying = state.isPlaying && stage.options.active)
         }
-        // dock 让位带：前景按 dock 预留高度上收后，页面底部这一条在页面里是透明的，
-        // feed 级的唯一视频输出会把这条填成画面——静止时被 dock 盖住，滑页位移时
-        // 正好在入口条下方露出。铺住它，随展开进度一起让开。
+        // dock 让位带：前景按实测 dock 高度上收后，页面底部这一条在页面里是透明的，
+        // 而 feed 级的唯一视频输出铺满整页——静止时它整条压在 dock 下，页面被滑页/回弹
+        // 抬起时露出的必须是这条带，不能是画面。高度与 dock 同口径，随展开进度一起让开。
         PageDockBand(stage)
         Box(contentModifier.fillMaxSize()) { OverlayLayer(stage) }
         if (!state.isLoading && state.episodes.isNotEmpty()) {
@@ -260,12 +264,15 @@ private fun VerticalStageContent(stage: VerticalPlayStage, contentModifier: Modi
 }
 
 /**
- * 页面为 dock 预留的那一条的底色。
+ * 页面前景让给 dock 的那一条的底色。
  *
- * 前景（`contentModifier`）按 `seriesDockOffset` 上收，页面底部就空出一条透明带；
- * 视频只有一份、铺在整屏，于是这条里全是画面。静止时 dock 盖着它，可一旦页面
- * 被滑页/回弹带起来，它就会从入口条下方露出来——这里用底栏自己的颜色铺住，
- * 并跟入口条同一口径下移：整剧态 dock 整块让开时它也随之移出屏幕。
+ * 页面前景（`contentModifier`）按 `seriesDockOffset` 上收，入口条下沿正好落在 dock 上沿；
+ * 页面底部这一条在页面里是透明的，视频又铺满整页，所以它是唯一一处"抬起来就露画面"的地方。
+ * 三个口径必须与 dock 一致，缺一条就会露出纯色：
+ *
+ * - 高度 = 实测 dock 高度：静止时它整条压在 dock 下面，一格都不外露；
+ * - 颜色 = dock 自己的底色：页面被抬起时与 dock 连成一片，看不出接缝；
+ * - 位移 = 入口条同一条展开进度：整剧态 dock 让开时它一起移出屏幕，不留尾巴。
  */
 @Composable
 private fun BoxScope.PageDockBand(stage: VerticalPlayStage) {

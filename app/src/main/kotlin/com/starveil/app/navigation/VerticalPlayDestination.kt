@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableIntStateOf
@@ -52,6 +53,9 @@ import com.starveil.core.common.ad.AdSlot
 import com.starveil.core.designsystem.component.LocalRewardAd
 import com.starveil.feature.player.UnlockOptions
 import com.starveil.feature.player.unlockOptions
+
+/** 一个 ViewModelStore 只放一个竖屏播放实例：切剧换数据，不换实例。 */
+private const val VERTICAL_PLAY_VIEW_MODEL_KEY = "vertical-play"
 
 /** 短剧全集目的地：按当前集重新查询权限，返回仍回到推荐信息流。 */
 internal fun NavGraphBuilder.verticalPlayDestination(
@@ -138,9 +142,9 @@ internal fun VerticalPlayEntry(
     // 评论抽屉是目的地内的本地弹层：打开它不导航、不重建播放器，视频照常播。
     var showComments by rememberSaveable(request.vodId) { mutableStateOf(false) }
     val viewModel = rememberVerticalPlayViewModel(container, request, handoff)
-    // 信息流里一屏一个 VM（key = shortplay-vod-<id>），共享 origin entry 的 store，直到短剧页
-    // 出栈才 onCleared。播放器已经提到 feed 层（整条流共用一台），这里只收这一屏的预取与弹幕。
-    DisposableEffect(viewModel) { onDispose { viewModel.onLeaving() } }
+    // 整个短剧页只有一个 VM（key 固定），切剧走 load(vodId) 原地换数据：以前每部刷过的剧
+    // 各建一个实例塞进 origin entry 的 ViewModelStore，整页出栈前一个都回收不了。
+    DisposableEffect(viewModel, request.vodId) { onDispose { viewModel.onLeaving(request.vodId) } }
     // 旧 observer 只归还跨 destination 的 handoff，绝不能结束原地 inline session。
     if (request.inlineMode == null) request.origin?.let { ObserveShortPlayPreview(it, viewModel, nav) }
     val playbackToken = handoff?.token ?: viewModel.defaultPlaybackToken
@@ -216,11 +220,11 @@ private fun rememberVerticalPlayViewModel(
     val deps = remember(container) { container.playerDeps() }
     val origin = request.origin
     val owner = origin ?: checkNotNull(LocalViewModelStoreOwner.current)
-    val key = if (origin != null) shortPlayViewModelKey(request.vodId) else
-        "vertical-${request.vodId}-${request.episodeNumber}-${request.resumeMs}"
+    // 一个 store 只留一个实例：feed 里每部刷过的剧各建一个 VM（每部几百集）会把 origin entry
+    // 的 ViewModelStore 塞满，整个短剧页出栈前一个都回收不了——这就是短剧页的 OOM。
     val viewModel: VerticalPlayViewModel = viewModel(
         viewModelStoreOwner = owner,
-        key = key,
+        key = VERTICAL_PLAY_VIEW_MODEL_KEY,
         factory = VerticalPlayViewModel.factory(
             vodId = request.vodId,
             vodRepository = container.vodRepository,
@@ -230,6 +234,13 @@ private fun rememberVerticalPlayViewModel(
             initialMetadata = request.initialMetadata,
         ),
     )
+    // 换剧 = 原地换数据。只让落页那一屏驱动：手势期间的邻居页只做滑动，滑回来不会把
+    // 已装好的剧换掉；同一个 id 重复调用在 load() 里直接返回，不会重复拉详情。
+    LaunchedEffect(viewModel, request.vodId, request.options.active) {
+        if (request.options.active) {
+            viewModel.load(request.vodId, request.episodeNumber, request.resumeMs, request.initialMetadata)
+        }
+    }
     return viewModel
 }
 

@@ -33,10 +33,10 @@ import kotlinx.coroutines.flow.update
  */
 class VerticalPlayViewModel(
     // 装载链路拆在 VerticalPlayLoading.kt，那里的扩展函数要读这两项
-    internal val vodId: Int,
+    vodId: Int,
     internal val vodRepository: VodRepository,
     private val deps: PlayerDeps,
-    internal val initialEpisodeNumber: Int = FIRST_EPISODE_NUMBER,
+    initialEpisodeNumber: Int = FIRST_EPISODE_NUMBER,
     /** 短剧默认不开弹幕（计划 §5 P3）；打开时用 [PlayerDeps.danmuSource]。 */
     private val danmuEnabled: Boolean = false,
     /** 仅初次指定集装载成功时使用；切集与成功起播后的重试不再消费。 */
@@ -44,11 +44,25 @@ class VerticalPlayViewModel(
     initialMetadata: com.starveil.core.model.ShortPlay? = null,
 ) : ViewModel() {
 
+    /**
+     * 当前这部剧。整个短剧页只有一个实例，切剧由 [load] 原地改写：
+     * 按剧各建一个 VM 会让刷过的每一部剧（每部几百集）都留在 ViewModelStore 里。
+     */
+    internal var vodId: Int = vodId
+        private set
+
+    /** 当前这部剧的入口集号；[load] 换剧时一起换，否则新剧会按上一部剧的集号装载。 */
+    internal var initialEpisodeNumber: Int = initialEpisodeNumber
+        private set
+
+    /** 换剧要把试看闸门退回初始值：上一部剧的权限不能带到下一部剧。 */
+    private val trySeeDefault = TrySeeGate(deps.trySeeAccess, deps.trySeeSeconds)
+
     internal val scope: CoroutineScope = deps.scope ?: viewModelScope
     internal val reporter = ProgressReporter(deps.clock, deps.progressSink, scope)
     internal var pendingResumeMs: Long? = resumeMs.coerceAtLeast(0L)
     internal var loadJob: Job? = null
-    internal val trySee = VerticalTrySeeContext(TrySeeGate(deps.trySeeAccess, deps.trySeeSeconds))
+    internal val trySee = VerticalTrySeeContext(trySeeDefault)
 
     /**
      * 弹幕时间轴。关闭时给控制器传 null：不拉取、不上屏，[danmu] 恒为空，
@@ -58,7 +72,7 @@ class VerticalPlayViewModel(
         source = deps.danmuSource.takeIf { danmuEnabled },
         scope = scope,
         // 短剧只有一条源（VERTICAL_PLAY_SOURCE_INDEX），集号用当前集下标
-        videoRef = { DanmuTarget(vodId, VERTICAL_PLAY_SOURCE_INDEX, currentEpisodeIndex()) },
+        videoRef = { DanmuTarget(currentVodId(), VERTICAL_PLAY_SOURCE_INDEX, currentEpisodeIndex()) },
         clock = deps.clock,
     )
 
@@ -71,7 +85,9 @@ class VerticalPlayViewModel(
     /** 当前源的播放信息：请求头只在命中 issethead 正则时生效。 */
     internal var playerInfo: PlayerInfo? = null
 
-    private val _state = MutableStateFlow(verticalInitialState(initialMetadata, vodRepository.cachedDetail(vodId)))
+    private val _state = MutableStateFlow(
+        verticalInitialState(vodId, initialMetadata, vodRepository.cachedDetail(vodId)),
+    )
     val state: StateFlow<VerticalPlayUiState> = _state.asStateFlow()
 
     /** 可写状态流：装载链路（[VerticalPlayLoading]）在这里推进状态，与类内写法保持一份。 */
@@ -112,6 +128,7 @@ class VerticalPlayViewModel(
     fun endPreviewHandoff(token: Any): Boolean = handoff.endPreviewHandoff(token)
 
     override fun onCleared() {
+        PlayerLog.warn { "vertical vm cleared vod=$vodId" }
         handoff.clear()
         super.onCleared()
     }
@@ -120,15 +137,48 @@ class VerticalPlayViewModel(
      * 这一屏退出组合：放掉它自己的字节级预取与弹幕时间轴。
      *
      * 播放器**不在这里归还**——整条 feed 只有一台，归 `ShortPlayFeedPlayback` 的
-     * DisposableEffect；这些 VM 要到整个短剧页出栈才 onCleared，所以每屏顺手把
-     * 预取池（几十到几百 KB 的头部/材料）放掉，滑过 50 屏不会攒 50 份。
+     * DisposableEffect；VM 本身要到整个短剧页出栈才 onCleared。
+     * 传 `vodId` 是因为一个实例现在服务多部剧：已经让位给下一部剧的那一屏离场时，
+     * 不能顺手把当前这部剧的预取池清掉。
      */
-    fun onLeaving() {
+    fun onLeaving(vodId: Int) {
+        if (this.vodId != vodId) return
         preloader.clear()
         danmuController.reset()
     }
 
+    /**
+     * 换一部剧：整个短剧页只留一个实例，切剧是原地换数据，不新建 VM。
+     *
+     * 先把上一部剧的重资源放掉再装载——剧集列表、预取池、弹幕时间轴、预览快照都换成本剧的，
+     * 否则刷过的每一部剧仍挂在这一个实例上，等于换了名字的泄漏。
+     * 同一个 `vodId` 重复调用直接返回：pager 落页与重组都会触发它，重复装载会把进度冲成 0。
+     */
+    fun load(
+        vodId: Int,
+        episodeNumber: Int = FIRST_EPISODE_NUMBER,
+        resumeMs: Long = 0L,
+        metadata: com.starveil.core.model.ShortPlay? = null,
+    ) {
+        if (this.vodId == vodId) return
+        loadJob?.cancel() // 上一次详情请求跟着旧剧一起作废，快速滑动不堆请求
+        preloader.clear()
+        danmuController.reset()
+        reporter.reset()
+        handoff.clear()
+        this.vodId = vodId
+        initialEpisodeNumber = episodeNumber
+        pendingResumeMs = resumeMs.coerceAtLeast(0L)
+        playerInfo = null
+        trySee.gate = trySeeDefault
+        trySee.episodeNumber = null
+        stateFlow.value = verticalInitialState(vodId, metadata, vodRepository.cachedDetail(vodId))
+        loadDetail()
+    }
+
     init {
+        // 验收口径：整页一个实例，刷 N 部剧只应看到这一行一次（切剧走 load，不新建）。
+        PlayerLog.warn { "vertical vm created vod=$vodId" }
         loadDetail()
     }
 
@@ -224,6 +274,13 @@ class VerticalPlayViewModel(
 
     /** 当前集下标（0 起）。短剧弹幕与 CMS 弹幕表用同一套坐标。 */
     private fun currentEpisodeIndex(): Int = _state.value.currentIndex.coerceAtLeast(0)
+
+    /**
+     * 当前这部剧。弹幕坐标与详情请求都读它——换剧后不能再用构造时那个 id。
+     *
+     * 写成函数而不是直接读字段：构造参数同名，属性初始化器里 `vodId` 会解析成构造参数。
+     */
+    private fun currentVodId(): Int = vodId
 
     /** 到期后停播并显示当前权限覆盖层，保留地址与位置供权限同步后继续。 */
     private fun applyGate(positionMs: Long): Boolean {

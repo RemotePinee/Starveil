@@ -14,6 +14,7 @@ internal fun verticalStateOf(vod: Vod): VerticalPlayUiState {
             )
         }
     return VerticalPlayUiState(
+        vodId = vod.id,
         title = vod.name,
         cover = vod.poster,
         description = vod.blurb.orEmpty(),
@@ -26,7 +27,12 @@ internal fun verticalStateOf(vod: Vod): VerticalPlayUiState {
 }
 
 /** 首帧只复用展示字段，地址与权限仍等本次详情请求。 */
-internal fun verticalInitialState(preview: ShortPlay?, cached: Vod?): VerticalPlayUiState = VerticalPlayUiState(
+internal fun verticalInitialState(
+    vodId: Int,
+    preview: ShortPlay?,
+    cached: Vod?,
+): VerticalPlayUiState = VerticalPlayUiState(
+    vodId = vodId,
     title = preview?.title ?: cached?.name.orEmpty(),
     cover = preview?.cover ?: cached?.poster,
     description = preview?.blurb ?: cached?.blurb.orEmpty(),
@@ -37,6 +43,7 @@ internal fun verticalInitialState(preview: ShortPlay?, cached: Vod?): VerticalPl
 )
 
 internal fun VerticalPlayUiState.metadataOnly(): VerticalPlayUiState = VerticalPlayUiState(
+    vodId = vodId,
     title = title, cover = cover, description = description, category = category, typeId = typeId,
     episodeCountHint = episodeCount,
 )

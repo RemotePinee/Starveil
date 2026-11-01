@@ -53,6 +53,7 @@ internal fun VerticalPlayViewModel.applyVod(vod: Vod) {
     )
     if (base.episodes.isEmpty()) {
         stateFlow.value = base
+        logLoadFootprint(vod)
         return
     }
     val start = base.episodes.indexOfFirst { it.number == initialEpisodeNumber }.coerceAtLeast(0)
@@ -62,6 +63,7 @@ internal fun VerticalPlayViewModel.applyVod(vod: Vod) {
     val resume = pendingResumeMs.takeIf { base.episodes[start].number == initialEpisodeNumber } ?: 0L
     playEpisode(base, start, resume)
     if (stateFlow.value.playingUrl != null) pendingResumeMs = null
+    logLoadFootprint(vod)
 }
 
 /**

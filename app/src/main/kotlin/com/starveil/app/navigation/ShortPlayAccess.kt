@@ -73,8 +73,11 @@ internal fun rememberShortPlayGate(
     return result
 }
 
+// 一个 VM 现在服务多部剧：结果回来时既要认播放权，也要认剧——同一集号在别的剧里同样成立，
+// 只看集号会把上一部剧的权限套到这一部上。
 private fun VerticalPlayViewModel.acceptsShortPlayGate(request: ShortPlayAccess, token: Any): Boolean =
-    ownsPlayback(token) && state.value.current?.number == request.episodeNumber
+    ownsPlayback(token) && state.value.vodId == request.vodId &&
+        state.value.current?.number == request.episodeNumber
 
 private fun Lifecycle.isCurrentGateCycle(foreground: State<Any?>, cycle: Any?): Boolean =
     currentState == Lifecycle.State.RESUMED && foreground.value === cycle
