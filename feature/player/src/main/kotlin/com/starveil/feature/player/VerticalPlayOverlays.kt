@@ -51,7 +51,12 @@ import com.starveil.core.model.TrySeeAccess
  * 单独成文件是为了守住 450 行闸门；这些组件都只被 [VerticalPlayScreen] 的覆盖层用到。
  */
 
-/** 实际视频矩形始终在容器内居中，宽屏与竖屏内容都只 fit，不拉伸、不裁切。 */
+/**
+ * 实际视频矩形始终在容器内居中，宽屏与竖屏内容都只 fit，不拉伸、不裁切。
+ *
+ * 底色归调用方：这里必须留透明。片源比容器宽时 Fit 会在上下各留一条，铺底色就等于把
+ * 那两条画成纯黑；调用方在本层下面垫的是同一部剧的模糊封面，空档自然接得住。
+ */
 @OptIn(UnstableApi::class)
 @Composable
 internal fun VideoStage(engine: Media3Player) {
@@ -69,7 +74,7 @@ internal fun VideoStage(engine: Media3Player) {
                 )
             }
         },
-        modifier = Modifier.fillMaxSize().background(starveilExtraColors.scrimStrong),
+        modifier = Modifier.fillMaxSize(),
     ) { measurables, constraints ->
         val frame = fitVerticalVideo(constraints.maxWidth, constraints.maxHeight, ratio)
         val surface = measurables.single().measure(Constraints.fixed(frame.width, frame.height))

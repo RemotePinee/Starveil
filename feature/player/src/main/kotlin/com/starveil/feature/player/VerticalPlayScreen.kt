@@ -1,12 +1,9 @@
 package com.starveil.feature.player
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.PagerState
@@ -26,11 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.TrySeeAccess
 
@@ -238,61 +233,26 @@ internal fun VerticalPlayScreen(
 @Composable
 private fun VerticalStageContent(stage: VerticalPlayStage, contentModifier: Modifier, ownsPlayback: Boolean) {
     val state = stage.state
-    Box(
-        modifier = Modifier.fillMaxSize()
-            .clipToBounds().background(stageBackdrop(stage.hostsVideo)),
-    ) {
+    val showsPages = !state.isLoading && state.episodes.isNotEmpty()
+    Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
+        // 整页底：同一部剧的模糊封面铺满整页（ContentScale.Crop）。视频按 Fit 居中、一帧不裁，
+        // 上下的空档由这张底填，滑页时它随整页一起走，入口条下面不会再露纯色块。
+        // 画面归 feed 时这一层必须留透明：唯一的视频输出在 pager 下面，它自带同一张底。
+        if (stage.hostsVideo || !showsPages) VerticalBlurredBackdrop(state.cover)
         // 常驻输出先绘制，逐页遮挡随后绘制；手势、URL、mode 都不改变输出组合身份。
-        VerticalVideoOutput(stage, showPauseHint = ownsPlayback && !state.isLoading && state.episodes.isNotEmpty())
+        VerticalVideoOutput(stage, showPauseHint = ownsPlayback && showsPages)
         // 旧输出只读保留到旧目的地退场，不再接手势、面板或任何播放指令。
         if (!ownsPlayback) return@Box
-        if (state.isLoading || state.episodes.isEmpty()) {
-            VerticalBlurredBackdrop(state.cover)
-        } else {
+        if (showsPages) {
             VerticalVideoPager(stage)
             DanmuOverlay(items = stage.danmu, isPlaying = state.isPlaying && stage.options.active)
         }
-        // dock 让位带：前景按实测 dock 高度上收后，页面底部这一条在页面里是透明的，
-        // 而 feed 级的唯一视频输出铺满整页——静止时它整条压在 dock 下，页面被滑页/回弹
-        // 抬起时露出的必须是这条带，不能是画面。高度与 dock 同口径，随展开进度一起让开。
-        PageDockBand(stage)
+        // 入口条是浮在整屏之上的 overlay（见 PlaybackChrome），页面底部不再垫实心色带：
+        // 滑页时入口条与它下面那条边同属一页，露出的永远是同一部剧的模糊封面。
         Box(contentModifier.fillMaxSize()) { OverlayLayer(stage) }
-        if (!state.isLoading && state.episodes.isNotEmpty()) {
-            PlaybackAccessLayer(stage)
-        }
+        if (showsPages) PlaybackAccessLayer(stage)
     }
 }
-
-/**
- * 页面前景让给 dock 的那一条的底色。
- *
- * 页面前景（`contentModifier`）按 `seriesDockOffset` 上收，入口条下沿正好落在 dock 上沿；
- * 页面底部这一条在页面里是透明的，视频又铺满整页，所以它是唯一一处"抬起来就露画面"的地方。
- * 三个口径必须与 dock 一致，缺一条就会露出纯色：
- *
- * - 高度 = 实测 dock 高度：静止时它整条压在 dock 下面，一格都不外露；
- * - 颜色 = dock 自己的底色：页面被抬起时与 dock 连成一片，看不出接缝；
- * - 位移 = 入口条同一条展开进度：整剧态 dock 让开时它一起移出屏幕，不留尾巴。
- */
-@Composable
-private fun BoxScope.PageDockBand(stage: VerticalPlayStage) {
-    val inset = stage.options.seriesDockOffset
-    if (inset <= Spacing.none) return
-    val expansion = stage.options.seriesExpansion.coerceIn(0f, 1f)
-    Box(
-        modifier = Modifier
-            .align(Alignment.BottomCenter)
-            .fillMaxWidth()
-            .height(inset)
-            .background(starveilExtraColors.surfaceElevated)
-            .graphicsLayer { translationY = inset.toPx() * expansion },
-    )
-}
-
-/** 视频面归 feed 时这里不能再铺不透明底：整页会盖住 pager 下面唯一的那块输出。 */
-@Composable
-private fun stageBackdrop(hostsVideo: Boolean): Color =
-    if (hostsVideo) starveilExtraColors.scrimStrong else Color.Transparent
 
 /** 弹幕层。短剧默认没有弹幕来源，列表为空时 DanmuLayer 自己不画、也不驱动逐帧刷新。 */
 @Composable

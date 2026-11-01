@@ -82,6 +82,8 @@ fun rememberShortPlayFeedPlayback(): ShortPlayFeedPlayback {
  * 合成身份不随滑动、换剧、换集改变：`VideoStage` 里的 `ContentFrame` 只认这一台引擎，
  * 所以整页只创建一个 TextureView/SurfaceTexture，换源时复用同一个（`keepContentOnReset`
  * 还会把上一帧留在屏幕上，避免换源的一两帧露出底色）。
+ * 视频层自带的整页底是同一部剧的模糊封面：片源比容器宽时 Fit 会上下留条，那两条必须由
+ * 封面填住，否则滑页时露出的就是根布局的纯黑。
  *
  * [covered] 为真是"当前落页是整屏广告"：停掉内容解码（不释放），
  * 回到正片时由那一页的会话重新 prepare 同一条地址。
@@ -97,10 +99,20 @@ fun ShortPlayFeedVideoLayer(
     Box(
         // 布局尺寸仍是整屏：画面要按整屏取景；越出边界的那部分（TextureView 的输出、
         // 内层 pager 换集时的平移）靠这层裁掉，不能被画到布局边界外。
-        modifier = modifier.fillMaxSize().clipToBounds().graphicsLayer {
-            translationY = stage?.videoTranslationY() ?: 0f
-        },
+        modifier = modifier.fillMaxSize().clipToBounds(),
     ) {
-        VideoStage(engine = playback.owner.engine)
+        // 整页底：锚点页同一部剧的模糊封面，铺满整页（ContentScale.Crop）。视频仍然 Fit 居中、
+        // 一帧不裁，上下的空档由这张底接住——以前这里铺的是 VideoStage 自己的 scrimStrong，
+        // 那两条就是滑页时露出来的纯黑。
+        // 底只跟 feed 的滑页平移走（外层 FeedVideoLayer 已经加了那一段），不跟内层换集平移：
+        // 换集时视频走一屏、底不动，空出来的位置仍是同一部剧的封面。
+        VerticalBlurredBackdrop(stage?.state?.cover)
+        Box(
+            modifier = Modifier.fillMaxSize().graphicsLayer {
+                translationY = stage?.videoTranslationY() ?: 0f
+            },
+        ) {
+            VideoStage(engine = playback.owner.engine)
+        }
     }
 }
