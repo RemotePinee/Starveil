@@ -154,7 +154,10 @@ internal fun ShortPlayFeed(
     }
     ShortPlayPageWatcher(pager, FeedWatcher(pages, state, actions, synchronized))
     val anchorPage = rememberFeedVideoAnchor(pager)
-    Box(Modifier.fillMaxSize()) {
+    // 兜底不透明底：pager 一页都没画的那几帧，至少这一层先兜住，不指望外层颜色。
+    // 与 ShortPlayScreen 包住 feed 的那层同为 scrimStrong；正常帧全被视频层与页内容盖住，
+    // 看不到它，它只在"整块 feed 空着"的时候起作用。
+    Box(Modifier.fillMaxSize().background(starveilExtraColors.scrimStrong)) {
         // 视频面铺在 pager 下面、只创建这一次；滑动时它跟着当前页一起走，
         // 铺满整页不裁底边，让位只由页面前景做一次（多出来的部分压在 dock 下面）。
         FeedVideoLayer(videoLayer, covered, anchorPage, pager)
@@ -162,10 +165,12 @@ internal fun ShortPlayFeed(
             state = pager,
             modifier = Modifier.fillMaxSize(),
             key = { pages[it].key },
-            // 相邻页不组合：整个 feed 只有一台播放器，多铺一页不会多一个解码器，
-            // 但会让邻居页在手势期间抢同一块 TextureView、并且提前画自己的封面。
-            // 滑页期间邻居页只负责滑动动画，落页后由它接管媒体项。
-            beyondViewportPageCount = 0,
+            // 相邻页各预组合一页：滑页/换剧时"旧页已离开组合、新页还没进来"的那几帧，
+            // pager 里一页都不画，整块 feed 是空的——录屏里那几帧闪就是这么来的。
+            // 多组合一页不多播放器：整个 feed 只有 ShortPlayEntry 建的那一台（rememberPlaybackSlot
+            // 直接返回共享实例），页面侧 publish 还要过 active 这道门（FeedStagePublisher），
+            // 邻居页进来的只是模糊封面 + 覆盖层，抢不到 TextureView 也起不了第二路解码。
+            beyondViewportPageCount = 1,
             // 停在广告页且还没到强制停留时间时锁住翻页
             userScrollEnabled = !presentation.interactionLocked && lockedAdKey == null,
         ) { page ->
