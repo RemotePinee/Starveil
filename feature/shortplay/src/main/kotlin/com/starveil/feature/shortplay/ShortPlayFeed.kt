@@ -103,18 +103,21 @@ internal fun ShortPlayFeed(
     state: ShortPlayUiState.Content,
     actions: ShortPlayActions,
     drawerClosed: Boolean,
-    playerContent: @Composable (ShortPlay, Boolean) -> Unit,
+    /**
+     * 一屏的播放器内容：(短剧, 本屏可播, 本屏画视频)。
+     *
+     * 第三个参数由 [rememberFeedVideoAnchor] 决定：只有画面归属的那一页为真，
+     * 其余页只铺自己的封面。视频由页面自己画，画面与页面因此是同一个布局节点。
+     */
+    playerContent: @Composable (ShortPlay, Boolean, Boolean) -> Unit,
     presentation: ShortPlayPresentation = ShortPlayPresentation(),
     /** 当前停的这页是不是广告屏：外层据此收掉顶部菜单/分类/搜索。 */
     onAdVisible: (Boolean) -> Unit = {},
     /**
-     * feed 级唯一视频层。非空表示播放面由外层持有：整个 feed 一台播放器、一块 TextureView，
-     * 页面自己只画覆盖层与封面，滑页只换媒体项。
-     *
-     * 参数是"当前落页被整屏广告盖住"：广告占着播放面时停掉内容解码（不释放播放器），
-     * 回到正片由那一页重新 prepare。
+     * 当前落页被整屏广告盖住。为真时外层停掉内容解码（不释放播放器），
+     * 回到正片由那一页重新 prepare 同一条地址。
      */
-    videoLayer: (@Composable (Boolean) -> Unit)? = null,
+    onCoveredChange: (Boolean) -> Unit = {},
 ) {
     val feed = LocalAdPlacements.current.feed
     // 素材缺失时 creative 为空，下面的构建函数就不会插任何广告屏（后台没配=不占位）
@@ -140,6 +143,9 @@ internal fun ShortPlayFeed(
     val lockedAdState = rememberLockedAdKey(pager, pages)
     val lockedAdKey = lockedAdState.value
     val covered = pages.getOrNull(pager.settledPage) is FeedPage.Ad
+    // 广告整屏盖住播放面：通知外层还掉解码器（不释放播放器）。画面本身不在这里——
+    // 每一页自己画视频，广告页有自己的整屏素材。
+    LaunchedEffect(covered) { onCoveredChange(covered) }
 
     // 落页前后几屏的模糊封面先解好：切剧那一刻同步命中内存缓存，第一帧就是模糊的。
     PrefetchBlurredCovers(pages, pager)
@@ -155,16 +161,15 @@ internal fun ShortPlayFeed(
     ShortPlayPageWatcher(pager, FeedWatcher(pages, state, actions, synchronized))
     val anchorPage = rememberFeedVideoAnchor(pager)
     Box(Modifier.fillMaxSize()) {
-        // 视频面铺在 pager 下面、只创建这一次；滑动时它跟着当前页一起走，
-        // 铺满整页不裁底边，让位只由页面前景做一次（多出来的部分压在 dock 下面）。
-        FeedVideoLayer(videoLayer, covered, anchorPage, pager)
+        // 层叠只有两层：页面（永远不透明，自己画封面与自己那台视频），以及压在页面上面的
+        // 顶部状态条。没有任何一层靠"下层透出来"对齐，所以不存在露出根容器底色的路径。
         VerticalPager(
             state = pager,
             modifier = Modifier.fillMaxSize(),
             key = { pages[it].key },
             // 相邻页不组合：整个 feed 只有一台播放器，多铺一页不会多一个解码器，
-            // 但会让邻居页在手势期间抢同一块 TextureView、并且提前画自己的封面。
-            // 滑页期间邻居页只负责滑动动画，落页后由它接管媒体项。
+            // 但邻居页会提前解一次自己的封面、多一次整屏组合。滑页期间邻居页只负责滑动，
+            // 落页后才由它接管媒体项与画面（画面归哪一页由 rememberFeedVideoAnchor 决定）。
             beyondViewportPageCount = 0,
             // 停在广告页且还没到强制停留时间时锁住翻页
             userScrollEnabled = !presentation.interactionLocked && lockedAdKey == null,
@@ -176,7 +181,8 @@ internal fun ShortPlayFeed(
                     if (lockedAdState.value == key) lockedAdState.value = null
                 },
                 playerContent = playerContent,
-                showsVideo = videoOwnsPage(videoLayer != null, page, anchorPage),
+                // 画面归锚点页：滑页全程它继续画自己那一台视频，松手落定才交给新页。
+                hostsVideo = page == anchorPage,
             )
         }
         ShortPlayFeedStatus(state, actions.onRetry, Modifier.align(Alignment.TopCenter))
@@ -189,16 +195,16 @@ private fun FeedPageContent(
     page: FeedPage,
     playing: Boolean,
     adLock: AdLock,
-    playerContent: @Composable (ShortPlay, Boolean) -> Unit,
-    showsVideo: Boolean = false,
+    playerContent: @Composable (ShortPlay, Boolean, Boolean) -> Unit,
+    /** 画面归本页时这一屏画视频；其余屏只铺自己的封面。 */
+    hostsVideo: Boolean = false,
 ) {
     when (page) {
         is FeedPage.Play -> Box(Modifier.fillMaxSize()) {
-            // 画面归本页时才留透明：视频就在这一层下面，无首帧时封面由页面自己顶。
-            // 其余页（正被滑进来的那页）必须铺自己的封面——视频层跟着锚点页走了，
-            // 透明就会露出 feed 底色，入口条下面那一大块正是这么黑的。
-            if (!showsVideo) ShortPlayBackdrop(page.play)
-            playerContent(page.play, playing)
+            // 每一页无条件先铺自己的封面：页面从此没有"挖空"，滑页时无论画面在不在，
+            // 露出来的都是这一页的模糊封面，不可能是 feed 的根容器底色。
+            ShortPlayBackdrop(page.play)
+            playerContent(page.play, playing, hostsVideo)
         }
 
         is FeedPage.Ad -> ShortPlayAdPage(

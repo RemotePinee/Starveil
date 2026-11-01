@@ -44,7 +44,6 @@ import com.starveil.feature.player.VERTICAL_PLAY_SOURCE_INDEX
 import com.starveil.feature.player.VerticalPlayRoute
 import com.starveil.feature.player.VerticalPlayViewModel
 import com.starveil.feature.player.ShortPlayFeedPlayback
-import com.starveil.feature.player.ShortPlayVideoHost
 import com.starveil.feature.player.VerticalPlayUiState
 import com.starveil.feature.player.verticalPlayEpisode
 import com.starveil.feature.player.verticalPlayRoute
@@ -121,11 +120,7 @@ internal data class VerticalPlayRequest(
     val origin: NavBackStackEntry? = null,
     val inlineMode: ShortPlayInlineMode? = null,
     val initialMetadata: com.starveil.core.model.ShortPlay? = null,
-) {
-    /** 信息流里的一屏：播放面归 feed 那一份；目的地页自己画。 */
-    val videoHost: ShortPlayVideoHost
-        get() = if (inlineMode == null) ShortPlayVideoHost.PAGE else ShortPlayVideoHost.FEED
-}
+)
 
 @Composable
 internal fun VerticalPlayEntry(
@@ -134,8 +129,10 @@ internal fun VerticalPlayEntry(
     request: VerticalPlayRequest,
     modifier: Modifier = Modifier,
     handoff: ShortPlayHandoff? = null,
-    /** feed 级共享播放器；非空表示这是信息流里的一屏，播放面由 feed 持有。 */
+    /** 整个 feed 共用的那一台播放器；非空表示这是信息流里的一屏。 */
     feedPlayback: ShortPlayFeedPlayback? = null,
+    /** 本屏是否画视频：feed 里只有画面归属的那一页为真，其余页只铺自己的封面。 */
+    hostsVideo: Boolean = true,
 ) {
     val showRewardAd = LocalRewardAd.current
     var gateRefresh by remember { mutableIntStateOf(0) }
@@ -174,6 +171,7 @@ internal fun VerticalPlayEntry(
         },
     )
     val contentPadding = PaddingValues(bottom = dockOffset)
+    val drawsVideo = pageDrawsVideo(hostsVideo, feedPlayback, state, request.vodId)
     Box(modifier.fillMaxSize()) {
         VerticalPlayRoute(
             viewModel = viewModel,
@@ -184,7 +182,7 @@ internal fun VerticalPlayEntry(
             playbackToken = playbackToken,
             options = options,
             feedPlayback = feedPlayback,
-            videoHost = request.videoHost,
+            hostsVideo = drawsVideo,
             onWatchAd = {
                 RewardRequestContext.begin(
                     container.sessionSnapshot()?.userId, request.vodId, gateRequest.episodeNumber,
@@ -208,6 +206,19 @@ internal fun VerticalPlayEntry(
         }
     }
 }
+
+/**
+ * 这一屏画不画画面。
+ *
+ * feed 里每一屏共用同一个 ViewModel，所以"这一屏是不是画面归属那一页"之外还要确认装箱的
+ * 就是这一屏的剧：刚落页那一瞬间 state 还是上一部剧的，先挂新面只会露一块没有任何帧的空纹理。
+ */
+private fun pageDrawsVideo(
+    requested: Boolean,
+    feedPlayback: ShortPlayFeedPlayback?,
+    state: VerticalPlayUiState,
+    vodId: Int,
+): Boolean = requested && (feedPlayback == null || state.vodId == vodId)
 
 @Composable
 private fun rememberVerticalPlayViewModel(

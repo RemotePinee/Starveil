@@ -19,10 +19,11 @@ import kotlinx.coroutines.withTimeoutOrNull
 
 /** 只有绘制坐标随 pager 改变；包装层、视频尺寸与 TextureView 的组合身份始终稳定。 */
 @Composable
-internal fun VerticalVideoOutput(stage: VerticalPlayStage, showPauseHint: Boolean) {
+internal fun VerticalVideoOutput(stage: VerticalPlayStage, showPauseHint: Boolean, drawsVideo: Boolean = true) {
     Box(modifier = Modifier.fillMaxSize().graphicsLayer { translationY = stage.videoTranslationY() }) {
-        // 视频面归 feed 时这里只留暂停提示；画面由 feed 级唯一输出负责，避免两个 TextureView 抢同一个 Surface。
-        if (stage.hostsVideo) {
+        // 画面归本页时才挂视频面：feed 里只有落页那一屏为真，其余页让开、露出 feed 给这一页
+        // 铺的封面。同一时刻只有一块 TextureView，不会两块抢同一个 Surface。
+        if (drawsVideo) {
             VideoStage(engine = stage.engine, cover = stage.state.cover, revealed = stage.hasRevealedFrame)
         }
         if (showPauseHint) PlaybackHint(stage)

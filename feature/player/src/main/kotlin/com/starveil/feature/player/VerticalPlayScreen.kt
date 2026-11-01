@@ -33,7 +33,8 @@ import com.starveil.core.model.TrySeeAccess
  *
  * 播放器不归本页创建：feed 页由 `ShortPlayEntry` 注入整条信息流唯一的一台，目的地页
  * 自己 `remember` 一台（见 [rememberVerticalPlayback]）。换集只换媒体项，VM 只读进度。
- * 视频面在 feed 里也只有一份（[ShortPlayVideoHost.FEED]），页面只画覆盖层。
+ * 画面也归页面自己：归画面的那一页把视频画在自己的封面之上、入口条/右栏之下（见 `hostsVideo`），
+ * 视频与页面是同一个布局节点，滑页不需要第二处坐标来对齐。
  */
 @Composable
 fun VerticalPlayRoute(
@@ -50,8 +51,11 @@ fun VerticalPlayRoute(
     playbackToken: Any = viewModel.defaultPlaybackToken,
     /** feed 级共享播放器；null 表示本页自持（目的地页）。 */
     feedPlayback: ShortPlayFeedPlayback? = null,
-    /** 视频面归谁画。feed 页用 [ShortPlayVideoHost.FEED]，画面由 pager 下面那一份负责。 */
-    videoHost: ShortPlayVideoHost = ShortPlayVideoHost.PAGE,
+    /**
+     * 本页是否画视频。feed 里只有画面归属的那一页为真（见 `rememberFeedVideoAnchor`），
+     * 其余页只铺自己的封面；目的地页恒为真。
+     */
+    hostsVideo: Boolean = true,
 ) {
     val ownsPlayback = viewModel.ownsPlayback(playbackToken)
     val state = viewModel.state.collectAsStateWithLifecycle().value
@@ -134,9 +138,8 @@ fun VerticalPlayRoute(
         // 共享引擎只认自己的 prepare 身份：不匹配时既不算"有帧"，也不参与平移。
         preparedMediaPage = owner.session.preparedMediaPage.takeIf { prepared },
         hasPreparedFrame = rendered,
-        hostsVideo = videoHost == ShortPlayVideoHost.PAGE,
+        hostsVideo = hostsVideo,
     )
-    FeedStagePublisher(playback, stage, publishing = videoHost == ShortPlayVideoHost.FEED, active = options.active)
     VerticalPlayScreen(stage = stage, modifier = modifier, ownsPlayback = ownsPlayback)
 }
 
@@ -188,21 +191,6 @@ private fun rememberVerticalPlayback(viewModel: VerticalPlayViewModel, token: An
     return holder.value
 }
 
-/** 把本页的渲染输入交给 feed 级唯一输出；不是落页就不占槽位。 */
-@Composable
-private fun FeedStagePublisher(
-    playback: ShortPlayFeedPlayback,
-    stage: VerticalPlayStage,
-    publishing: Boolean,
-    active: Boolean,
-) {
-    val token = remember(playback) { Any() }
-    SideEffect {
-        if (publishing && active) playback.publish(token, stage) else playback.unpublish(token)
-    }
-    DisposableEffect(playback, token) { onDispose { playback.unpublish(token) } }
-}
-
 private fun VerticalPlaybackOwner.openSeries(viewModel: VerticalPlayViewModel, options: VerticalPlayOptions) {
     val current = viewModel.state.value
     val position = if (session.isCurrent(current)) engine.currentPositionMs else current.positionMs
@@ -236,7 +224,7 @@ data class VerticalPlayStage(
     val preparedMediaPage: Int? = null,
     /** 实际 prepared 源的帧，可随它自己的旧页退场，但不能露在请求的新页。 */
     val hasPreparedFrame: Boolean = false,
-    /** 视频面是否归本页画：feed 页由 pager 下面那一份负责，页面只画覆盖层。 */
+    /** 视频面是否归本页画：归本页时视频在本页封面之上、入口条与右栏之下。 */
     val hostsVideo: Boolean = true,
 )
 
@@ -256,18 +244,20 @@ internal fun VerticalPlayScreen(
 private fun VerticalStageContent(stage: VerticalPlayStage, contentModifier: Modifier, ownsPlayback: Boolean) {
     val state = stage.state
     val showsPages = !state.isLoading && state.episodes.isNotEmpty()
+    // 画画面 = 画面归本页 + 本页有播放权。收成一个布尔：视频底与视频面同进同退。
+    val drawsVideo = stage.hostsVideo && ownsPlayback
     Box(modifier = Modifier.fillMaxSize().clipToBounds()) {
-        // 整页底常驻绘制，只按"这一页画不画视频"拨 alpha：起播时它的出现不该重新组合出封面。
-        // 视频按 Fit 居中、一帧不裁，上下的空档由这张底填，滑页时它随整页一起走。
-        // 画面归 feed 时这一层必须留透明：唯一的视频输出在 pager 下面，它自带同一张底。
-        // 换深色用延迟后的 hasRevealedFrame：与遮挡撤除同一帧，否则会"背景先黑、画面还盖着封面"。
+        // 画面归本页时才铺视频底；其余页这一层让开，露出 feed 给这一页铺的模糊封面——
+        // 页面因此永远不透明，滑页中没有一帧能露到 feed 的根容器底色。
+        // 视频按 Fit 居中、一帧不裁，上下的空档由这张底填；换深色用延迟后的 hasRevealedFrame，
+        // 与遮挡撤除同一帧，否则会"背景先黑、画面还盖着封面"。
         VerticalPlaybackBackdrop(
             cover = state.cover,
             revealed = stage.hasRevealedFrame,
-            modifier = Modifier.visibleAlpha(stage.hostsVideo || !showsPages),
+            modifier = Modifier.visibleAlpha(drawsVideo || !showsPages),
         )
         // 常驻输出先绘制，逐页遮挡随后绘制；手势、URL、mode 都不改变输出组合身份。
-        VerticalVideoOutput(stage, showPauseHint = ownsPlayback && showsPages)
+        VerticalVideoOutput(stage, showPauseHint = ownsPlayback && showsPages, drawsVideo = drawsVideo)
         // 旧输出只读保留到旧目的地退场，不再接手势、面板或任何播放指令。
         if (!ownsPlayback) return@Box
         // 选集 pager 与试看层改成常驻调用、内部早退：以前是 `if (showsPages)` 条件组合，

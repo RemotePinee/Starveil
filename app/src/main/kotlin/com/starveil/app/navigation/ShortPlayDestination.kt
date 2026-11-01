@@ -28,7 +28,6 @@ import com.starveil.feature.shortplay.SHORT_PLAY_ROUTE
 import com.starveil.feature.shortplay.ShortPlayNavigation
 import com.starveil.feature.user.UserNavigation
 import com.starveil.feature.player.VerticalPlayOptions
-import com.starveil.feature.player.ShortPlayFeedVideoLayer
 import com.starveil.feature.player.rememberShortPlayFeedPlayback
 import com.starveil.feature.shortplay.ShortPlayRoute
 import com.starveil.feature.shortplay.ShortPlayPresentation
@@ -99,15 +98,16 @@ private fun ShortPlayEntry(container: AppContainer, nav: NavHostController, orig
             // 不按 play.id 包 key：这一屏的组合身份已由 VerticalPager 的 page key 决定，
             // 再套一层 key 只会让换剧时整屏（背景 / 入口条 / 选集 pager）一起重建；
             // 页面内的换剧本来就是 load(vodId) 原地换数据，不需要新的组合身份。
-            playerContent = { play, active ->
+            playerContent = { play, active, hostsVideo ->
                 VerticalPlayEntry(
                     container, nav,
                     origin.shortPlayPreviewRequest(play, active, nav, inlineMode),
                     feedPlayback = feedPlayback,
+                    hostsVideo = hostsVideo,
                 )
             },
-            // 唯一视频面：广告整屏盖住时停掉内容解码（不释放），回到正片由页面重新 prepare。
-            videoLayer = { covered -> ShortPlayFeedVideoLayer(feedPlayback, covered) },
+            // 广告整屏盖住播放面时停掉内容解码（不释放），回到正片由那一页重新 prepare。
+            onCoveredChange = { covered -> if (covered) feedPlayback.stopForCover() },
         )
     }
 }

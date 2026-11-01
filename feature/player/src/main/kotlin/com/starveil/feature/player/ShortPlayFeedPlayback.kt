@@ -1,60 +1,28 @@
 package com.starveil.feature.player
 
 import android.content.Context
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.draw.clipToBounds
-
-/** 视频面归谁画。[FEED] = 整个 feed 唯一一份，页面只画覆盖层；[PAGE] = 本页自己画。 */
-enum class ShortPlayVideoHost { PAGE, FEED }
 
 /**
  * 短剧 feed 的唯一播放器槽位。
  *
- * 一个实例 = 一台 [Media3Player] + 一个 TextureView + 一条 prepare 身份。短剧页曾给
- * **每部刷过的剧**各建一个，滑 50 屏就攒 50 套硬件解码器：`mId` 涨到 16、高通组件
- * 累计分配 839 个、native 838MB 而 Java 堆只有 256MB，最后 OOM 在 `MediaCodec.getBuffer`。
+ * 一个实例 = 一台 [Media3Player] + 一条 prepare 身份。短剧页曾给**每部刷过的剧**各建一个，
+ * 滑 50 屏就攒 50 套硬件解码器：`mId` 涨到 16、高通组件累计分配 839 个、native 838MB
+ * 而 Java 堆只有 256MB，最后 OOM 在 `MediaCodec.getBuffer`。
  *
  * 现在整条链路只有这一个创建点（[:app] 的 `ShortPlayEntry` 用 [rememberShortPlayFeedPlayback]
- * 建一次）。滑页只换媒体项：`setMediaItem` → `prepare` → `playWhenReady`，
- * 视频面从头到尾不动，不会有第二个解码器；换源时唯一要等的是新源首帧真正上屏（见 [rememberRevealedFrame]）。
+ * 建一次）。滑页只换媒体项：`setMediaItem` → `prepare` → `playWhenReady`。
+ *
+ * 画面归落页那一屏**自己的页面**画（见 `VerticalPlayScreen` 的 `hostsVideo`）：feed 只把同一台
+ * 引擎交给每一页，页面把画面放在自己的封面之上、入口条与右栏之下。画面与页面是同一个布局
+ * 节点，滑页时两者的矩形由构造保证一致，没有第二处需要对齐的坐标。
  */
 class ShortPlayFeedPlayback internal constructor(context: Context) {
 
     internal val owner = VerticalPlaybackOwner(context.applicationContext) { true }
-
-    /**
-     * 当前落页交给 feed 级视频层的渲染输入。
-     *
-     * 视频面在 pager **下面**只有一份，但它的平移必须跟着"正在播的那一页"的内层 pager
-     * （展开全集后就是逐集 pager）：这一页把自己的 [VerticalPlayStage] 写进来，
-     * 离场时按令牌撤回，不会把已销毁页的状态留在槽位上。
-     */
-    internal var stage: VerticalPlayStage? by mutableStateOf(null)
-        private set
-
-    private var stageToken: Any? = null
-
-    internal fun publish(token: Any, stage: VerticalPlayStage) {
-        stageToken = token
-        this.stage = stage
-    }
-
-    internal fun unpublish(token: Any) {
-        if (stageToken !== token) return
-        stageToken = null
-        stage = null
-    }
 
     /** 广告整屏盖住播放面：还解码器但保留播放器，回到正片重新 prepare。 */
     fun stopForCover() = owner.session.stopForCover()
@@ -74,47 +42,4 @@ fun rememberShortPlayFeedPlayback(): ShortPlayFeedPlayback {
     val playback = remember(context) { ShortPlayFeedPlayback(context) }
     DisposableEffect(playback) { onDispose { playback.release() } }
     return playback
-}
-
-/**
- * feed 的唯一视频输出，铺在 pager 下面。
- *
- * 合成身份不随滑动、换剧、换集改变：`VideoStage` 里的 `ContentFrame` 只认这一台引擎，
- * 所以整页只创建一个 TextureView/SurfaceTexture，换源时复用同一个。
- * 视频层自带的整页底跟着"有没有首帧"切换：起播/换源这一段铺同一部剧的模糊封面
- * （片源比容器宽时 Fit 会在上下留条，那两条必须由封面填住，否则滑页时露出的就是纯黑），
- * 出首帧之后换成纯深色——播放起来还挂着模糊背景，视觉上就是脏的。
- *
- * [covered] 为真是"当前落页是整屏广告"：停掉内容解码（不释放），
- * 回到正片时由那一页的会话重新 prepare 同一条地址。
- */
-@Composable
-fun ShortPlayFeedVideoLayer(
-    playback: ShortPlayFeedPlayback,
-    covered: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    LaunchedEffect(playback, covered) { if (covered) playback.stopForCover() }
-    val stage = playback.stage
-    // 请求的源还没出帧 = 起播中 / 换源中 / 首帧之前，这期间底和视频矩形都只该是封面。
-    // 撤遮挡用延迟后的状态：首帧回调到真正上屏之间差一帧，早撤就是"模糊背景之后闪一下黑"。
-    val revealed = stage?.hasRevealedFrame == true
-    Box(
-        // 布局尺寸仍是整屏：画面要按整屏取景；越出边界的那部分（TextureView 的输出、
-        // 内层 pager 换集时的平移）靠这层裁掉，不能被画到布局边界外。
-        modifier = modifier.fillMaxSize().clipToBounds(),
-    ) {
-        // 整页底：锚点页同一部剧的封面，铺满整页（ContentScale.Crop）。视频仍然 Fit 居中、
-        // 一帧不裁，上下的空档由这张底接住；出首帧后这里换成纯深色，不再模糊。
-        // 底只跟 feed 的滑页平移走（外层 FeedVideoLayer 已经加了那一段），不跟内层换集平移：
-        // 换集时视频走一屏、底不动，空出来的位置仍是同一部剧的封面。
-        VerticalPlaybackBackdrop(cover = stage?.state?.cover, revealed = revealed)
-        Box(
-            modifier = Modifier.fillMaxSize().graphicsLayer {
-                translationY = stage?.videoTranslationY() ?: 0f
-            },
-        ) {
-            VideoStage(engine = playback.owner.engine, cover = stage?.state?.cover, revealed = revealed)
-        }
-    }
 }

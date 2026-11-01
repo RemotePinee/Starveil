@@ -75,11 +75,12 @@ import kotlinx.coroutines.launch
 fun ShortPlayRoute(
     viewModel: ShortPlayViewModel,
     modifier: Modifier = Modifier,
-    playerContent: @Composable (ShortPlay, Boolean) -> Unit = { _, _ -> },
+    /** 一屏的播放器内容：(短剧, 本屏可播, 本屏画视频)；第三位只对画面归属的那页为真。 */
+    playerContent: @Composable (ShortPlay, Boolean, Boolean) -> Unit = { _, _, _ -> },
     navigation: ShortPlayNavigation = ShortPlayNavigation(),
     presentation: ShortPlayPresentation = ShortPlayPresentation(),
-    /** feed 级唯一视频层；非空时播放面由外层持有，页面只画覆盖层。 */
-    videoLayer: (@Composable (Boolean) -> Unit)? = null,
+    /** 当前落页被整屏广告盖住：外层据此还掉解码器（不释放播放器）。 */
+    onCoveredChange: (Boolean) -> Unit = {},
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val suggestions by viewModel.suggestions.collectAsStateWithLifecycle()
@@ -99,7 +100,7 @@ fun ShortPlayRoute(
             onPickResult = viewModel::playFromSearch,
         ),
         modifier = modifier,
-        videoLayer = videoLayer,
+        onCoveredChange = onCoveredChange,
         playerContent = playerContent,
         navigation = navigation,
         presentation = presentation,
@@ -125,11 +126,12 @@ fun ShortPlayScreen(
     suggestions: List<ShortPlay> = emptyList(),
     /** 顶部横滑条的分类（后台单独配的一小组）；空则由顶部退回 [state] 的全量分类。 */
     tabs: List<ShortPlayType> = emptyList(),
-    playerContent: @Composable (ShortPlay, Boolean) -> Unit = { _, _ -> },
+    /** 一屏的播放器内容：(短剧, 本屏可播, 本屏画视频)；第三位只对画面归属的那页为真。 */
+    playerContent: @Composable (ShortPlay, Boolean, Boolean) -> Unit = { _, _, _ -> },
     navigation: ShortPlayNavigation = ShortPlayNavigation(),
     presentation: ShortPlayPresentation = ShortPlayPresentation(),
-    /** feed 级唯一视频层；非空时播放面由外层持有，页面只画覆盖层。 */
-    videoLayer: (@Composable (Boolean) -> Unit)? = null,
+    /** 当前落页被整屏广告盖住：外层据此还掉解码器（不释放播放器）。 */
+    onCoveredChange: (Boolean) -> Unit = {},
 ) {
     val drawer = rememberDrawerState(DrawerValue.Closed)
     var searchOverlayVisible by rememberSaveable { mutableStateOf(false) }
@@ -169,7 +171,7 @@ fun ShortPlayScreen(
                     state, actions, drawerClosed, playerContent, presentation,
                     // 广告屏是全屏素材，顶部菜单/分类/搜索要收掉。
                     onAdVisible = { adVisible = it },
-                    videoLayer = videoLayer,
+                    onCoveredChange = onCoveredChange,
                 )
                 is ShortPlayUiState.Loading -> Box(Modifier.fillMaxSize(), Alignment.Center) {
                     StarveilLoading()
