@@ -57,10 +57,12 @@ import com.starveil.core.model.TrySeeAccess
  * 底色归调用方：这里必须留透明。片源比容器宽时 Fit 会在上下各留一条，铺底色就等于把
  * 那两条画成纯黑；调用方在本层下面垫的是同一部剧的模糊封面，空档自然接得住。
  *
- * 换源不能留着上一部/上一集的帧：`keepContentOnReset = true` 的语义就是"重置时把最后一帧
- * 留在屏幕上"，换剧那 200~500ms 里看到的就是上一部的画面。置 false 之后 Media3 不再替我们
- * 保帧；但 TextureView 上那一帧并不会自己消失（shutter 传空等于没有遮挡），所以没有首帧时
- * 由 [VerticalBlurredBackdrop] 盖住视频矩形——清空的一瞬间看到的是封面，不是黑屏。
+ * 换源**不清帧**：`keepContentOnReset = true` 让上一部的最后一帧留在 TextureView 上，
+ * 可它不会自己消失，而遮挡层要等下一次重组才挂上来，中间那一帧正好用它垫着——清空才会
+ * 露出空白/U 型黑边。换源期间看到的是 [VerticalBlurredBackdrop]：它从
+ * `starveilExtraColors.scrimStrong`（不透明）打底，旧帧一个像素都透不出来；新源出首帧后
+ * `hasFrame` 变真、遮挡整块撤掉，硬切到新画面。`shutter` 传空等于没有遮挡，真正挡住旧帧
+ * 的只有这一层，所以它必须排在视频面之后绘制。
  */
 @OptIn(UnstableApi::class)
 @Composable
@@ -74,7 +76,7 @@ internal fun VideoStage(engine: Media3Player, cover: String?, hasFrame: Boolean)
                     player = engine.mediaPlayer,
                     surfaceType = SURFACE_TYPE_TEXTURE_VIEW,
                     contentScale = ContentScale.FillBounds,
-                    keepContentOnReset = false,
+                    keepContentOnReset = true,
                     shutter = {},
                 )
             }
