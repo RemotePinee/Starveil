@@ -52,7 +52,7 @@ object Spacing {
     /** 底栏纯文字模式的高度：没有图标占位，收到这一档。 */
     val tabBarHeightText: Dp = 44.dp
 
-    /** 开屏中间动画的显示尺寸：素材 468×468，等比缩到这一档。 */
+    /** 开屏品牌 Lottie 的显示边长：素材 630×630（res/raw/splash_movie_theatre.json），等比缩到这一档。 */
     val splashAnimation: Dp = 168.dp
 
     /**

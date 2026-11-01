@@ -27,11 +27,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionSpec
-import com.airbnb.lottie.compose.LottieConstants
+import com.airbnb.lottie.compose.rememberLottieAnimatable
 import com.airbnb.lottie.compose.rememberLottieComposition
 import com.starveil.app.ads.AdSplashGate
 import com.starveil.core.designsystem.token.Spacing
@@ -59,9 +58,12 @@ private const val POLL_MS = 40L
  * 背景色与底部 lockup 的定位必须和 `splash_window.xml` 完全一致（贴底 32dp、水平居中、
  * 原始像素不缩放），两屏之间这个 logo 才是"同一个元素在延续"——位置差几像素，
  * 交接那一下就会看出来跳了。
+ *
+ * [onAnimationEnd] 是中间品牌动画的回调：播完一次、或素材解析失败都会触发，上层拿它当
+ * "可以淡出"的栅栏（见 [SplashBrandOverlay]）。
  */
 @Composable
-internal fun SplashBrandLayer() {
+internal fun SplashBrandLayer(onAnimationEnd: () -> Unit) {
     val context = LocalContext.current
     val lockup = remember {
         BitmapFactory.decodeResource(context.resources, R.drawable.ic_splash_lockup)
@@ -73,25 +75,20 @@ internal fun SplashBrandLayer() {
         animationSpec = infiniteRepeatable(tween(BREATHE_MS), RepeatMode.Reverse),
         label = "splash-breathe-alpha",
     )
-    val composition by rememberLottieComposition(LottieCompositionSpec.Asset("splash_loading.json"))
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(colorResource(R.color.splash_background)),
     ) {
-        LottieAnimation(
-            composition = composition,
-            iterations = LottieConstants.IterateForever,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(Spacing.splashAnimation),
+        SplashBrandAnimation(
+            onAnimationEnd = onAnimationEnd,
+            modifier = Modifier.align(Alignment.Center),
         )
         Image(
             bitmap = lockup,
             contentDescription = null,
             // FillBounds 对应窗口背景里的 bitmap gravity="fill"：
             // 两边都按 160×69dp 铺，不再让各自去推位图的固有尺寸。
-            // 两边都按 320×138dp 铺，不再让各自去推位图的固有尺寸。
             contentScale = ContentScale.FillBounds,
             alpha = breathe,
             modifier = Modifier
@@ -103,23 +100,62 @@ internal fun SplashBrandLayer() {
 }
 
 /**
+ * 开屏品牌动画：`res/raw/splash_movie_theatre.json`，630×630 方形素材，只播一次。
+ *
+ * 素材是外部导出的 json，解析失败时 [LottieAnimation] 一帧都不画、也没有完成回调，所以
+ * `isFailure` 也算"结束"：退化成底色 + 底部 lockup 继续往下走。把启动流程卡死在这里比少
+ * 一个动画严重得多。
+ */
+@Composable
+private fun SplashBrandAnimation(onAnimationEnd: () -> Unit, modifier: Modifier = Modifier) {
+    val compositionResult = rememberLottieComposition(
+        LottieCompositionSpec.RawRes(R.raw.splash_movie_theatre),
+    )
+    val animatable = rememberLottieAnimatable()
+    // 播完（或确认解析失败）才通知上层：倒计时栅栏读的就是这个信号
+    LaunchedEffect(compositionResult.value, compositionResult.isFailure) {
+        val composition = compositionResult.value
+        if (composition == null) {
+            if (compositionResult.isFailure) onAnimationEnd()
+            return@LaunchedEffect
+        }
+        animatable.animate(composition = composition, iterations = 1)
+        onAnimationEnd()
+    }
+    LottieAnimation(
+        composition = compositionResult.value,
+        progress = { animatable.progress },
+        // 方形素材在任意高度的容器里按原比例居中，不拉伸变形
+        contentScale = ContentScale.Fit,
+        modifier = modifier.size(Spacing.splashAnimation),
+    )
+}
+
+/** 退场判定：三件事都齐了才走；等满 [BRAND_MAX_MS] 无条件放行，不能永久挡住用户。 */
+private fun brandLayerCanLeave(startedAt: Long, animationDone: Boolean): Boolean {
+    if (SystemClock.elapsedRealtime() - startedAt > BRAND_MAX_MS) return true
+    val contentReady = AdSplashGate.homeReady() && AdSplashGate.splashArtReady()
+    return animationDone && contentReady
+}
+
+/**
  * 第二屏的挂载与退场。
  *
- * 等两件事都就绪才退：首页画出内容、开屏素材进了缓存。退场动画播完才置位
+ * 等三件事都就绪才退：首页画出内容、开屏素材进了缓存、品牌动画播完一次。退场动画播完才置位
  * [AdSplashGate.markBrandLayerGone]——开屏倒计时读这个栅栏，否则它在本层还盖着
  * 的时候就开始扣秒，用户真正看见广告时只剩两三秒。
  */
 @Composable
 internal fun SplashBrandOverlay() {
-    var visible by remember { mutableStateOf(!AdSplashGate.homeReady()) }
+    // 首页首帧已经画出时这层不出现，也就没有"等动画播完"这回事
+    val layerShown = !AdSplashGate.homeReady()
+    var visible by remember { mutableStateOf(layerShown) }
+    var animationDone by remember { mutableStateOf(!layerShown) }
     LaunchedEffect(Unit) {
         val started = SystemClock.elapsedRealtime()
         // 首页或开屏图就绪，或者等满上限就退场：后台把数据清空时首页会停在 Empty，
         // 没有这层兜底就一直卡在这里。Empty/Error 也算就绪（见 HomeViewModel）。
-        while (!AdSplashGate.homeReady() || !AdSplashGate.splashArtReady()) {
-            if (SystemClock.elapsedRealtime() - started > BRAND_MAX_MS) break
-            delay(POLL_MS)
-        }
+        while (!brandLayerCanLeave(started, animationDone)) delay(POLL_MS)
         val remaining = BRAND_MIN_MS - (SystemClock.elapsedRealtime() - started)
         if (remaining > 0) delay(remaining)
         visible = false
@@ -134,6 +170,6 @@ internal fun SplashBrandOverlay() {
         enter = EnterTransition.None,
         exit = fadeOut(tween(BRAND_FADE_MS)),
     ) {
-        SplashBrandLayer()
+        SplashBrandLayer(onAnimationEnd = { animationDone = true })
     }
 }
