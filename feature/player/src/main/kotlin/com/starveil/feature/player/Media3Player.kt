@@ -72,11 +72,17 @@ class Media3Player(context: Context) {
         // 的小码流根本补不及：播一秒就断，断了攒 1.5 秒又续上，表现正是"每一两秒缓冲一次"。
         // 这两个门槛该按分片长度定，不该按起播速度定：起播多等半秒几乎无感，
         // 播放中途一卡一卡却很难忍。
+        //
+        // maxBufferMs 原来给到 50_000：预读 50 秒，按竖屏短剧 3~5 Mbps 算就是 20~30MB，
+        // 全部落在 Java 堆上（Media3 的 DefaultAllocator 用 byte[] 装缓冲数据），
+        // 而 Java 堆只有 256MB。实测每换一部剧堆就抬 20MB 以上，十部剧就顶到 256MB 上限，
+        // 这正是短剧页 OOM 的主项。竖屏一次只播一集、滑走即换源，预读 50 秒毫无意义：
+        // 12 秒足够顶住常见的网络抖动，堆上的常驻缓冲压到 6MB 以内。
         .setLoadControl(
             DefaultLoadControl.Builder()
                 .setBufferDurationsMs(
-                    /* minBufferMs = */ 15_000,
-                    /* maxBufferMs = */ 50_000,
+                    /* minBufferMs = */ 6_000,
+                    /* maxBufferMs = */ 12_000,
                     /* bufferForPlaybackMs = */ 1_500,
                     /* bufferForPlaybackAfterRebufferMs = */ 3_000,
                 )

@@ -39,10 +39,8 @@ class Mp4SampleTable(val samples: List<Sample>) {
         val dstOff = region.off + (segStart - from).toInt()
         val segLen = (segEnd - segStart).toInt()
         val inSample = (segStart - sStart).toInt()
-        val cipher = region.buf.copyOfRange(dstOff, dstOff + segLen)
         val start = CencSampleDecryptor.Start(block = inSample / 16, skip = inSample % 16)
-        val plain = CencSampleDecryptor.decryptAt(key, s.iv, cipher, start)
-        System.arraycopy(plain, 0, region.buf, dstOff, segLen)
+        CencSampleDecryptor.decryptInPlace(key, s.iv, Region(region.buf, dstOff, segLen), start)
     }
 
     companion object {

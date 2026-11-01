@@ -8,16 +8,13 @@ import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.TransferListener
 import com.starveil.core.hongguo.HongguoConfig
 import com.starveil.core.hongguo.HongguoRelay
-import com.starveil.core.hongguo.Mp4SampleTable
 import com.starveil.core.hongguo.SpadeKey
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.util.LinkedHashMap
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
@@ -50,6 +47,10 @@ internal class HongguoGateDataSource(
 ) : DataSource {
 
     private var inner: DataSource? = null
+
+    /** 头部下载与解析：只管存取字节，材料与缓存留在本类。 */
+    private val headFetcher = HongguoHeadFetcher(client, headers)
+
     /**
      * 开始准备的时刻，用来算整条链路（材料 + 头部 + 解析）的总耗时。
      *
@@ -164,18 +165,11 @@ internal class HongguoGateDataSource(
     /** 材料 -> 头部 -> sample 表。任一环拿不到就返回 null。 */
     private fun parseHead(relayUrl: String): HongguoPrepared? {
         val source = sourceOf(relayUrl) ?: return null
-        val table = headOf(source.second)
+        val table = headFetcher.fetch(source.second, openedAt)
         if (table == null) {
             PlayerLog.warn { "头部下载或 moov 解析失败: host=${PlayerLog.hostOf(source.second)}" }
         }
         return table?.let { HongguoPrepared(source.first, it) }
-    }
-
-    /** 解析 moov；解不出来说明这集的 stsz/stco/stsc/senc 不全。 */
-    private fun tableOf(head: ByteArray): Mp4SampleTable? {
-        val table = Mp4SampleTable.parse(head)
-        if (table == null) PlayerLog.warn { "moov 解析失败（stsz/stco/stsc/senc 缺失？）" }
-        return table
     }
 
     /** 材料接口 -> (派生的 key, 播放地址)；字段缺失时把断在哪一步写进日志。 */
@@ -235,86 +229,6 @@ internal class HongguoGateDataSource(
         }
     }
 
-    /**
-     * 下头部并解一次 moov：先 800KB，解不出来再补到 2MB。
-     *
-     * 原来为了判断"够不够"在这里解析一遍、[parseHead] 再解析一遍：一集 4463 条的表
-     * 每条片源要多造一份（4463 个 Sample 对象 + 4463 条 IV 数组）然后把第一份丢掉，
-     * 正是碎片化 OOM 要的碎屑。现在整条链路只解析一次。
-     */
-    private fun headOf(mainUrl: String): Mp4SampleTable? {
-        warmUp(mainUrl)
-        val small = rangeRequest(mainUrl, HEAD_BYTES_SMALL)
-        val smallTable = small?.let { Mp4SampleTable.parse(it) }
-        if (small != null && smallTable != null) {
-            logHeadReady(small.size, smallTable, SystemClock.elapsedRealtime() - openedAt)
-            return smallTable
-        }
-        val head = rangeRequest(mainUrl, HEAD_BYTES)
-        val table = head?.let { tableOf(it) }
-        if (head != null && table != null) {
-            logHeadReady(head.size, table, SystemClock.elapsedRealtime() - openedAt)
-        }
-        return table
-    }
-
-    /**
-     * 预先建立到 CDN 的连接。
-     *
-     * 红果每集走的是不同的 CDN 子域名，连接池里没有可复用的连接，
-     * 每条新连接都要完整走一遍 DNS + TCP + TLS（稳定在几百毫秒）。
-     * 先发一个小请求把连接备好，后面并行的 4 段就能直接复用。
-     */
-    private fun warmUp(mainUrl: String) {
-        Thread {
-            runCatching {
-                val req = Request.Builder().url(mainUrl)
-                    .header("Range", "bytes=0-0")
-                    .apply { headers.forEach { (k, v) -> header(k, v) } }
-                    .build()
-                client.newCall(req).execute().close()
-            }
-        }.apply { isDaemon = true; name = "hongguo-warmup" }.start()
-    }
-
-    /**
-     * 分段并行下载头部。
-     *
-     * 单条 Range 请求在手机上实测要 0.5~2.8 秒，波动很大；切成 4 段同时拉能
-     * 吃满带宽，也把单条连接的抖动摊薄。任何一段失败就退回串行。
-     */
-    private fun rangeRequest(mainUrl: String, bytes: Int): ByteArray? {
-        val part = bytes / HEAD_PARTS
-        val parts = arrayOfNulls<ByteArray>(HEAD_PARTS)
-        val latch = CountDownLatch(HEAD_PARTS)
-        for (i in 0 until HEAD_PARTS) {
-            val start = i * part
-            val end = if (i == HEAD_PARTS - 1) bytes - 1 else start + part - 1
-            Thread {
-                runCatching { parts[i] = downloadPart(mainUrl, start, end) }
-                latch.countDown()
-            }.apply { isDaemon = true; name = "hongguo-head-$i" }.start()
-        }
-        latch.await(HEAD_TIMEOUT_SEC, TimeUnit.SECONDS)
-
-        val out = ByteArrayOutputStream(bytes)
-        for (p in parts) {
-            if (p == null) return null
-            out.write(p)
-        }
-        return out.toByteArray()
-    }
-
-    /** 拉一段 Range；失败返回 null，由 [rangeRequest] 整体判失败。 */
-    private fun downloadPart(mainUrl: String, start: Int, end: Int): ByteArray? {
-        val req = Request.Builder().url(mainUrl)
-            .header("Range", "bytes=$start-$end")
-            .apply { headers.forEach { (k, v) -> header(k, v) } }
-            .build()
-        return client.newCall(req).execute().use { resp ->
-            if (resp.isSuccessful) resp.body?.bytes() else null
-        }
-    }
 
     companion object {
         /**
@@ -371,16 +285,6 @@ internal class HongguoGateDataSource(
         private fun resolvePrefetch(url: String?, config: HongguoConfig): String? =
             url?.takeIf { config.matches(it) && HongguoRelay.parse(it) != null }
 
-        /** moov 实测 782KB，1MB 是上限；先要 800KB 就够绝大多数集。 */
-        private const val HEAD_BYTES_SMALL = 800 * 1024
-
-        /**
-         * 头部下载切几段并行。
-         * 实测 1 段 2.8s、4 段 1.2s；手机网络下多开几条能进一步摊薄单连接抖动。
-         * 上限受连接池约束：池子 8 条，留 2 条给播放流。
-         */
-        private const val HEAD_PARTS = 6
-        private const val HEAD_TIMEOUT_SEC = 20L
         /** 材料缓存有效期：地址 30 分钟内有效，取 5 分钟很安全。 */
         private const val MATERIAL_TTL_MS = 5 * 60 * 1000L
 
@@ -405,7 +309,6 @@ internal class HongguoGateDataSource(
 
         /** 正在准备中的地址：避免预热与 open() 重复下载同一份头部。 */
         private val inFlight = ConcurrentHashMap<String, CompletableFuture<HongguoPrepared?>>()
-        private const val HEAD_BYTES = 2 * 1024 * 1024
 
         /** 磁盘读写要 Context，由 VideoHttp 在构造时写入。 */
         @Volatile
@@ -430,11 +333,4 @@ private fun logMaterialProblem(relayUrl: String, json: JSONObject?, material: Ma
         else -> "spade_a 派生 key 失败"
     }
     PlayerLog.warn { reason }
-}
-
-/** 头部多大、表几条、准备了多久，一行打完：起播慢了就先看这一行。 */
-private fun logHeadReady(headSize: Int, table: Mp4SampleTable, elapsedMs: Long) {
-    PlayerLog.warn {
-        "头部 $headSize 字节，sample 表 ${table.samples.size} 条，解密就绪（准备 ${elapsedMs}ms）"
-    }
 }

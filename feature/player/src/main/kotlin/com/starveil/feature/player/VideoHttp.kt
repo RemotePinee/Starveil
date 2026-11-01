@@ -73,11 +73,18 @@ internal class VideoHttp(private val context: Context) {
      */
     fun prefetch(url: String?, headers: Map<String, String>) {
         if (url.isNullOrBlank() || url == primedUrl) return
+        // 只预取 HLS：那里 `targets` 是清单里的前两小段，几百 KB 就到顶。
+        //
+        // 单文件 mp4（短剧、红果都是这种）整条地址就是**整集 20~30MB**：
+        // `cacheByWriter` 会把它从头读到尾，等于在播放之外再完整拉一遍流量，而且每一个字节
+        // 都要穿过 [HongguoCencDataSource] 解密——那里的 `read` 每次都要再分配一份明文。
+        // 播放本身已经挂在 `CacheDataSource` 上，边播边写的是同一份缓存，这条链路纯属重复。
+        // 实测它在每次换剧时触发几十 MB 的堆分配，与 OOM 曲线同步。
+        if (!isHls(url)) return
         job?.cancel()
         job = scope.launch {
             try {
-                val targets = if (isHls(url)) firstSegments(url, headers) else listOf(url)
-                targets.forEach { cacheByWriter(it, headers) }
+                firstSegments(url, headers).forEach { cacheByWriter(it, headers) }
                 primedUrl = url
             } catch (e: IOException) {
                 PlayerLog.warn { "预取失败（不影响播放）：$url ${e.message}" }

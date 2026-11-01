@@ -33,10 +33,14 @@ class StarveilApplication : Application(), SingletonImageLoader.Factory {
     /**
      * 全进程唯一的 ImageLoader。
      *
-     * Coil 默认的内存缓存是可用堆的 25%：真机 256MB 堆上等于 64MB，而短剧页一张全屏
-     * 封面（1080×2400 的 ARGB_8888）解出来就接近 10MB，再压上播放器的解码缓冲，
-     * 滚十几屏之后堆就被缓存本身占满了。压到 15% 把余量让给播放器；
-     * 缩下去之后命中率下降的部分由磁盘缓存与网络补，不再靠吃内存换。
+     * 真机实测（1080×2400 @2.625x，`dumpsys meminfo` 每屏一采）：一张整屏图解码后是
+     * 1080×2400×4 ≈ 10.4MB，API 26+ 走硬件位图，全部记在 **Graphics / EGL mtrack** 上；
+     * 首页刚起 EGL 55MB、滚一屏掉回 6MB，短剧 feed 滑 4 屏 Graphics 从 55MB 爬到 138MB 并停住。
+     * 也就是说 Graphics 的稳态高度 = **缓存里能塞下几张整屏图**。
+     *
+     * 原来取可用堆的 15%：256MB 堆 = 38MB ≈ 只放得下三张整屏图，可长图/广告素材一旦
+     * 叠上封面与视频面缓冲，Graphics 立刻过百。压到 8% 把稳态压到两张整屏图以内，
+     * 缩下去之后命中率下降的部分由磁盘缓存与网络补，不再靠吃 GPU 内存换。
      *
      * 磁盘缓存仍走 Coil 默认（`cacheDir/image_cache` 的 2% 空间），这里不覆盖。
      */
@@ -50,7 +54,7 @@ class StarveilApplication : Application(), SingletonImageLoader.Factory {
             .build()
 
     private companion object {
-        /** 可用堆的 15%，见 [newImageLoader]。 */
-        const val IMAGE_MEMORY_CACHE_PERCENT = 0.15
+        /** 可用堆的 8%，见 [newImageLoader]。 */
+        const val IMAGE_MEMORY_CACHE_PERCENT = 0.08
     }
 }

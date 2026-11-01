@@ -53,6 +53,27 @@ class SpadeKeyTest {
         assertArrayEquals(whole.copyOfRange(from, from + 20), tail)
     }
 
+    /**
+     * 就地解密（播放热路径）：任意起点都必须等于整段解密结果里的同一段。
+     *
+     * 这条路径改成了直接异或回原缓冲、不再产生中间数组，算错一位画面就会花屏，
+     * 所以逐字节对着 [CencSampleDecryptor.decrypt] 的结果比。
+     */
+    @Test
+    fun decryptInPlaceMatchesWholeSample() {
+        val key = SpadeKey.derive(spadeA)!!
+        val iv = bytes("da9d5b88146dec45")
+        val cipher = bytes("c66b8d1d00bedf579684f10a1e528df6") + bytes("118e08820019d6b917eba50775fcff3a")
+        val whole = CencSampleDecryptor.decrypt(key, iv, cipher)
+
+        for (from in 0 until cipher.size - 4) {
+            val region = Region(cipher.copyOfRange(from, cipher.size), 0, cipher.size - from)
+            val start = CencSampleDecryptor.Start(block = from / 16, skip = from % 16)
+            CencSampleDecryptor.decryptInPlace(key, iv, region, start)
+            assertArrayEquals(whole.copyOfRange(from, cipher.size), region.buf)
+        }
+    }
+
     private fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     private fun bytes(s: String) =

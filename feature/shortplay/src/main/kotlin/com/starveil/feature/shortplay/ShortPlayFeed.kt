@@ -40,6 +40,7 @@ import androidx.lifecycle.compose.currentStateAsState
 import coil3.compose.AsyncImage
 import com.starveil.core.common.ad.AdPlacement
 import com.starveil.core.designsystem.component.AdBadge
+import com.starveil.core.designsystem.component.rememberScreenImageRequest
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.graphics.Brush
@@ -249,6 +250,9 @@ private fun ShortPlayAdPage(
     val openLanding = LocalAdClick.current
     val colors = starveilExtraColors
     val seconds = creative.feedSeconds
+    // 整屏素材按屏幕像素解码：缓存键不再随父容器约束漂移，同一张广告来回滚动只解一次，
+    // 也不会因为约束退化到「原图尺寸」把一张 4000px 的海报整张塞进 Graphics。
+    val creativeRequest = rememberScreenImageRequest(creative.imageUrl)
     var remain by remember(creative.imageUrl, seconds) { mutableIntStateOf(seconds) }
     LaunchedEffect(seconds, locked) {
         if (!locked || seconds <= 0) return@LaunchedEffect
@@ -266,7 +270,7 @@ private fun ShortPlayAdPage(
             .clickable { if (creative.clickUrl.isNotBlank()) openLanding(creative.clickUrl) },
     ) {
         AsyncImage(
-            model = creative.imageUrl,
+            model = creativeRequest,
             contentDescription = creative.title.ifBlank { "广告" },
             contentScale = ContentScale.Crop,
             // 竖屏全屏广告按规范铺满整屏（展示面积是横屏的 3 倍），
