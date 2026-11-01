@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,21 +30,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ArrowLeft
-import com.adamglin.phosphoricons.regular.ArrowsClockwise
-import com.adamglin.phosphoricons.regular.ChatCircle
-import com.adamglin.phosphoricons.regular.ClockCounterClockwise
-import com.adamglin.phosphoricons.regular.Heart
-import com.adamglin.phosphoricons.regular.MagnifyingGlass
 import com.starveil.core.designsystem.component.StarveilLoadingScreen
 import com.starveil.core.designsystem.mirrorIconInRtl
-import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.ShortPlay
@@ -61,7 +52,6 @@ fun ShortPlayCategoryRoute(
     viewModel: ShortPlayCategoryViewModel,
     onBack: () -> Unit,
     onPlay: (ShortPlay) -> Unit,
-    navigation: ShortPlayNavigation = ShortPlayNavigation(),
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -75,7 +65,6 @@ fun ShortPlayCategoryRoute(
             onRefresh = viewModel::refresh,
             onPlay = onPlay,
             onBack = onBack,
-            navigation = navigation,
         ),
         modifier = modifier,
     )
@@ -85,8 +74,9 @@ fun ShortPlayCategoryRoute(
  * 两级分类条固定在顶部，只有卡片网格滚动——用户点完一项要立刻看到自己在哪儿，
  * 让它滚走等于每次都得先滑回顶部。
  *
- * 底色用与剧场页同一块深底：分类条是剧场页那一条（白字 + DstOut 渐隐），
- * 换到浅色底上会整条看不见，所以整页保持深色，不另造一种选中态。
+ * 底色与文字走 `colorScheme` 标准角色：这页不压画面，必须跟随浅色/深色主题。
+ * 分类条用 [ShortPlayCategoryTone.OnSurface] 变体——剧场页那一条是固定白字（压封面），
+ * 同一个组件两种底色，各取各的档位。
  */
 @Composable
 fun ShortPlayCategoryScreen(
@@ -97,10 +87,10 @@ fun ShortPlayCategoryScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(starveilExtraColors.scrimStrong),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         Column(modifier = Modifier.statusBarsPadding()) {
-            ShortPlayCategoryTopBar(onBack = actions.onBack, onSearch = actions.navigation.onSearch)
+            ShortPlayCategoryTopBar(onBack = actions.onBack)
             ShortPlayCategoryTree(
                 state = state,
                 onSelectParent = actions.onSelectParent,
@@ -122,13 +112,12 @@ fun ShortPlayCategoryScreen(
                 else -> ShortPlayCategoryGrid(state = state, actions = actions)
             }
         }
-        ShortPlayCategoryLinks(actions = actions)
     }
 }
 
-/** 顶栏：返回 + 标题 + 搜索。搜索是入口不是分类维度，所以只上报动作。 */
+/** 顶栏：返回 + 标题。分类页不挂搜索入口——导航全靠分类条本身。 */
 @Composable
-private fun ShortPlayCategoryTopBar(onBack: () -> Unit, onSearch: () -> Unit) {
+private fun ShortPlayCategoryTopBar(onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -140,7 +129,7 @@ private fun ShortPlayCategoryTopBar(onBack: () -> Unit, onSearch: () -> Unit) {
             Icon(
                 imageVector = PhosphorIcons.Regular.ArrowLeft,
                 contentDescription = "返回",
-                tint = starveilExtraColors.onImage,
+                tint = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.size(IconSize.md).mirrorIconInRtl(),
             )
         }
@@ -148,17 +137,9 @@ private fun ShortPlayCategoryTopBar(onBack: () -> Unit, onSearch: () -> Unit) {
             text = "短剧分类",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
-            color = starveilExtraColors.onImage,
+            color = MaterialTheme.colorScheme.onBackground,
             modifier = Modifier.weight(1f),
         )
-        IconButton(onClick = onSearch) {
-            Icon(
-                imageVector = PhosphorIcons.Regular.MagnifyingGlass,
-                contentDescription = "搜索",
-                tint = starveilExtraColors.onImage,
-                modifier = Modifier.size(IconSize.md),
-            )
-        }
     }
 }
 
@@ -179,7 +160,7 @@ private fun ShortPlayCategoryTree(
         Text(
             text = "后台暂无分类",
             style = MaterialTheme.typography.bodySmall,
-            color = starveilExtraColors.textMuted,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm),
         )
         return
@@ -191,6 +172,7 @@ private fun ShortPlayCategoryTree(
             enabled = true,
             onSelect = onSelectParent,
             leadingPadding = Spacing.lg,
+            tone = ShortPlayCategoryTone.OnSurface,
         )
     }
     if (state.showChildren) {
@@ -200,6 +182,7 @@ private fun ShortPlayCategoryTree(
             enabled = true,
             onSelect = onSelectChild,
             leadingPadding = Spacing.lg,
+            tone = ShortPlayCategoryTone.OnSurface,
         )
     }
 }
@@ -289,7 +272,7 @@ private fun ShortPlayGridFooter(isLoadingMore: Boolean, hasMore: Boolean) {
             else -> Text(
                 text = END_TEXT,
                 style = MaterialTheme.typography.labelSmall,
-                color = starveilExtraColors.textFaint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -300,7 +283,7 @@ private fun ShortPlayGridFooter(isLoadingMore: Boolean, hasMore: Boolean) {
 private fun ShortPlayCategoryNotice(message: String, actionLabel: String, onAction: () -> Unit) {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = message, color = starveilExtraColors.textMuted)
+            Text(text = message, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(
                 text = actionLabel,
                 color = MaterialTheme.colorScheme.primary,
@@ -309,80 +292,6 @@ private fun ShortPlayCategoryNotice(message: String, actionLabel: String, onActi
                     .clickable(onClick = onAction),
             )
         }
-    }
-}
-
-/**
- * 底部快捷入口。
- *
- * 原先在剧场页侧边抽屉里；抽屉撤掉后挪到这里，四个入口一个不少：
- * 观看历史、我的收藏、反馈，以及刷新当前分类的「换一批」。
- */
-@Composable
-private fun ShortPlayCategoryLinks(actions: ShortPlayCategoryActions) {
-    HorizontalDivider(color = starveilExtraColors.divider)
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.sm, vertical = Spacing.xs),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-    ) {
-        ShortPlayCategoryLink(
-            label = "观看历史",
-            icon = PhosphorIcons.Regular.ClockCounterClockwise,
-            onClick = actions.navigation.onHistory,
-            modifier = Modifier.weight(1f),
-        )
-        ShortPlayCategoryLink(
-            label = "我的收藏",
-            icon = PhosphorIcons.Regular.Heart,
-            onClick = actions.navigation.onFavorites,
-            modifier = Modifier.weight(1f),
-        )
-        ShortPlayCategoryLink(
-            label = "反馈",
-            icon = PhosphorIcons.Regular.ChatCircle,
-            onClick = actions.navigation.onFeedback,
-            modifier = Modifier.weight(1f),
-        )
-        ShortPlayCategoryLink(
-            label = "换一批",
-            icon = PhosphorIcons.Regular.ArrowsClockwise,
-            onClick = actions.onRefresh,
-            modifier = Modifier.weight(1f),
-        )
-    }
-}
-
-/** 一行快捷入口：图标在上、文案在下，四个等宽排开。 */
-@Composable
-private fun ShortPlayCategoryLink(
-    label: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(
-        modifier = modifier
-            .clickable(onClick = onClick)
-            .padding(vertical = Spacing.sm),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Icon(
-            imageVector = icon,
-            // 行内已有文字，图标不再重复朗读。
-            contentDescription = null,
-            tint = starveilExtraColors.onImageSubtle,
-            modifier = Modifier.size(IconSize.item),
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.labelSmall,
-            color = starveilExtraColors.onImageSubtle,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = Spacing.xxs),
-        )
     }
 }
 

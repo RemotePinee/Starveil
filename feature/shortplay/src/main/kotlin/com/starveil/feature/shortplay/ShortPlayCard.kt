@@ -16,7 +16,6 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import coil3.compose.AsyncImage
 import com.starveil.core.designsystem.component.BlurredCoverBackdrop
-import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.ShortPlay
@@ -60,8 +59,8 @@ internal fun ShortPlayPosterCard(
         Text(
             text = play.title,
             style = MaterialTheme.typography.bodyMedium,
-            // 分类页与剧场页共用同一块深底：标题用画面级白色，不跟主题明暗
-            color = starveilExtraColors.onImage,
+            // 分类页是普通页面（不压画面），标题跟主题走；浅色主题下写死白字会整行看不见
+            color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -69,7 +68,7 @@ internal fun ShortPlayPosterCard(
             Text(
                 text = "共 ${play.episodeCount} 集",
                 style = MaterialTheme.typography.labelSmall,
-                color = starveilExtraColors.textFaint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )

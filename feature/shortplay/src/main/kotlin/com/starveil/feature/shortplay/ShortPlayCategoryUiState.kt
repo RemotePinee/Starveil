@@ -50,7 +50,7 @@ data class ShortPlayCategoryUiState(
         get() = !isLoading && !isLoadingMore && error == null && items.isEmpty()
 }
 
-/** 分类页动作。参数超过 5 个会被 detekt 拒，所以收成一个对象；跳转仍走 [navigation]。 */
+/** 分类页动作。参数超过 5 个会被 detekt 拒，所以收成一个对象。 */
 @Immutable
 data class ShortPlayCategoryActions(
     val onSelectParent: (Int) -> Unit = {},
@@ -61,7 +61,6 @@ data class ShortPlayCategoryActions(
     val onRefresh: () -> Unit = {},
     val onPlay: (ShortPlay) -> Unit = {},
     val onBack: () -> Unit = {},
-    val navigation: ShortPlayNavigation = ShortPlayNavigation(),
 )
 
 /** 客户端虚拟的「全部」：id 固定 0，不占后端任何分类 id。 */

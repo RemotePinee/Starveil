@@ -86,12 +86,6 @@ private fun ShortPlayCategoryEntry(
         viewModel = categoryViewModel,
         onBack = { nav.popBackStack() },
         onPlay = { play -> nav.navigate(verticalPlayRoute(play.id, FIRST_EPISODE_NUMBER)) },
-        navigation = ShortPlayNavigation(
-            onSearch = { nav.navigate("search") },
-            onHistory = { nav.navigate(UserNavigation.HISTORY_ROUTE) },
-            onFavorites = { nav.navigate(UserNavigation.FAVORITE_ROUTE) },
-            onFeedback = { nav.navigate(UserNavigation.FEEDBACK_ROUTE) },
-        ),
     )
 }
 

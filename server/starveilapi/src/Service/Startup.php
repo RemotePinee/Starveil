@@ -98,16 +98,20 @@ final class Startup
             // 短剧分类（mac_type.type_id）：后台可以填多个，`21,22,23` 逗号分隔。
             // shortplay_type_id 保留成第一个，部分调用方只读这一个；新版读下面的数组。
             'shortplay_type_id' => $this->shortplayTypeIds()[0] ?? 0,
-            'shortplay_types' => $this->shortplayTypes(),
+            'shortplay_types' => $this->safeList(fn (): array => $this->shortplayTypes()),
             // 父分类：客户端搜索一次请求就覆盖全部子分类，进短剧页也用它拉默认流；
             // 0 = 没配，搜索退回按下面的 shortplay_types 逐个搜，进页用第一个分类。
             'shortplay_search_type_id' => max(0, Setting::int('shortplay_search_type_id', 0)),
             // 顶部横滑条：单独配的一小组子分类（一般 3-6 个），与分类页的全量分类不同。
             // 空数组 = 没配，客户端顶部直接用上面的 shortplay_types。
-            'shortplay_tabs' => $this->shortplayTypes('shortplay_tab_type_ids'),
+            'shortplay_tabs' => $this->safeList(
+                fn (): array => $this->shortplayTypes('shortplay_tab_type_ids'),
+            ),
             // 分类树：一级父分类 + 直接子分类（mac_type.type_pid）。分类页据此做两级联动；
             // 只读归拢，不写库、不建分类。空数组 = 后台没配（客户端退回 shortplay_types）。
-            'shortplay_categories' => $this->shortplayCategories(),
+            // 分类树是新增的非必需字段，出错时降级成空数组而不是让整个 startup 500：
+            // 一旦 500，客户端会退回全部默认值，连后台配的 dock 菜单都会丢。
+            'shortplay_categories' => $this->safeList(fn (): array => $this->shortplayCategories()),
             'bottom_tabs' => $this->bottomTabs(),
             // 底栏是否显示图标：关闭后客户端只画文字，并按 tab 数量自动放大字号
             'bottom_tab_icons' => Setting::int('bottom_tab_icons', 1),
@@ -333,8 +337,7 @@ final class Startup
             }
         }
 
-
-
+        return $list;
     }
     /**
      * 短剧分类树：后台配的一级分类 + 它们在 mac_type 里的直接子分类。
@@ -361,8 +364,7 @@ final class Startup
             ->whereIn('type_pid', $roots)
             ->order('type_id', 'asc')
             ->field('type_id,type_name,type_pid')
-            ->select()
-            ->toArray();
+            ->select();
         $children = [];
         foreach ($childRows as $row) {
             $children[(int)$row['type_pid']][] = [
@@ -383,5 +385,26 @@ final class Startup
         }
 
         return $tree;
+    }
+
+    /**
+     * 可选字段的防御壳：$producer 抛任何异常都退回空数组，绝不让整个 startup 失败。
+     *
+     * 为什么必须包：`payload()` 只是一段数组字面量，任一字段抛错都会让接口 500，
+     * 客户端随即退回**全部**默认值——连后台配的 dock 菜单也跟着丢。分类树/分类条
+     * 缺了只影响短剧页的一个展示块，代价远小于整页默认化。错误照样进 php 错误日志。
+     *
+     * @param callable():array<int|string,mixed> $producer
+     * @return array<int|string,mixed>
+     */
+    private function safeList(callable $producer): array
+    {
+        try {
+            return $producer();
+        } catch (\Throwable $e) {
+            error_log('[starveil] startup 可选字段降级: ' . $e->getMessage());
+
+            return [];
+        }
     }
 }

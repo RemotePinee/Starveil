@@ -55,10 +55,12 @@ internal fun ShortPlayCategoryRow(
     modifier: Modifier = Modifier,
     /** 首个分类的起始留白；与图标并排时留窄一点，别把可滚宽度吃掉。 */
     leadingPadding: Dp = Spacing.xxs,
+    /** 文字配色档位：默认「压画面」的白字，实底色页面必须显式传 [ShortPlayCategoryTone.OnSurface]。 */
+    tone: ShortPlayCategoryTone = ShortPlayCategoryTone.OnImage,
 ) {
     val scrollState = rememberScrollState()
     // 边缘淡出用 BlendMode.DstOut 把内容本身擦成透明，而不是盖一层背景色：
-    // 这一行压在短剧封面上，底图颜色随时在变，任何纯色蒙版都会露出一块斑。
+    // 这一行在剧场页压在短剧封面上，底色随时在变，任何纯色蒙版都会露出一块斑。
     // 左侧只在能往回滚时才出现，静止时第一个分类是完整的。
     val edgePx = with(LocalDensity.current) { EDGE_FADE.toPx() }
     val fadeStart by animateFloatAsState(
@@ -105,7 +107,7 @@ internal fun ShortPlayCategoryRow(
             },
     ) {
         // 与首页一样用 Row + horizontalScroll：分类是后台配的个位数列表，不需要懒加载，
-        // 内容多宽就多宽，剩下的宽度留给搜索图标。
+        // 内容多宽就多宽；剧场页右侧的搜索图标由调用方单独摆放。
         Row(
             modifier = Modifier
                 .horizontalScroll(scrollState)
@@ -118,6 +120,7 @@ internal fun ShortPlayCategoryRow(
                     label = type.name.ifBlank { "全部" },
                     selected = type.id == selectedTypeId,
                     enabled = enabled,
+                    tone = tone,
                     onClick = { onSelect(type.id) },
                 )
             }
@@ -136,6 +139,7 @@ private fun ShortPlayCategoryChip(
     label: String,
     selected: Boolean,
     enabled: Boolean,
+    tone: ShortPlayCategoryTone = ShortPlayCategoryTone.OnImage,
     onClick: () -> Unit,
 ) {
     val scale by animateFloatAsState(
@@ -146,15 +150,17 @@ private fun ShortPlayCategoryChip(
         ),
         label = "shortplay-chip-scale",
     )
+    // 选中/未选中各取当前底色的两档，不在这里写死颜色
+    val selectedColor = when (tone) {
+        ShortPlayCategoryTone.OnImage -> starveilExtraColors.onImage
+        ShortPlayCategoryTone.OnSurface -> MaterialTheme.colorScheme.onBackground
+    }
+    val unselectedColor = when (tone) {
+        ShortPlayCategoryTone.OnImage -> starveilExtraColors.onImageSubtle
+        ShortPlayCategoryTone.OnSurface -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
     val textColor by animateColorAsState(
-        targetValue = if (selected) {
-            // 选中：画面级纯白。分类条压在封面上，用 onSurface 在浅色主题下是深色字，
-            // 会直接糊进底图颜色里。
-            starveilExtraColors.onImage
-        } else {
-            // 未选中：浅灰（90% 阶梯灰，实色不透明），与选中的纯白拉开一档。
-            starveilExtraColors.onImageSubtle
-        },
+        targetValue = if (selected) selectedColor else unselectedColor,
         animationSpec = tween(Motion.MediumMs, easing = Motion.standard),
         label = "shortplay-chip-text",
     )
@@ -177,7 +183,7 @@ private fun ShortPlayCategoryChip(
         Text(
             text = label,
             style = MaterialTheme.typography.titleLarge,
-            // 两个档位都是纯白，选中靠更重的字重（ExtraBold）把笔画压粗，视觉上更白更实。
+            // 选中靠更重的字重（ExtraBold）把笔画压粗；颜色档位由 tone 决定，这里只管粗细。
             fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal,
             color = textColor,
             maxLines = 1,
@@ -194,6 +200,6 @@ private const val SELECTED_SCALE = 1.16f
  * 分类行两端内容淡出的宽度。
  *
  * 这里只决定「擦掉多宽」，不涉及任何颜色：淡出由 BlendMode.DstOut 把已画的内容
- * 按 alpha 擦成透明，透出来的是底下封面本身的颜色，浅色深色都不会冒出白块黑块。
+ * 按 alpha 擦成透明，透出来的是底下的底色（封面或页面底色），浅色深色都不会冒出白块黑块。
  */
 private val EDGE_FADE = Spacing.xl

@@ -22,7 +22,6 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.Dp
-import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.Spacing
 
 /**
@@ -78,7 +77,7 @@ fun StarveilLoading(
             Text(
                 text = message,
                 style = MaterialTheme.typography.bodySmall,
-                color = starveilExtraColors.textMuted,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = Spacing.sm),
             )
         }
