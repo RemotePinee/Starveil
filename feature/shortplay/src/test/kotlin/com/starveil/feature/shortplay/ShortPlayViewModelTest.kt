@@ -232,9 +232,23 @@ internal class ShortPlayTestRepository(
 ) : ShortPlayRepository {
     val calls = mutableListOf<ShortPlayFeedCall>()
 
+    /** 聚合档（`feedByTypes`）收到的 id 列表，按调用顺序。 */
+    val typeIdsCalls = mutableListOf<List<Int>>()
+
     override suspend fun feed(typeId: Int?, page: Int, limit: Int): AppResult<List<ShortPlay>> {
         val call = ShortPlayFeedCall(typeId, page)
         calls += call
+        return response?.invoke(call) ?: pages[page] ?: AppResult.Failure(AppError.Unknown(null))
+    }
+
+    /** 聚合档与 [feed] 走同一份可编排响应，断言分开记：两者的 typeId 语义不一样。 */
+    override suspend fun feedByTypes(
+        typeIds: List<Int>,
+        page: Int,
+        limit: Int,
+    ): AppResult<List<ShortPlay>> {
+        typeIdsCalls += typeIds
+        val call = ShortPlayFeedCall(typeIds.firstOrNull(), page)
         return response?.invoke(call) ?: pages[page] ?: AppResult.Failure(AppError.Unknown(null))
     }
 

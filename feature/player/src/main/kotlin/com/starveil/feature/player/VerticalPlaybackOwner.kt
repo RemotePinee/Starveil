@@ -4,7 +4,8 @@ import android.content.Context
 
 /** 每个剧集 ViewModel 独占，不跨剧共享播放器或画面，也不保存截图。 */
 internal class VerticalPlaybackOwner(context: Context, isOwner: (Any) -> Boolean) {
-    val engine = Media3Player(context.applicationContext)
+    // 短剧竖屏一集几十秒、滑走即换源：用紧凑窗口，避免预读把 Java 堆顶到上限
+    val engine = Media3Player(context.applicationContext, BufferingProfile.ShortForm)
     val session = VerticalPlaybackSession(VerticalMedia3Output(engine), isOwner)
     val controller = VerticalPlaybackController()
 

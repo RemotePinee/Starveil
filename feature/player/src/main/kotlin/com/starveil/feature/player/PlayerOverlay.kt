@@ -86,7 +86,9 @@ internal fun PlayerOverlay(
         is PlaybackPhase.Blocked -> Unit
         is PlaybackPhase.Playing -> when {
             state.errorMessage != null -> FailedOverlay(state.errorMessage.orEmpty(), actions.onRetry, modifier)
-            state.isBuffering -> PlaybackVeil(label = MSG_BUFFERING, modifier = modifier)
+            // 暂停时 Media3 仍可能停在 STATE_BUFFERING（缓冲区还没填满），那不是"等流"，
+            // 是用户自己按了暂停：只在有意播放时才盖这层，否则暂停画面会被遮罩当成卡死。
+            state.isBuffering && state.isPlaying -> PlaybackVeil(label = MSG_BUFFERING, modifier = modifier)
             else -> Unit
         }
     }

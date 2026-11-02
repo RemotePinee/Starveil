@@ -24,7 +24,6 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.HttpDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.source.MediaSource
@@ -47,7 +46,14 @@ import androidx.media3.exoplayer.source.ProgressiveMediaSource
  * 也因此不需要引入 `media3-exoplayer-dash` 依赖。
  */
 @androidx.annotation.OptIn(UnstableApi::class)
-class Media3Player(context: Context) {
+class Media3Player(
+    context: Context,
+    /**
+     * 缓冲档位：长剧用 [BufferingProfile.LongForm]（也是默认），
+     * 短剧竖屏显式传 [BufferingProfile.ShortForm]。理由见 [BufferingProfile]。
+     */
+    buffering: BufferingProfile = BufferingProfile.LongForm,
+) {
 
     /** 播放器回调。播放/暂停等业务语义由 ViewModel 决定，这里只报告事实。 */
     interface Listener {
@@ -66,28 +72,9 @@ class Media3Player(context: Context) {
     }
 
     private val player: ExoPlayer = ExoPlayer.Builder(context.applicationContext)
-        // 缓冲四个门槛：前两个是目标缓冲量，后两个是"什么时候可以开播/恢复播放"。
-        //
-        // bufferForPlaybackMs 原来是 500ms —— 攒半秒就开播，起播最快。但分片只有 1~2 秒
-        // 的小码流根本补不及：播一秒就断，断了攒 1.5 秒又续上，表现正是"每一两秒缓冲一次"。
-        // 这两个门槛该按分片长度定，不该按起播速度定：起播多等半秒几乎无感，
-        // 播放中途一卡一卡却很难忍。
-        //
-        // maxBufferMs 原来给到 50_000：预读 50 秒，按竖屏短剧 3~5 Mbps 算就是 20~30MB，
-        // 全部落在 Java 堆上（Media3 的 DefaultAllocator 用 byte[] 装缓冲数据），
-        // 而 Java 堆只有 256MB。实测每换一部剧堆就抬 20MB 以上，十部剧就顶到 256MB 上限，
-        // 这正是短剧页 OOM 的主项。竖屏一次只播一集、滑走即换源，预读 50 秒毫无意义：
-        // 12 秒足够顶住常见的网络抖动，堆上的常驻缓冲压到 6MB 以内。
-        .setLoadControl(
-            DefaultLoadControl.Builder()
-                .setBufferDurationsMs(
-                    /* minBufferMs = */ 6_000,
-                    /* maxBufferMs = */ 12_000,
-                    /* bufferForPlaybackMs = */ 1_500,
-                    /* bufferForPlaybackAfterRebufferMs = */ 3_000,
-                )
-                .build(),
-        )
+        // 四个缓冲门槛按内容形态分档，取值与理由见 [BufferingProfile]：
+        // 长剧要 50 秒预读顶网络抖动，短剧竖屏按一集裁小换堆内存。
+        .setLoadControl(buffering.newLoadControl())
         .build()
     private val frames = Media3FrameState(player, DEFAULT_VIDEO_ASPECT_RATIO)
 
@@ -141,6 +128,12 @@ class Media3Player(context: Context) {
     private val mediaListener = object : Player.Listener {
         override fun onPlaybackStateChanged(playbackState: Int) {
             listener?.onPlaybackStateChanged(playbackState == Player.STATE_BUFFERING)
+            // 缓冲只在进入时留一条：bufferedPosition 有没有往前走，是区分"网慢"与"卡死"的口径
+            if (playbackState == Player.STATE_BUFFERING) {
+                PlayerLog.warn {
+                    "buffering pos=${player.currentPosition} buffered=${player.bufferedPosition}"
+                }
+            }
             if (playbackState == Player.STATE_ENDED) listener?.onEnded()
             // STATE_READY = 第一条流已经到位，可以出画面：它就是"点了要等多久"的终点
             if (playbackState == Player.STATE_READY) recordStartup()

@@ -30,20 +30,50 @@ class DefaultShortPlayRepository(
     private val configuredTypeId: () -> Int = { 0 },
 ) : ShortPlayRepository {
 
-    override fun cachedShortPlay(typeId: Int?): List<ShortPlay>? =
-        snapshot?.read(keyOf(typeId), serializer<List<ShortPlayCacheDto>>())
-            ?.map { play -> play.toDomain() }
-            ?.takeIf { plays -> plays.isNotEmpty() }
+    override fun cachedShortPlay(typeId: Int?): List<ShortPlay>? = readSnapshot(keyOf(typeId))
+
+    override fun cachedShortPlayByTypes(typeIds: List<Int>): List<ShortPlay>? =
+        readSnapshot(keyOfTypes(aggregateIds(typeIds)))
 
     override suspend fun feed(typeId: Int?, page: Int, limit: Int): AppResult<List<ShortPlay>> {
         val resolved = resolveTypeId(typeId)
         return vodRepository.list(type = resolved, page = page, limit = limit)
-            .map { vods ->
-                val plays = vods.map { vod -> vod.toShortPlay() }
-                saveFirstPage(resolved, plays, page = page)
-                plays
-            }
+            .map { vods -> vods.asPage(keyOf(resolved), page) }
     }
+
+    /**
+     * 聚合档：多个父分类的并集（后端 `type_ids`），分类页一级选「全部」时走这条。
+     *
+     * id 先去非正数、去重、排序：排序只为让快照键稳定——同一批分类换个顺序不该读不到自己
+     * 的首帧。列表顺序仍由后端决定，客户端不重排。`page` 与 limit 的含义与 [feed] 一致。
+     */
+    override suspend fun feedByTypes(
+        typeIds: List<Int>,
+        page: Int,
+        limit: Int,
+    ): AppResult<List<ShortPlay>> {
+        val ids = aggregateIds(typeIds)
+        if (ids.isEmpty()) return feed(typeId = null, page = page, limit = limit)
+        return vodRepository.listByTypes(ids, page = page, limit = limit)
+            .map { vods -> vods.asPage(keyOfTypes(ids), page) }
+    }
+
+    /** 一次快照读取：空列表也当"没有快照"，否则首帧会铺出一屏空气。 */
+    private fun readSnapshot(key: String): List<ShortPlay>? =
+        snapshot?.read(key, serializer<List<ShortPlayCacheDto>>())
+            ?.map { play -> play.toDomain() }
+            ?.takeIf { plays -> plays.isNotEmpty() }
+
+    /** 一页影片 → 短剧，顺带写快照；[feed] 与 [feedByTypes] 共用这一份，别写两遍。 */
+    private fun List<Vod>.asPage(key: String, page: Int): List<ShortPlay> {
+        val plays = map { vod -> vod.toShortPlay() }
+        saveFirstPage(key, plays, page = page)
+        return plays
+    }
+
+    /** 聚合档的 id 列表：正整数、去重、升序；空列表表示"没有可用分类"。 */
+    private fun aggregateIds(typeIds: List<Int>): List<Int> =
+        typeIds.filter { it > 0 }.distinct().sorted()
 
     /**
      * 搜索结果不写快照：快照服务的是分类 [feed] 的首帧，搜索是一次性的临时结果，
@@ -67,22 +97,22 @@ class DefaultShortPlayRepository(
     private fun keyOf(typeId: Int?): String =
         "${PageSnapshotStore.KEY_SHORT_PLAY}_${resolveTypeId(typeId)}"
 
+    /** 聚合档的键：`shortplay_all_21-31`。与单分类的键分开，两种档位互不覆盖。 */
+    private fun keyOfTypes(typeIds: List<Int>): String =
+        "${PageSnapshotStore.KEY_SHORT_PLAY}_all_${typeIds.joinToString("-")}"
+
     /**
      * 只存第一页：翻页拿到的只是同一份列表的续集，单独存也铺不出完整首屏。
      * 写入非 suspend，[SnapshotStore] 内部切 IO 线程。
      */
-    private fun saveFirstPage(typeId: Int, plays: List<ShortPlay>, page: Int) {
+    private fun saveFirstPage(key: String, plays: List<ShortPlay>, page: Int) {
         if (page != 1) return
         // 这个分类被清空了：删掉旧快照，否则切回来还是上一次的海报墙
         if (plays.isEmpty()) {
-            snapshot?.remove(keyOf(typeId))
+            snapshot?.remove(key)
             return
         }
-        snapshot?.write(
-            keyOf(typeId),
-            serializer<List<ShortPlayCacheDto>>(),
-            plays.toCache(),
-        )
+        snapshot?.write(key, serializer<List<ShortPlayCacheDto>>(), plays.toCache())
     }
 
     /**

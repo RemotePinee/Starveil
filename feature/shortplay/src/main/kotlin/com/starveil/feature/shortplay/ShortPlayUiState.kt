@@ -40,6 +40,8 @@ sealed interface ShortPlayUiState {
 
     data class Empty(
         val message: String = "暂无短剧",
+        /** [message] 下面一行的补充：告诉用户下一步还能做什么。空串表示不显示。 */
+        val hint: String = "",
         override val types: List<ShortPlayType> = emptyList(),
         override val selectedTypeId: Int = 0,
     ) : ShortPlayUiState
@@ -50,6 +52,25 @@ sealed interface ShortPlayUiState {
         override val selectedTypeId: Int = 0,
     ) : ShortPlayUiState
 }
+
+/**
+ * 整屏独占的文案态：空与失败。
+ *
+ * 它们自己铺满一整页（空态只有文案，失败态多一个重试按钮），占位层必须让开：占位层也在
+ * 屏幕中间画分类名与细线，两层同时绘制就是「暂无短剧 / 分类名」叠在同一处。
+ */
+internal val ShortPlayUiState.isFullScreenNotice: Boolean
+    get() = this is ShortPlayUiState.Empty || this is ShortPlayUiState.Error
+
+/**
+ * 这份状态是不是 [typeId] 这个分类的。
+ *
+ * 切分类时 ViewModel 原地保留上一屏内容（只打 `isRefreshing`），那份 `Content.selectedTypeId`
+ * 仍是上一类——用这一处判断把"不属于本页的状态"挡在占位层之外。空态与播放浮层因此同源：
+ * 不匹配的这一拍既不画文案、也不组合 feed（浮层只活在 feed 里），屏幕上只剩占位层。
+ */
+internal fun ShortPlayUiState.belongsTo(typeId: Int?): Boolean =
+    typeId == null || selectedTypeId == typeId
 
 /** 分页从 1 起，与后端 `v1.vod` 的 `page` 参数一致。 */
 internal const val FIRST_PAGE = 1

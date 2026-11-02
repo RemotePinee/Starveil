@@ -52,6 +52,7 @@ open class StubStarveilApi : StarveilApi {
         year: String,
         lang: String,
         by: String,
+        typeIds: String,
     ): ApiEnvelopeDto<PageDto<VodDto>> = unused()
 
     override suspend fun vodDetail(vodId: Int, relLimit: Int): ApiEnvelopeDto<VodDto> = unused()

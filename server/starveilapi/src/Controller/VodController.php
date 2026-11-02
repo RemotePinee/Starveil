@@ -17,6 +17,9 @@ final class VodController extends BaseController
     /** 播放地址的签名有效期（秒）：够一次起播与重试，不给人拿去做长期分发。 */
     private const PLAY_URL_TTL = 300;
 
+    /** `type_ids` 最多收 50 个分类：再多只会拼出超长 IN，没有业务意义。 */
+    private const TYPE_IDS_LIMIT = 50;
+
     /**
      * 列表 + 片库筛选。
      *
@@ -27,6 +30,10 @@ final class VodController extends BaseController
      *
      * `class` 兼容两种值：纯数字仍按老契约走 FIND_IN_SET，其余按 macCMS 的
      * 扩展分类名 LIKE 匹配 —— 详见 Repo\Vods::applyClassFilter()。
+     *
+     * `type_ids`（逗号分隔）是「跨父分类聚合」：分类页一级选「全部」时客户端把每个父分类的
+     * id 都带上。给了合法值就用它，`type` 被忽略；没有合法值（没传 / 全是垃圾）才回退到
+     * `type` 的老语义 —— 老客户端不发这个参数，行为不会变。
      */
     public function getIndex(): void
     {
@@ -35,6 +42,7 @@ final class VodController extends BaseController
 
         Json::ok((new Vods())->listFiltered([
             'type' => $this->input->int('type'),
+            'type_ids' => $this->typeIds(),
             'class' => $this->input->str('class'),
             'level' => $this->input->int('level'),
             'wd' => $this->input->str('wd'),
@@ -44,6 +52,20 @@ final class VodController extends BaseController
             'by' => $this->input->str('by'),
             'order' => $this->input->str('order'),
         ], $page, $limit));
+    }
+
+    /**
+     * `type_ids` 的白名单：逗号分隔的正整数 id，最多 [TYPE_IDS_LIMIT] 个。
+     *
+     * `Input::intList()` 已经把 0、负数与非数字项丢掉；这里再按出现顺序去重并截断。
+     * 过滤后为空就返回空数组 —— 调用方据此回退到 `type`，非法值不会被当成合法筛选条件。
+     *
+     * @return int[]
+     */
+    private function typeIds(): array
+    {
+        $ids = array_values(array_unique($this->input->intList('type_ids')));
+        return array_slice($ids, 0, self::TYPE_IDS_LIMIT);
     }
 
     /**

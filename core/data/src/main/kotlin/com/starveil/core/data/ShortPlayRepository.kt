@@ -25,6 +25,18 @@ interface ShortPlayRepository {
     ): AppResult<List<ShortPlay>>
 
     /**
+     * 「全部」那一档：一次要多组父分类的并集（后端 `type_ids`）。
+     *
+     * 默认实现退到第一个 id 的 [feed]：其它模块的手写 fake 只认 [feed]，带默认实现的新方法
+     * 一行都不用它们改——本接口从第一版就是这个约定。
+     */
+    suspend fun feedByTypes(
+        typeIds: List<Int>,
+        page: Int = 1,
+        limit: Int = VodRepository.DEFAULT_PAGE_SIZE,
+    ): AppResult<List<ShortPlay>> = feed(typeId = typeIds.firstOrNull(), page = page, limit = limit)
+
+    /**
      * 短剧范围内的关键词搜索：与 [feed] 同一个 `v1.vod` 路由，多带 `wd`。
      * [typeId] 为 null 表示跟着后台配置的分类走（与 [feed] 一致）。
      */
@@ -42,4 +54,7 @@ interface ShortPlayRepository {
      * 返回注入进来的那一份。剧场页构造时同步读它铺首屏，避免进来先整屏转圈。
      */
     fun cachedShortPlay(typeId: Int? = null): List<ShortPlay>? = null
+
+    /** 聚合档（[feedByTypes]）的首帧快照；默认没有，fake 不必补。 */
+    fun cachedShortPlayByTypes(typeIds: List<Int>): List<ShortPlay>? = null
 }

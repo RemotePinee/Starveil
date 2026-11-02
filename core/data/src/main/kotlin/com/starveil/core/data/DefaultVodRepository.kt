@@ -167,6 +167,25 @@ class DefaultVodRepository(
             }
 
     /**
+     * 多分类并集。id 在这里去重、丢掉非正数、截到 [TYPE_IDS_LIMIT] 个（与后端白名单同一上限）：
+     * 拼串是最后一步，不能让空列表或 `"0"` 被后端读成"不限分类"。
+     *
+     * 一个 id 也走这条：少了它，一级「全部」只有单个父分类时会出现"聚合档"与"单档"两种空列表
+     * 来源，快照键也会分叉。
+     */
+    override suspend fun listByTypes(typeIds: List<Int>, page: Int, limit: Int): AppResult<List<Vod>> {
+        val ids = typeIds.filter { it > 0 }.distinct().take(TYPE_IDS_LIMIT)
+        if (ids.isEmpty()) return list(type = 0, page = page, limit = limit)
+        return apiCall {
+            api.listVod(type = 0, page = page, limit = limit, typeIds = ids.joinToString(","))
+        }.flatMap { envelope ->
+            envelope.data
+                ?.let { pageDto -> AppResult.Success(pageDto.list.map { dto -> dto.toDomain() }) }
+                ?: businessFailure(envelope.code, envelope.msg)
+        }
+    }
+
+    /**
      * 片库筛选。**筛选参数的唯一拼装点**：query 名、空值语义与排序白名单都在这里
      * 落地——后端按 macCMS 源码微调参数时只改这一处，页面和测试都跟着
      * [VodRepository.filter] 的签名走。
@@ -260,3 +279,6 @@ class DefaultVodRepository(
 
 /** 推荐只取第 1 页；旧页虽然有翻页变量，但每次都 `setNewData` 覆盖（`:870`）。 */
 private const val RECOMMEND_PAGE = 1
+
+/** `type_ids` 的个数上限，与 `Vods::TYPE_IDS_LIMIT` 对齐：多出来的 id 后端也会丢掉。 */
+private const val TYPE_IDS_LIMIT = 50

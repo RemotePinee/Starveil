@@ -57,6 +57,14 @@ data class StarveilExtraColors(
     val imageGlass: Color = Palette.White24,
     /** 压在画面上的浅灰文字：90% 阶梯灰（实色），比 [onImage] 低一档，用来区分次级项。 */
     val onImageSubtle: Color = Palette.White90,
+    /**
+     * 压在画面上的更淡一档文字：未选中的分类项用它。
+     *
+     * 比 [onImageSubtle] 再低一档（70% 阶梯灰，实色不透明）：用纯白或 onImageSubtle
+     * 都分不出「未选中」与「选中」，而 `onImage.copy(alpha = …)` 会写出裸数值。
+     * 同样固定白系、不跟明暗——它压在海报 / 封面上，浅色主题下改成深色就糊进画面了。
+     */
+    val onImageFaint: Color = Palette.White70,
     /** 视频上圆形播放控件的半透明底色；不随页面明暗改变。 */
     val playerControlBackground: Color = Palette.ScrimMid,
     /**

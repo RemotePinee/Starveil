@@ -251,6 +251,7 @@ private class FakeAuthApi(
         year: String,
         lang: String,
         by: String,
+        typeIds: String,
     ): ApiEnvelopeDto<PageDto<VodDto>> = error("not used")
 
     override suspend fun vodDetail(vodId: Int, relLimit: Int): ApiEnvelopeDto<VodDto> = error("not used")

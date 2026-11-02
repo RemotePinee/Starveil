@@ -147,8 +147,15 @@ private fun ShortPlayCategoryTopBar(onBack: () -> Unit) {
  * 两级分类条。
  *
  * - 一级只有 ≥2 个父分类时才出现：只有一个时直接展示它的二级，不留一条单选项 tab；
- * - 二级首项是客户端虚拟的「全部」（id 0），选了它按父分类查，服务端会带上全部子分类；
- * - 父分类没有子分类时二级行整行不出现（老配置只填了叶子分类）。
+ * - 两行首项都是客户端虚拟的「全部」（id 0）：二级的「全部」按父分类查，一级的「全部」
+ *   把每个父分类的 id 一起下发（`ShortPlayCategoryUiState.queryTypeIds` → 后端 `type_ids`
+ *   取并集，每个父分类仍各带自己的子分类）；只有分类树为空时才落回仓库默认短剧分类；
+ * - 一级选「全部」时二级行不收起：改为平铺所有父分类的子分类（见
+ *   `ShortPlayCategoryUiState.visibleChildren`），用户仍能按子分类筛选；两个父分类下都挂了
+ *   子分类时这一行会变得很长，它本来就是横滑的；
+ * - 父分类都没有子分类时二级行整行不出现（老配置只填了叶子分类）；
+ * - 两行都不画下划线（下划线只属于剧场页），层级靠字号差：一级 17sp、二级 15sp；
+ *   行高同时各降一档，两行之间只留约 8dp，读作同一组的两层（见 [ShortPlayCategoryRowLayout]）。
  */
 @Composable
 private fun ShortPlayCategoryTree(
@@ -167,29 +174,38 @@ private fun ShortPlayCategoryTree(
     }
     if (state.showParents) {
         ShortPlayCategoryRow(
-            categories = state.parents,
+            categories = withAllOption(state.parents),
             selectedTypeId = state.selectedParentId,
             enabled = true,
             onSelect = onSelectParent,
-            leadingPadding = Spacing.lg,
+            // 分类项自己带 Spacing.xs 内边距，行留白要减掉它：第一项的文字左缘才压在海报左边缘那条竖线上
+            horizontalPadding = Spacing.lg - Spacing.xs,
             tone = ShortPlayCategoryTone.OnSurface,
+            showIndicator = false,
+            layout = ShortPlayCategoryRowLayout.Primary,
+            // 左对齐：分类从左边读起，不居中；文字左缘与下面的海报网格落在同一条竖线上
+            centered = false,
         )
     }
     if (state.showChildren) {
         ShortPlayCategoryRow(
-            categories = withAllOption(state.children),
+            categories = withAllOption(state.visibleChildren),
             selectedTypeId = state.selectedChildId,
             enabled = true,
             onSelect = onSelectChild,
-            leadingPadding = Spacing.lg,
+            // 同上：两行分类条的第一项文字都与海报网格左对齐
+            horizontalPadding = Spacing.lg - Spacing.xs,
             tone = ShortPlayCategoryTone.OnSurface,
+            showIndicator = false,
+            layout = ShortPlayCategoryRowLayout.Secondary,
+            centered = false,
         )
     }
 }
 
-/** 二级行 = 虚拟「全部」+ 当前父分类的子分类。 */
-private fun withAllOption(children: List<ShortPlayType>): List<ShortPlayType> =
-    listOf(ShortPlayType(id = ALL_CATEGORY_ID, name = ALL_CATEGORY_LABEL)) + children
+/** 分类行 = 虚拟「全部」+ 本级分类；一级、二级共用。 */
+private fun withAllOption(categories: List<ShortPlayType>): List<ShortPlayType> =
+    listOf(ShortPlayType(id = ALL_CATEGORY_ID, name = ALL_CATEGORY_LABEL)) + categories
 
 /** 三列卡片网格。按列数把列表切成行，避免在 LazyColumn 里嵌 LazyVerticalGrid。 */
 @Composable
@@ -200,7 +216,8 @@ private fun ShortPlayCategoryGrid(state: ShortPlayCategoryUiState, actions: Shor
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(top = Spacing.sm, bottom = Spacing.lg),
+        // 二级行本身只余约 4dp 留白，这里再垫 4dp：分类条到首排海报落回 8dp 这一档
+        contentPadding = PaddingValues(top = Spacing.xs, bottom = Spacing.lg),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {
         items(items = state.items.chunked(COLUMNS), key = { row -> row.first().id }) { row ->

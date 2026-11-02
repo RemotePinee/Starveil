@@ -93,6 +93,17 @@ class DefaultShortPlayRepositoryTest {
     }
 
     @Test
+    fun `explicit zero type id is not passed through either`() = runTest {
+        val vodRepository = FakeVodRepository(result = AppResult.Success(emptyList()))
+
+        // 分类页一级「全部」传的是 null，不是 0：0 会跳过后台配置直接落到兜底常量。
+        // 这条守住"0 也不会透给后端"——透下去就是全站影片混排。
+        DefaultShortPlayRepository(vodRepository) { 11 }.feed(typeId = 0)
+
+        assertEquals(FALLBACK_SHORT_PLAY_TYPE_ID, vodRepository.requestedType)
+    }
+
+    @Test
     fun `category comes from vod type name and blank counts as none`() {
         runTest {
             val vodRepository = FakeVodRepository(
@@ -145,6 +156,22 @@ class DefaultShortPlayRepositoryTest {
     }
 
     @Test
+    fun `feedByTypes aggregates ids and drops non positive ones`() = runTest {
+        val vodRepository = FakeVodRepository(
+            result = AppResult.Success(listOf(vod(id = 1), vod(id = 2))),
+        )
+        val repository = DefaultShortPlayRepository(vodRepository)
+
+        // 0 与重复的 31 都要丢掉，剩下的升序交给仓库（快照键依赖稳定顺序）
+        val result = repository.feedByTypes(listOf(31, 0, 21, 31), page = 1, limit = 10)
+
+        assertEquals(listOf(21, 31), vodRepository.requestedTypeIds)
+        assertEquals(1, vodRepository.requestedPage)
+        assertEquals(10, vodRepository.requestedLimit)
+        assertEquals(2, (result as AppResult.Success).value.size)
+    }
+
+    @Test
     fun `vod without play sources falls back to zero episodes`() {
         runTest {
             val vodRepository = FakeVodRepository(
@@ -169,9 +196,21 @@ private class FakeVodRepository(private val result: AppResult<List<Vod>>) : VodR
     var requestedKeyword: String? = null
     var requestedSearchType: Int? = null
     var requestedSearchLimit: Int? = null
+    var requestedTypeIds: List<Int>? = null
 
     override suspend fun list(type: Int, page: Int, limit: Int): AppResult<List<Vod>> {
         requestedType = type
+        requestedPage = page
+        requestedLimit = limit
+        return result
+    }
+
+    override suspend fun listByTypes(
+        typeIds: List<Int>,
+        page: Int,
+        limit: Int,
+    ): AppResult<List<Vod>> {
+        requestedTypeIds = typeIds
         requestedPage = page
         requestedLimit = limit
         return result

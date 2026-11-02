@@ -52,8 +52,8 @@ object Spacing {
     /** 底栏纯文字模式的高度：没有图标占位，收到这一档。 */
     val tabBarHeightText: Dp = 44.dp
 
-    /** 开屏中间动画的显示尺寸：素材 468×468，等比缩到这一档。 */
-    val splashAnimation: Dp = 168.dp
+    /** 开屏中间动画的显示尺寸：素材 630×630，等比缩到这一档（比原来的 168dp 大一档）。 */
+    val splashAnimation: Dp = 260.dp
 
     /**
      * 开屏底部 lockup 的尺寸。

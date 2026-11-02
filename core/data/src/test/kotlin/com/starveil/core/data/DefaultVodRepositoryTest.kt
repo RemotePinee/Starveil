@@ -261,6 +261,9 @@ private class FakeApi(
     var lastOrder: String? = null
         private set
 
+    var lastTypeIds: String? = null
+        private set
+
     override suspend fun startup(): ApiEnvelopeDto<StartupDto> =
         throw UnsupportedOperationException("not used in this test")
 
@@ -276,6 +279,7 @@ private class FakeApi(
         year: String,
         lang: String,
         by: String,
+        typeIds: String,
     ): ApiEnvelopeDto<PageDto<VodDto>> {
         lastType = type
         lastPage = page
@@ -285,6 +289,7 @@ private class FakeApi(
         lastLang = lang
         lastClassName = classFilter
         lastOrder = by
+        lastTypeIds = typeIds
         listFailure?.let { throw it }
         return requireNotNull(listResponse)
     }

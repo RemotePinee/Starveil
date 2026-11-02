@@ -36,7 +36,6 @@ class ShortPlayCategoryViewModel(
 ) : ViewModel() {
 
     private val initialSelection = resolveSelection(parents, initialTypeId)
-    private val initialCached = cachedFirstPage(initialSelection.queryTypeId)
 
     private val _state = MutableStateFlow(
         ShortPlayCategoryUiState(
@@ -44,8 +43,6 @@ class ShortPlayCategoryViewModel(
             selectedParentId = initialSelection.parentId,
             children = childrenOf(initialSelection.parentId),
             selectedChildId = initialSelection.childId,
-            items = initialCached,
-            isLoading = initialCached.isEmpty(),
         ),
     )
     val state: StateFlow<ShortPlayCategoryUiState> = _state.asStateFlow()
@@ -53,20 +50,32 @@ class ShortPlayCategoryViewModel(
     private var job: Job? = null
 
     init {
+        // 首帧先铺该档位的上一次快照（AGENTS.md 第 9 节），网络回来原地覆盖。
+        seedFromSnapshot()
         loadFirstPage()
     }
 
-    /** 换一级分类：二级整组换成它的子分类，并默认选中「全部」。 */
+    /**
+     * 换一级分类：二级整组换成它的子分类，并默认选中「全部」。
+     *
+     * [ALL_CATEGORY_ID] 是虚拟的「全部」——二级行不收起，改为平铺所有父分类的子分类
+     * （见 [ShortPlayCategoryUiState.visibleChildren]），所以 `children` 自身留空。
+     */
     fun selectParent(parentId: Int) {
-        val parent = parents.firstOrNull { it.id == parentId } ?: return
+        val parent = parents.firstOrNull { it.id == parentId }
+        if (parent == null && parentId != ALL_CATEGORY_ID) return
         if (parentId == _state.value.selectedParentId) return
-        applySelection(parentId = parentId, childId = ALL_CATEGORY_ID, children = parent.children)
+        applySelection(
+            parentId = parentId,
+            childId = ALL_CATEGORY_ID,
+            children = parent?.children.orEmpty(),
+        )
     }
 
     /** 换二级分类；[childId] 为 [ALL_CATEGORY_ID] 表示「全部」（按父分类查）。 */
     fun selectChild(childId: Int) {
         val snapshot = _state.value
-        if (childId != ALL_CATEGORY_ID && snapshot.children.none { it.id == childId }) return
+        if (childId != ALL_CATEGORY_ID && snapshot.visibleChildren.none { it.id == childId }) return
         if (childId == snapshot.selectedChildId) return
         applySelection(
             parentId = snapshot.selectedParentId,
@@ -89,28 +98,39 @@ class ShortPlayCategoryViewModel(
     fun refresh() = loadFirstPage()
 
     private fun applySelection(parentId: Int, childId: Int, children: List<ShortPlayType>) {
-        val cached = cachedFirstPage(childId.takeIf { it > 0 } ?: parentId)
+        // 换档先清空再铺快照：档位决定读哪一份（聚合档与单分类档各存各的）
         _state.update {
             it.copy(
                 selectedParentId = parentId,
                 selectedChildId = childId,
                 children = children,
-                items = cached,
+                items = emptyList(),
                 page = 0,
-                isLoading = cached.isEmpty(),
+                isLoading = true,
                 isLoadingMore = false,
                 hasMore = true,
                 error = null,
             )
         }
+        seedFromSnapshot()
         loadFirstPage()
     }
 
     private fun childrenOf(parentId: Int): List<ShortPlayType> =
         parents.firstOrNull { it.id == parentId }?.children.orEmpty()
 
-    private fun cachedFirstPage(typeId: Int): List<ShortPlay> =
-        repository.cachedShortPlay(typeId.takeIf { it > 0 }).orEmpty()
+    /** 首帧快照：聚合档读 `all` 那份，其余档位读单分类那份，两种档位互不覆盖。 */
+    private fun seedFromSnapshot() {
+        val snapshot = _state.value
+        val cached = if (snapshot.queryTypeIds.isEmpty()) {
+            repository.cachedShortPlay(snapshot.queryTypeId.takeIf { it > 0 })
+        } else {
+            repository.cachedShortPlayByTypes(snapshot.queryTypeIds)
+        }
+        if (!cached.isNullOrEmpty()) {
+            _state.update { it.copy(items = cached, isLoading = false) }
+        }
+    }
 
     private fun loadFirstPage() {
         job?.cancel()
@@ -119,8 +139,17 @@ class ShortPlayCategoryViewModel(
     }
 
     private suspend fun loadPage(page: Int, reset: Boolean) {
-        val typeId = _state.value.queryTypeId
-        when (val result = repository.feed(typeId.takeIf { it > 0 }, page, pageSize)) {
+        val snapshot = _state.value
+        // 聚合档（一级、二级都是「全部」）走 `type_ids`：所有父分类的并集。
+        // 单分类档保持老口径：queryTypeId 为 0 时传 null，让仓库落回后台默认短剧分类——
+        // 不能把 0 透给后端，后端 type=0 是不限分类，会变成全站影片混排。
+        val typeIds = snapshot.queryTypeIds
+        val result = if (typeIds.isEmpty()) {
+            repository.feed(snapshot.queryTypeId.takeIf { it > 0 }, page, pageSize)
+        } else {
+            repository.feedByTypes(typeIds, page, pageSize)
+        }
+        when (result) {
             is AppResult.Success -> _state.update { it.onLoaded(result.value, reset) }
             is AppResult.Failure -> _state.update {
                 it.copy(isLoading = false, isLoadingMore = false, error = result.error.toUserMessage())

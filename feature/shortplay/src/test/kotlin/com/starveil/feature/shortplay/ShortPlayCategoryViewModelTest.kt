@@ -52,6 +52,8 @@ class ShortPlayCategoryViewModelTest {
         assertEquals(ALL_CATEGORY_ID, state.selectedChildId)
         // 「全部」按父分类查：服务端查父分类会带上它的全部子分类
         assertEquals(listOf(ShortPlayFeedCall(21, 1)), repository.calls)
+        // 选中某个父分类时二级行就是它的直接子分类，平铺逻辑不参与
+        assertEquals(listOf(22, 23), state.visibleChildren.map { it.id })
     }
 
     @Test

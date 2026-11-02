@@ -62,6 +62,11 @@ interface StarveilApi : DeviceAuthApi {
      * 四维筛选（`area`/`year`/`lang`/`class`）与排序 `by` 由 `DefaultVodRepository.filter`
      * 统一拼装，页面不直接调本方法。参数名与 macCMS 前台逐字同名：`class` 是**扩展分类名**
      * （后端按名字 LIKE 匹配，不是 id），`by` 是排序字段（方向后端默认 desc），空串 = 不限。
+     *
+     * [typeIds] 是逗号分隔的分类 id（`"25,26"`）：分类页一级选「全部」时把每个父分类的 id
+     * 一起下发，后端按并集查（每个父分类仍带上自己的子分类）。用字符串而不是 `List<Int>`：
+     * Retrofit 会把集合展开成重复的同名 query，PHP 收到的是数组，不是约定的逗号串。
+     * 空串 = 不带该参数，后端回退到 [type] 的老语义。
      */
     @GET(ApiPaths.VOD_LIST)
     suspend fun listVod(
@@ -73,6 +78,7 @@ interface StarveilApi : DeviceAuthApi {
         @Query("year") year: String = "",
         @Query("lang") lang: String = "",
         @Query("by") by: String = "",
+        @Query("type_ids") typeIds: String = "",
     ): ApiEnvelopeDto<PageDto<VodDto>>
 
     /** 详情，含三层播放列表。 */

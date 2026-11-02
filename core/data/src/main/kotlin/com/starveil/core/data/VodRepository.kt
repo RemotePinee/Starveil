@@ -44,6 +44,20 @@ interface VodRepository {
         order: String = VodOrder.DEFAULT,
     ): AppResult<List<Vod>> = list(type = type, page = page, limit = limit)
 
+    /**
+     * 多分类并集（`v1.vod?type_ids=25,26`）：分类页一级选「全部」时，客户端把每个父分类的
+     * id 一起下发，后端按并集查，每个父分类各自带上自己的直属子分类。
+     *
+     * **为什么不给 [list] 加参数**：Kotlin 的 override 必须声明基类函数的全部参数，加在
+     * [list] 上会让只实现 `list(type, page, limit)` 的 fake 直接编译失败。独立方法 + 默认
+     * 实现（转发到第一个 id 的 [list]），老 fake 一行都不用改。
+     */
+    suspend fun listByTypes(
+        typeIds: List<Int>,
+        page: Int = 1,
+        limit: Int = DEFAULT_PAGE_SIZE,
+    ): AppResult<List<Vod>> = list(type = typeIds.firstOrNull() ?: 0, page = page, limit = limit)
+
     suspend fun detail(vodId: Int): AppResult<Vod>
 
     /**

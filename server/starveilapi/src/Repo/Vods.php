@@ -47,6 +47,9 @@ final class Vods
     /** 单个筛选参数最多收几个值，防止一长串逗号拼出超长 IN / LIKE 组。 */
     private const FILTER_VALUE_LIMIT = 32;
 
+    /** `type_ids` 最多收几个分类：与控制器同一上限，这里是不依赖调用方的兜底。 */
+    private const TYPE_IDS_LIMIT = 50;
+
     /**
      * 老签名：只认 type/class/level/wd（收藏、播放记录按 id 兜底这类内部调用在用）。
      *
@@ -66,7 +69,8 @@ final class Vods
      * 列表（带片库筛选）。
      *
      * `$filter` 的键与 macCMS 前台参数同名（`mac_param_url()`）：
-     * type / class / level / wd / year / area / lang / by / order。
+     * type / class / level / wd / year / area / lang / by / order，外加只在本接口存在的
+     * `type_ids`（多分类并集，见 [aggregateTypeIds]）。
      * 用数组而不是一长串形参：count 与 select 各要建一次 Query（见 filteredQuery），
      * 十个参数写两遍，错一个就得对着 SQL 猜。
      *
@@ -100,11 +104,18 @@ final class Vods
     {
         $query = Db::name('vod')->where('vod_status', 1);
 
-        $typeId = (int)($filter['type'] ?? 0);
-        if ($typeId > 0) {
-            // 父分类要连子分类一起查：短剧这类结构是「父分类只挂几部、内容全在子分类」，
-            // 只写 `type_id = 父` 会返回一个接近空的列表，客户端看起来就是"这个分类没内容"。
-            $query->whereIn('type_id', $this->typeIdsWithChildren($typeId));
+        // `type_ids` 优先：给了合法分类就按并集查，`type` 在这一档被忽略。
+        // 没给 / 全是非法值时才落回老参数，老客户端（只发 `type`）一行都不用改。
+        $aggregate = $this->aggregateTypeIds($filter['type_ids'] ?? []);
+        if ($aggregate !== []) {
+            $query->whereIn('type_id', $aggregate);
+        } else {
+            $typeId = (int)($filter['type'] ?? 0);
+            if ($typeId > 0) {
+                // 父分类要连子分类一起查：短剧这类结构是「父分类只挂几部、内容全在子分类」，
+                // 只写 `type_id = 父` 会返回一个接近空的列表，客户端看起来就是"这个分类没内容"。
+                $query->whereIn('type_id', $this->typeIdsWithChildren($typeId));
+            }
         }
 
         $this->applyClassFilter($query, (string)($filter['class'] ?? ''));
@@ -145,11 +156,51 @@ final class Vods
      */
     private function typeIdsWithChildren(int $typeId): array
     {
-        $children = Db::name('type')->where('type_pid', $typeId)->column('type_id');
-        if (!$children) {
-            return [$typeId];
+        return $this->typeIdsWithChildrenOf([$typeId]);
+    }
+
+    /**
+     * `type_ids` → 一个去重的 id 列表，每个 id 都按「分类 + 直属子分类」展开。
+     *
+     * 展开规则与单个 `type` 完全相同（见 [typeIdsWithChildren]）：父分类传进来时仍带它的
+     * **全部**直属子分类，这是既有语义，多分类聚合不能把它丢了。
+     *
+     * 传进来的值在这里再过一遍正整数并截断：控制器已经校验过，这是不依赖调用方的兜底。
+     * 过滤后为空返回空数组，调用方据此回退到 `type`。
+     *
+     * @param mixed $raw
+     * @return int[]
+     */
+    private function aggregateTypeIds(mixed $raw): array
+    {
+        if (!is_array($raw)) {
+            return [];
         }
-        return array_merge([$typeId], array_map('intval', $children));
+        $ids = array_map('intval', $raw);
+        $ids = array_values(array_unique(array_filter($ids, static fn (int $id): bool => $id > 0)));
+        if ($ids === []) {
+            return [];
+        }
+        return $this->typeIdsWithChildrenOf(array_slice($ids, 0, self::TYPE_IDS_LIMIT));
+    }
+
+    /**
+     * 一批分类 + 它们各自的直属子分类。
+     *
+     * 子分类用一条 `whereIn('type_pid', ...)` 取回：逐个 id 调 [typeIdsWithChildren] 的话，
+     * 50 个分类就是 50 条 SQL。`column()` 在 TP 5.0.24 直接返回数组，不需要 `->toArray()`。
+     *
+     * @param int[] $typeIds
+     * @return int[]
+     */
+    private function typeIdsWithChildrenOf(array $typeIds): array
+    {
+        $ids = array_values(array_unique($typeIds));
+        $children = Db::name('type')->whereIn('type_pid', $ids)->column('type_id');
+        if (!$children) {
+            return $ids;
+        }
+        return array_values(array_unique(array_merge($ids, array_map('intval', $children))));
     }
 
     /**

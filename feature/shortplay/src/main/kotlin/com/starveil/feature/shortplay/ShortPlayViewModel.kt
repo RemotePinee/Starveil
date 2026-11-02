@@ -161,9 +161,10 @@ class ShortPlayViewModel(
         if (!isSelectable(typeId)) return
         selectedTypeId = typeId
         searchKeyword = ""
-        // 不要先打回整屏 Loading：那会让切分类先闪一屏黑底转圈（外层底色是 scrimStrong）。
-        // 保留当前内容，等新分类的快照或网络结果回来原地替换——与首页切分类同口径。
-        seedFromSnapshot()
+        // 不把新分类的本地快照先铺成 Content：快照是上一轮的列表，分类如今可能已经空了，
+        // 铺出来会先组合一屏 feed——右栏、入口条、标题、进度条跟着出现——再被空态撤掉，
+        // 用户看到的就是"闪一下"。落页到结果回来这一段由占位层（只有分类名）兜。
+        // 也不打回整屏 Loading：那会让切分类先闪一屏转圈。
         loadFirstPage(resetPosition = false)
     }
 
@@ -219,6 +220,8 @@ class ShortPlayViewModel(
         _state.value = if (shuffled.isEmpty()) {
             ShortPlayUiState.Empty(
                 message = if (searchKeyword.isEmpty()) "暂无短剧" else "没有找到「$searchKeyword」",
+                // 空态没有按钮，这一步该做什么由文案说清楚：分类空就换分类，搜不到就换词。
+                hint = if (searchKeyword.isEmpty()) "换个分类看看，或稍后再来" else "换个关键词再试试",
                 types = types,
                 selectedTypeId = selectedTypeId,
             )
@@ -296,12 +299,15 @@ private fun ShortPlayUiState.appendPage(
     this
 }
 
-/** 首屏在途：已有内容就原地打刷新标记，还没有内容才落整屏 Loading。 */
+/** 首屏在途：已有内容就原地打刷新标记；换分类时原地等，只有首次加载才落整屏 Loading。 */
 private fun ShortPlayUiState.refreshing(types: List<ShortPlayType>, selectedTypeId: Int): ShortPlayUiState =
-    if (this is ShortPlayUiState.Content) {
-        copy(isRefreshing = true, isLoadingMore = false, appendError = null, refreshError = null)
-    } else {
-        ShortPlayUiState.Loading(types, selectedTypeId)
+    when {
+        this is ShortPlayUiState.Content ->
+            copy(isRefreshing = true, isLoadingMore = false, appendError = null, refreshError = null)
+        // 已经换到别的分类：整屏改成转圈会先闪一下，占位层已经兜住这一段。
+        this.selectedTypeId != selectedTypeId -> this
+        // 同一分类的「换一批 / 重试」仍给转圈反馈。
+        else -> ShortPlayUiState.Loading(types, selectedTypeId)
     }
 
 /** 首屏失败：有内容只挂提示条，没内容才落整屏错误态（分类仍保留，能从顶部切走）。 */

@@ -49,10 +49,13 @@ final class Input
         return in_array((string)$this->raw($key), ['1', 'true', 'on', 'yes'], true);
     }
 
-    /** 逗号分隔的整数列表，用于批量删除这类入参。 */
+    /** 逗号分隔的整数列表，用于批量删除、`type_ids` 这类入参。 */
     public function intList(string $key): array
     {
-        $raw = (string)$this->raw($key);
+        $value = $this->raw($key);
+        // 数组形式（`?type_ids[]=1`）也收：直接 `(string)` 转换会抛 Array to string 警告，
+        // 在开了 display_errors 的站点上会把 JSON 响应弄坏。
+        $raw = is_array($value) ? implode(',', array_filter($value, 'is_scalar')) : (string)$value;
         if ($raw === '') {
             return [];
         }

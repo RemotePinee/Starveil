@@ -1,20 +1,22 @@
 package com.starveil.app
 
-import android.graphics.BitmapFactory
+// 用户要求暂时隐藏开屏底部 logo，保留以便恢复：这一组 import 只服务于 lockup 与呼吸动画，
+// 恢复下方被注释掉的代码时把它们一并放开即可。
+// import android.graphics.BitmapFactory
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
+// import androidx.compose.animation.core.RepeatMode
+// import androidx.compose.animation.core.animateFloat
+// import androidx.compose.animation.core.infiniteRepeatable
+// import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Image
+// import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+// import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,12 +26,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
+// import androidx.compose.ui.graphics.asImageBitmap
+// import androidx.compose.ui.layout.ContentScale
+// import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
+import com.airbnb.lottie.RenderMode
 import com.airbnb.lottie.compose.LottieAnimation
+import com.airbnb.lottie.compose.LottieCompositionResult
 import com.airbnb.lottie.compose.LottieCompositionSpec
 import com.airbnb.lottie.compose.LottieConstants
 import com.airbnb.lottie.compose.rememberLottieComposition
@@ -37,8 +41,9 @@ import com.starveil.app.ads.AdSplashGate
 import com.starveil.core.designsystem.token.Spacing
 import kotlinx.coroutines.delay
 
-/** logo 呼吸一次（透明度来回）的时长。 */
-private const val BREATHE_MS = 1_400
+// 用户要求暂时隐藏底部 lockup，保留以便恢复：呼吸时长先留着，恢复动画时直接用。
+// /** logo 呼吸一次（透明度来回）的时长。 */
+// private const val BREATHE_MS = 1_400
 
 /** 第二屏最短停留：首页来得太快也让动画走完一轮，否则看着像抽搐。 */
 private const val BRAND_MIN_MS = 900L
@@ -59,21 +64,29 @@ private const val POLL_MS = 40L
  * 背景色与底部 lockup 的定位必须和 `splash_window.xml` 完全一致（贴底 32dp、水平居中、
  * 原始像素不缩放），两屏之间这个 logo 才是"同一个元素在延续"——位置差几像素，
  * 交接那一下就会看出来跳了。
+ *
+ * 底部 lockup 目前按用户要求暂时隐藏（见下方注释掉的代码）；上面这段定位约定保留，
+ * 恢复时两屏之间那个 logo 才还是"同一个元素在延续"。
  */
 @Composable
 internal fun SplashBrandLayer() {
-    val context = LocalContext.current
-    val lockup = remember {
-        BitmapFactory.decodeResource(context.resources, R.drawable.ic_splash_lockup)
-            .asImageBitmap()
-    }
-    val breathe by rememberInfiniteTransition(label = "splash-breathe").animateFloat(
-        initialValue = 0.62f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(BREATHE_MS), RepeatMode.Reverse),
-        label = "splash-breathe-alpha",
-    )
-    val composition by rememberLottieComposition(LottieCompositionSpec.Asset("splash_loading.json"))
+    // 用户要求暂时隐藏开屏底部 logo，保留以便恢复：
+    // 底部的 bitmap 与它的呼吸动画整段注掉，不删——lockup 的尺寸与定位约定还在
+    // Spacing / splash_window.xml 里，恢复时把这段放开就回到原来的效果。
+    // val context = LocalContext.current
+    // val lockup = remember {
+    //     BitmapFactory.decodeResource(context.resources, R.drawable.ic_splash_lockup)
+    //         .asImageBitmap()
+    // }
+    // val breathe by rememberInfiniteTransition(label = "splash-breathe").animateFloat(
+    //     initialValue = 0.62f,
+    //     targetValue = 1f,
+    //     animationSpec = infiniteRepeatable(tween(BREATHE_MS), RepeatMode.Reverse),
+    //     label = "splash-breathe-alpha",
+    // )
+    val compositionResult = rememberLottieComposition(LottieCompositionSpec.Asset("splash_loading.json"))
+    val composition by compositionResult
+    SplashLottieDiagnostics(compositionResult)
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -81,27 +94,57 @@ internal fun SplashBrandLayer() {
     ) {
         LottieAnimation(
             composition = composition,
-            iterations = LottieConstants.IterateForever,
-            // 素材里 6 个形状图层用了 merge paths，不显式开启时 Lottie 直接跳过这些图层，
-            // 只剩一条地面和一块黄色——在 168dp 里看着就是"没有动画"。
-            // logcat 会打印 "Animation contains merge paths ... must be manually enabled"。
+            iterations = 1,
+            // 播放速度：素材 3 秒，开屏等不起，2 倍速约 1.5 秒一遍
+            speed = 2f,
+            // 素材里 12 个形状元素是 merge paths。不显式开启时 Lottie 在**解析期**就把它们
+            // 丢掉（MergePaths.toContent 返回 null，ContentGroup 过滤掉），图层只剩零碎几何，
+            // 168dp 里看着就是没动画。这是解析开关，换渲染模式救不回来，必须开。
             enableMergePaths = true,
+            // 用默认的硬件渲染：素材只有 8 个形状图层、没有蒙版，硬件路径完全够用，
+            // 软件渲染只会多占 CPU。之前加它是因为误判成「硬件不支持」，实际是素材里
+            // 那个非法颜色字段让 composition 解析失败，与渲染模式无关。
             modifier = Modifier
                 .align(Alignment.Center)
                 .size(Spacing.splashAnimation),
         )
-        Image(
-            bitmap = lockup,
-            contentDescription = null,
-            // FillBounds 对应窗口背景里的 bitmap gravity="fill"：
-            // 两边都按 160×69dp 铺，不再让各自去推位图的固有尺寸。
-            // 两边都按 320×138dp 铺，不再让各自去推位图的固有尺寸。
-            contentScale = ContentScale.FillBounds,
-            alpha = breathe,
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(bottom = Spacing.xxl)
-                .size(width = Spacing.splashLogoWidth, height = Spacing.splashLogoHeight),
+        // 用户要求暂时隐藏开屏底部 lockup，保留以便恢复：整段注掉，不要删。
+        // Image(
+        //     bitmap = lockup,
+        //     contentDescription = null,
+        //     // FillBounds 对应窗口背景里的 bitmap gravity="fill"：
+        //     // 两边都按 160×69dp 铺，不再让各自去推位图的固有尺寸。
+        //     // 两边都按 320×138dp 铺，不再让各自去推位图的固有尺寸。
+        //     contentScale = ContentScale.FillBounds,
+        //     alpha = breathe,
+        //     modifier = Modifier
+        //         .align(Alignment.BottomCenter)
+        //         .padding(bottom = Spacing.xxl)
+        //         .size(width = Spacing.splashLogoWidth, height = Spacing.splashLogoHeight),
+        // )
+    }
+}
+
+/**
+ * 临时诊断：分开"解析失败"与"渲染失败"。
+ *
+ * [LottieAnimation] 在 `composition.duration == 0f` 时直接返回一个空 Box，
+ * 解析失败和设备上的绘制异常在屏幕上是同一块空白，只有这两个数字能把它们分开。
+ * 项目禁止裸 `Log.*`（`verifySecurityBaseline` 会拦），这里走 `println` 到 logcat。
+ * 排查完可以整块删除。
+ */
+@Composable
+private fun SplashLottieDiagnostics(result: LottieCompositionResult) {
+    LaunchedEffect(result) {
+        if (!BuildConfig.DEBUG) return@LaunchedEffect
+        // await 而不是读当前值：读到的是"还没加载完"的 null，两个状态分不开。
+        val loaded = runCatching { result.await() }
+        val composition = loaded.getOrNull()
+        println(
+            "SplashLottie duration=${composition?.duration} " +
+                "layers=${composition?.layers?.size} " +
+                "warnings=${composition?.warnings} " +
+                "error=${loaded.exceptionOrNull()}",
         )
     }
 }
