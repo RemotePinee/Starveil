@@ -8,8 +8,10 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.starveil.core.common.AppError
 import com.starveil.core.common.AppResult
 import com.starveil.core.data.AuthRepository
+import com.starveil.core.data.ContinueWatchingRepository
 import com.starveil.core.data.PointsRepository
 import com.starveil.core.data.UserRepository
+import com.starveil.core.model.ContinueWatching
 import com.starveil.core.model.Session
 import com.starveil.core.model.ShareLink
 import com.starveil.core.model.UserCenterVariant
@@ -47,6 +49,8 @@ class UserCenterViewModel(
     private val authRepository: AuthRepository,
     private val userRepository: UserRepository? = null,
     private val pointsRepository: PointsRepository? = null,
+    /** 观看记录的来源：与历史页、首页「继续观看」同一份，不另建接口。 */
+    private val historyRepository: ContinueWatchingRepository? = null,
     private val variant: UserCenterVariant = UserCenterVariant.A,
     private val memberEnabled: Boolean = true,
     /** 冷启动进页时 cookie 里已有的会话：首帧就按登录态渲染，不会先闪一下"未登录"。 */
@@ -61,6 +65,8 @@ class UserCenterViewModel(
             session = initialSession,
             profile = initialProfile,
             isLoading = initialSession == null,
+            // 首帧先铺快照（AGENTS.md §9）：进来直接看到上次的记录，网络回来原地覆盖
+            history = historyRepository?.cachedHistory().orEmpty(),
             memberEnabled = memberEnabled,
             apiHost = apiHost,
         ),
@@ -95,7 +101,9 @@ class UserCenterViewModel(
     fun logout() {
         viewModelScope.launch {
             authRepository.logout()
-            _state.update { it.copy(session = null, profile = null, errorMessage = null) }
+            _state.update {
+                it.copy(session = null, profile = null, history = emptyList(), errorMessage = null)
+            }
         }
     }
 
@@ -115,10 +123,13 @@ class UserCenterViewModel(
             val session = authRepository.restore()
             if (session?.userId != _state.value.session?.userId) {
                 if (session == null) {
-                    _state.update { it.copy(session = null, profile = null, errorMessage = null) }
+                    _state.update {
+                        it.copy(session = null, profile = null, history = emptyList(), errorMessage = null)
+                    }
                 } else {
                     _state.update { it.copy(session = session) }
                     fetchProfile()
+                    refreshHistory()
                 }
                 return@launch
             }
@@ -130,6 +141,7 @@ class UserCenterViewModel(
                 _state.update { it.copy(profile = cached) }
             }
             fetchProfileQuietly()
+            refreshHistory()
         }
     }
 
@@ -150,11 +162,28 @@ class UserCenterViewModel(
         viewModelScope.launch {
             val session = authRepository.restore()
             if (session == null) {
-                _state.update { it.copy(session = null, profile = null, isLoading = false) }
+                _state.update {
+                    it.copy(session = null, profile = null, history = emptyList(), isLoading = false)
+                }
                 return@launch
             }
             _state.update { it.copy(session = session, isLoading = false) }
             fetchProfile()
+            refreshHistory()
+        }
+    }
+
+    /**
+     * 观看记录：失败就保留已有内容（含首帧快照），不弹错误也不清空。
+     *
+     * 观看记录只是页面里的一区，接口挂了不该把整页打成错误态；
+     * 空列表是"确实没看过"，与失败分开——只有成功返回才覆盖。
+     */
+    private suspend fun refreshHistory() {
+        val repository = historyRepository ?: return
+        val result = repository.recent()
+        if (result is AppResult.Success<List<ContinueWatching>>) {
+            _state.update { it.copy(history = result.value) }
         }
     }
 
@@ -242,7 +271,8 @@ class UserCenterViewModel(
             variant: UserCenterVariant,
             userRepository: UserRepository? = null,
             pointsRepository: PointsRepository? = null,
-            /** 会员体系开关；关闭时会员卡换成弱化样式，但卡片不消失。 */
+            historyRepository: ContinueWatchingRepository? = null,
+            /** 会员体系开关；关闭时会员卡只不出开通按钮，常用工具里的卡密兑换整行隐藏。 */
             memberEnabled: Boolean = true,
             initialSession: Session? = null,
             initialProfile: UserProfile? = null,
@@ -253,6 +283,7 @@ class UserCenterViewModel(
                     authRepository = authRepository,
                     userRepository = userRepository,
                     pointsRepository = pointsRepository,
+                    historyRepository = historyRepository,
                     variant = variant,
                     memberEnabled = memberEnabled,
                     initialSession = initialSession,

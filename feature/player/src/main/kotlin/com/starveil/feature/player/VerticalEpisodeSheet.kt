@@ -207,8 +207,9 @@ private fun SheetFavoriteButton(stage: VerticalPlayStage) {
     }
     val label = favoriteButtonLabel(pending, favorite)
     // 收藏条整条刷底色：它钉在可见底边上，顶边与滚动内容相接，
-    // 不铺满会和面板底色之间出现一条色带。
-    val barColor = MaterialTheme.colorScheme.surface
+    // 不铺满会和面板底色之间出现一条色带。取色必须跟弹层容器一致（surfaceContainerHigh），
+    // 否则扁平化后这条底会和面板差出一档，露出色带。
+    val barColor = MaterialTheme.colorScheme.surfaceContainerHigh
     val barEdge = Modifier.fillMaxWidth().drawBehind { drawRect(color = barColor) }
     Button(
         onClick = { haptics(HapticKind.Tick); stage.actions.onAction("收藏") },

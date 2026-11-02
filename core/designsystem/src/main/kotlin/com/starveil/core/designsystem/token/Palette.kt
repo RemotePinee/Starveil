@@ -11,6 +11,12 @@ import androidx.compose.ui.graphics.Color
  */
 internal object Palette {
 
+    /*
+     * 页面底 Ink950 → 卡片 Ink800 → 浮层（Sheet / Dialog）Ink700 → 菜单 / 胶囊 / 选中 InkMenu。
+     * R 通道 11 → 28（+17，卡片和页面底融色的修复点）→ 38（+10）→ 47（+9），与 Material 3
+     * 官方深色 ramp 同构；"越往上越亮、相邻至少差 8 个色阶"由 SkinPalettesTest 断言。
+     */
+
     // 中性（暗色阶梯）
     val Void = Color(0xFF070809)
     val Ink950 = Color(0xFF0B0C0F)
@@ -18,6 +24,8 @@ internal object Palette {
     val Ink850 = Color(0xFF16171C)
     val Ink800 = Color(0xFF1C1D23)
     val Ink700 = Color(0xFF26272F)
+    /** 深色阶梯最亮的一档：菜单、胶囊、选中态、分隔线共用，压在浮层上仍能分辨。 */
+    val InkMenu = Color(0xFF2F3038)
     val Ink600 = Color(0xFF34353E)
     val Ink500 = Color(0xFF5A5C66)
     val Ink300 = Color(0xFF9A9CA6)
@@ -46,6 +54,14 @@ internal object Palette {
     // 强调
     val Gold600 = Color(0xFFB98A2E)
     val Gold400 = Color(0xFFE0B354)
+    /** 会员卡文字色：比 [Gold400] 暖一档、偏橙，压在深棕底图上不发灰。 */
+    val Gold350 = Color(0xFFF0A94F)
+    /** 会员卡墨绿渐变的两端：左端偏亮，向右压暗，金色文字压上去对比够。 */
+    val Moss900 = Color(0xFF24312A)
+    /** 浅色模式会员卡的墨绿：比深色版更饱和一档，挨着白底才不会读成近黑。 */
+    val Moss800 = Color(0xFF2F4738)
+    val Moss850 = Color(0xFF16221B)
+    val Moss950 = Color(0xFF101613)
     val Coral500 = Color(0xFFFF4159)
     val Violet500 = Color(0xFF7C5CFF)
     val Amber500 = Color(0xFFFFB020)

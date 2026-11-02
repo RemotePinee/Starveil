@@ -44,19 +44,23 @@ class AppNavGraphTest {
 
 
     @Test
-    fun `short play and episodes draw behind dock while regular tabs preserve inset`() {
+    fun `dock floats over content so no route loses bottom to it`() {
         val direction = LayoutDirection.Ltr
         val scaffoldPadding = PaddingValues(bottom = 116.dp)
-        val feed = AppShellState(SHORT_PLAY_ROUTE, emptyList(), locked = false, fullscreen = false)
-        val episodes = AppShellState("$VERTICAL_PLAY_ROUTE/456/2", emptyList(), locked = false, fullscreen = false)
-        val regularTab = AppShellState(HOME_ROUTE, emptyList(), locked = false, fullscreen = false)
+        val dockTabs = tabs.map { BottomTabSpec(it, it, it, it, "home") }
+        val feed = AppShellState(SHORT_PLAY_ROUTE, dockTabs, locked = false, fullscreen = false)
+        val episodes = AppShellState("$VERTICAL_PLAY_ROUTE/456/2", dockTabs, locked = false, fullscreen = false)
+        val regularTab = AppShellState(HOME_ROUTE, dockTabs, locked = false, fullscreen = false)
+        val secondLevel = AppShellState("history", dockTabs, locked = false, fullscreen = false)
 
-        // 短剧页照常扣掉 dock 占位：它用 bleedBottom 自己把那块铺回屏幕底，
-        // 这样切 tab 时页面高度不变，贴底那组不会先跳一下（见 ShortPlayDestination）。
-        assertEquals(116.dp, feed.contentPadding(scaffoldPadding, direction).calculateBottomPadding())
+        // dock 浮在页面之上：底边一律不扣，页面铺到屏幕底，模糊快照才录得到 dock 那块。
+        // 需要留白的页面自己加 LocalDockInset（首页、直播、榜单、专题、会员、我的页）。
+        assertEquals(Spacing.none, feed.contentPadding(scaffoldPadding, direction).calculateBottomPadding())
         // 竖屏整页播放没有 dock，保持 0。
         assertEquals(Spacing.none, episodes.contentPadding(scaffoldPadding, direction).calculateBottomPadding())
-        assertEquals(116.dp, regularTab.contentPadding(scaffoldPadding, direction).calculateBottomPadding())
+        assertEquals(Spacing.none, regularTab.contentPadding(scaffoldPadding, direction).calculateBottomPadding())
+        // 二级页没有 dock：底边仍留给系统导航栏，归零会让最后一行压在导航栏上。
+        assertEquals(116.dp, secondLevel.contentPadding(scaffoldPadding, direction).calculateBottomPadding())
     }
 
     @Test

@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.starveil.core.data.LiveGroup
+import com.starveil.core.designsystem.LocalDockInset
 import com.starveil.core.designsystem.component.StarveilLoadingScreen
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
@@ -218,7 +219,8 @@ private fun LiveChannelGrid(
             start = Spacing.pageHorizontal,
             end = Spacing.pageHorizontal,
             top = Spacing.xs,
-            bottom = Spacing.xxl,
+            // dock 铺在网格之上：底部再留一段，最后一排放得进 dock 上方。
+            bottom = Spacing.xxl + LocalDockInset.current,
         ),
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
         verticalArrangement = Arrangement.spacedBy(Spacing.sm),

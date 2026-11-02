@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -76,11 +75,8 @@ internal fun ProfileAccountCard(
                 )
             }
         }
-        SettingsDivider()
         SettingsRow(label = "昵称", value = state.nickName.ifBlank { "未设置" }, onClick = onEditNick)
-        SettingsDivider()
         SettingsRow(label = "用户名", value = state.userName.ifBlank { PLACEHOLDER })
-        SettingsDivider()
         SettingsRow(label = "用户 ID", value = state.userId.ifBlank { PLACEHOLDER })
     }
 }
@@ -90,7 +86,6 @@ internal fun ProfileAccountCard(
 internal fun ProfileInfoCard(state: ProfileUiState) {
     SettingsCard {
         SettingsRow(label = "会员状态", value = state.membershipLabel)
-        SettingsDivider()
         SettingsRow(label = "会员等级", value = "${state.groupLabel} · Lv.${state.levelLabel}")
     }
 }
@@ -110,7 +105,6 @@ internal fun ProfileAppCard(versionName: String) {
             action = "切换",
             onClick = { pickingAppearance = true },
         )
-        SettingsDivider()
         SettingsRow(
             label = "图片缓存",
             value = cacheText,
@@ -120,7 +114,6 @@ internal fun ProfileAppCard(versionName: String) {
                 cacheText = imageCacheText(context)
             },
         )
-        SettingsDivider()
         SettingsRow(label = "当前版本", value = versionName.ifBlank { PLACEHOLDER })
     }
     if (pickingAppearance) {
@@ -233,14 +226,6 @@ private fun SettingsRow(
             modifier = Modifier.padding(start = Spacing.md),
         )
     }
-}
-
-@Composable
-private fun SettingsDivider() {
-    HorizontalDivider(
-        color = starveilExtraColors.divider,
-        modifier = Modifier.padding(start = Spacing.lg),
-    )
 }
 
 /** 相册里选出来的一张图：字节、文件名、MIME 由页面解析后交给 ViewModel。 */

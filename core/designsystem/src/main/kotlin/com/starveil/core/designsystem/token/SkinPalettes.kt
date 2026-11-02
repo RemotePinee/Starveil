@@ -33,7 +33,8 @@ internal class SkinTones(
 /**
  * 六套皮肤。
  *
- * 中性色阶与皮肤无关：深色固定 Void → Ink950 → Ink900 → Ink850 → Ink800 → Ink700，
+ * 中性色阶与皮肤无关：深色只留四层可见高度——Ink900（页面底）→ Ink850（浮层/卡片）
+ * → Ink800（胶囊/输入）→ Ink700（菜单），再往下是下沉层 Ink950 / Void，
  * 浅色固定 Paper 阶梯。换皮肤只换 primary/secondary 及其 on 色（以及扩展色的
  * accent/badge），背景、卡片、浮层、输入框、抽屉、胶囊、描边都不随皮肤变化——
  * 否则深色下切皮肤整屏会跟着泛色，卡片和页面底分不开。
@@ -96,36 +97,43 @@ private fun skinTones(accent: Color, badge: Color): SkinTones = SkinTones(
 /**
  * 深色：中性阶梯固定，与皮肤无关，皮肤只决定 primary/secondary 及其 on 色。
  *
- * 各档对应现有 Palette 阶梯：背景 Void → 底 Ink950 → 浮层 Ink900 → 卡片 Ink850
- * → 胶囊 Ink800 → 描边 Ink700。主色容器用中性 Ink700，只把 onPrimaryContainer
- * 留给强调色——选中态仍能看出皮肤，但容器底不再被染色。
+ * 扁平化删掉了所有阴影，层级只剩色阶。四层可见高度，越往上越亮，相邻至少差 8 个 0-255 色阶
+ * （括号里是 R 通道值与相对下一档的差值，由 SkinPalettesTest 断言）：
+ * - 页面底 / surface：Ink950 `#0B0C0F`（R 11，Material 3 里 background 与 surface 同色）
+ * - 卡片 / 导航栏：Ink800 `#1C1D23`（R 28，+17——上一次卡片 `#16171C` 只差 5 个色阶，
+ *   深色下和页面底糊成一片，这一档就是那次问题的修复点）
+ * - 弹层 / Dialog：Ink700 `#26272F`（R 38，+10）
+ * - 菜单 / 胶囊 / 选中态 / 分隔线：InkMenu `#2F3038`（R 47，+9）
+ * 再往下是下沉面：Void / Ink900 只用于视频留边这类"凹陷"，不参与分层。
+ * 主色容器用中性 InkMenu（选中态落在最亮一档，压在弹层上也看得出），
+ * 只把 onPrimaryContainer 留给强调色——选中态仍能看出皮肤，但容器底不再被染色。
  */
 private fun darkSchemeOf(accent: Color, badge: Color): ColorScheme = darkColorScheme(
     primary = accent,
     onPrimary = Palette.White,
-    primaryContainer = Palette.Ink700,
+    primaryContainer = Palette.InkMenu,
     onPrimaryContainer = accent,
     secondary = badge,
     onSecondary = Palette.White,
-    secondaryContainer = Palette.Ink800,
+    secondaryContainer = Palette.InkMenu,
     onSecondaryContainer = badge,
-    background = Palette.Void,
+    background = Palette.Ink950,
     onBackground = Palette.White,
     surface = Palette.Ink950,
     onSurface = Palette.White,
     surfaceVariant = Palette.Ink850,
     onSurfaceVariant = Palette.White70,
-    surfaceDim = Palette.Ink950,
-    surfaceBright = Palette.Ink700,
+    surfaceDim = Palette.Void,
+    surfaceBright = Palette.Ink600,
     surfaceContainerLowest = Palette.Void,
-    surfaceContainerLow = Palette.Ink900,
-    surfaceContainer = Palette.Ink900,
-    surfaceContainerHigh = Palette.Ink850,
-    surfaceContainerHighest = Palette.Ink800,
+    surfaceContainerLow = Palette.Ink850,
+    surfaceContainer = Palette.Ink800,
+    surfaceContainerHigh = Palette.Ink700,
+    surfaceContainerHighest = Palette.InkMenu,
     // 抬升叠色也必须中性：默认值是 primary，导航栏/弹层会重新被染成皮肤色
-    surfaceTint = Palette.Ink800,
-    outline = Palette.Ink700,
-    outlineVariant = Palette.Ink800,
+    surfaceTint = Palette.Ink700,
+    outline = Palette.Ink600,
+    outlineVariant = Palette.InkMenu,
     error = Palette.Red500,
     onError = Palette.White,
     scrim = Palette.Void,
@@ -156,7 +164,7 @@ private fun lightSchemeOf(accent: Color, badge: Color): ColorScheme = lightColor
     surfaceContainerLow = Palette.Paper100,
     surfaceContainer = Palette.Paper100,
     surfaceContainerHigh = Palette.Paper200,
-    surfaceContainerHighest = Palette.Paper200,
+    surfaceContainerHighest = Palette.Paper300,
     surfaceTint = Palette.Paper200,
     outline = Palette.Paper300,
     outlineVariant = Palette.Paper200,
@@ -198,11 +206,15 @@ private fun lightExtraOf(accent: Color, badge: Color): StarveilExtraColors =
         textFaint = Palette.Ink300,
         divider = Palette.Paper300,
         // 遮罩仍是黑的：浮层要压暗下面的内容，浅色主题也不该变白
+        // 会员卡浅色模式偏绿一档：同样的墨绿挨着白底会读成近黑，提饱和才显绿。
+        // 会员卡本身不跟主题走，所以这里只是给"浅色模式下的会员卡"换一套更绿的渐变。
+        memberMossStart = Palette.Moss800,
+        memberMossEnd = Palette.Moss850,
         scrimStrong = Palette.Void,
         // 海报叠字渐变同理：它压在海报图上，与界面底色无关
         heroScrimStart = Palette.ScrimTop,
         heroScrimEnd = Palette.ScrimBottom,
-        chipBackground = Palette.Paper200,
+        chipBackground = Palette.Paper300,
         badge = badge,
         accent = accent,
     )

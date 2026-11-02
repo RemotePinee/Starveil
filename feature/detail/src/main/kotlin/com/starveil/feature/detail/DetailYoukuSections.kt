@@ -251,7 +251,9 @@ private fun EpisodePickerSheet(
     var range by rememberSaveable(episodes.size) { mutableIntStateOf(selectedRange) }
     androidx.compose.material3.ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = starveilExtraColors.surfaceCard,
+        // 扁平化：选集也是浮层，与其它 Sheet 同一档（surfaceContainerHigh `#26272F`），
+        // 用 surfaceCard（`#1C1D23`）会和下一层卡片同色，弹出时看不出是新一层
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(

@@ -16,6 +16,17 @@ import androidx.compose.ui.graphics.Color
 data class StarveilExtraColors(
     /** 会员金。旧字段名保留，页面已在用。 */
     val brandGold: Color,
+    /** 会员卡渐变左端（偏亮墨绿）：会员卡不跟主题，深浅模式同一套。 */
+    val memberMossStart: Color = Palette.Moss900,
+    /** 会员卡渐变右端（压暗墨绿）。 */
+    val memberMossEnd: Color = Palette.Moss950,
+    /**
+     * 会员卡文字色：比 [brandGold] 暖一档（#F0A94F），压在深棕底图上不发灰。
+     *
+     * 带默认值：会员卡是"压在图片上"的固定深色卡片，不需要深浅两套，
+     * 所以不给每个构造点都加一遍参数。
+     */
+    val memberText: Color = brandGold,
     /** 浮层 / 导航栏底色，比页面底色亮一档。 */
     val surfaceElevated: Color,
     /** 卡片底色。 */
@@ -78,15 +89,16 @@ data class StarveilExtraColors(
 
 internal fun defaultExtraColors(accent: Color, badge: Color): StarveilExtraColors = StarveilExtraColors(
     brandGold = Palette.Gold400,
-    surfaceElevated = Palette.Ink900,
-    surfaceCard = Palette.Ink850,
+    surfaceElevated = Palette.Ink850,
+    memberText = Palette.Gold350,
+    surfaceCard = Palette.Ink700,
     textMuted = Palette.White70,
     textFaint = Palette.White50,
-    divider = Palette.Ink700,
+    divider = Palette.Ink600,
     scrimStrong = Palette.Void,
     heroScrimStart = Palette.ScrimTop,
     heroScrimEnd = Palette.ScrimBottom,
-    chipBackground = Palette.Ink800,
+    chipBackground = Palette.InkMenu,
     badge = badge,
     accent = accent,
 )

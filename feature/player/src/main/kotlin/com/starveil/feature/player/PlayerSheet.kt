@@ -79,7 +79,9 @@ internal fun PlayerSheetHost(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
+        // 扁平化：弹层底色取 surfaceContainerHigh（`#26272F`），比页面底（`#0B0C0F`）亮 10 个色阶。
+        // surface 现在与页面底同色，再用它弹层会和背景糊成一片
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = AppShape.large,
         dragHandle = { SheetDragHandle() },
     ) {

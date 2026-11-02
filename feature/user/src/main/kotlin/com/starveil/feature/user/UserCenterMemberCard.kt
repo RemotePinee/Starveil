@@ -1,42 +1,40 @@
 package com.starveil.feature.user
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.adamglin.PhosphorIcons
-import com.adamglin.phosphoricons.Fill
-import com.adamglin.phosphoricons.fill.Star
-import com.starveil.core.designsystem.starveilExtraColors
-import com.starveil.core.designsystem.token.AppShape
-import com.starveil.core.designsystem.token.IconSize
-import com.starveil.core.designsystem.token.Spacing
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.clip
+    /** 会员卡渐变左端（偏亮墨绿）。 */
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.Brush
+import com.starveil.core.designsystem.starveilExtraColors
+import com.starveil.core.designsystem.token.AppShape
+import com.starveil.core.designsystem.token.Spacing
 
 /**
- * 会员卡：左侧标题 + 状态 + 权益摘要，右侧"开通 / 续费"。
+ * 会员卡：一张"压在底图上的深色卡片"，左侧图标 + 三行文字，右侧圆形开通按钮。
  *
- * 底色仍是 [starveilExtraColors.surfaceCard]，金色只作点缀：一层从左向右渐隐的金雾、
- * 金色标题与金色胶囊按钮。历史版本把整张卡刷成土黄渐变 + 三条权益 + 分隔线，既高饱和又把
- * 一屏高度的三分之一让给了一句广告；这里压成单行卡片，完整权益放到支付页 Hero。
+ * 底图 [R.drawable.feature_member_card] 自带深棕金渐变与右侧暗块，所以这张卡**不跟主题**：
+ * 深浅模式下都是同一张图、同一套金色文字。浅色主题的 surface 系文字是深色，压在这张图上
+ * 会糊掉，因此三行文字统一取 [starveilExtraColors.brandGold]，与左侧图标同色。
  *
- * 权益摘要写死在展示层 [BENEFIT_SUMMARY]：后端 `v1.user/detail`
- * 没有权益字段，也没有权益接口，在状态里造一个 `benefits` 只会让 UI 以为真有数据源。
+ * 会员体系关闭（`member_enabled = 0`）时：**卡片照常显示、底图照常、文字照常**，
+ * 只是右侧那个开通按钮不渲染——历史会员要能看到"权益保留至到期"，非会员要看到
+ * "暂未开放"，两种信息都在副标题里由 [memberStatusText] 给出。
  *
  * 按钮只上抛 [MEMBER_ENTRY_LABEL]：`:app` 的入口映射把它接到 `feature:pay` 的会员下单页，
  * 本模块不直接引用支付 feature（AGENTS.md 第 1 节）。
@@ -48,31 +46,38 @@ internal fun MemberCard(
     modifier: Modifier = Modifier,
 ) {
     val enabled = state.memberEnabled
-    Surface(
-        shape = AppShape.extraLarge,
-        color = if (enabled) starveilExtraColors.surfaceCard else starveilExtraColors.chipBackground,
-        modifier = modifier.fillMaxWidth(),
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(AppShape.extraLarge),
     ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .background(
+                    Brush.horizontalGradient(
+                        0f to starveilExtraColors.memberMossStart,
+                        1f to starveilExtraColors.memberMossEnd,
+                    ),
+                ),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .then(if (enabled) Modifier.background(goldWash()) else Modifier)
                 .padding(horizontal = Spacing.lg, vertical = Spacing.md),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            Icon(
-                imageVector = PhosphorIcons.Fill.Star,
+            Image(
+                painter = painterResource(R.drawable.ic_member_unlock),
                 contentDescription = null,
-                tint = if (enabled) starveilExtraColors.brandGold else starveilExtraColors.textFaint,
-                modifier = Modifier.size(IconSize.item),
+                modifier = Modifier.size(Spacing.xxl),
             )
             MemberCardTexts(
                 state = state,
-                enabled = enabled,
                 modifier = Modifier.weight(WEIGHT_FULL),
             )
-            // 会员关闭时不渲染按钮：卡片保留（历史会员要看到到期时间），但不能点开通
+            // 会员关闭时不渲染按钮：卡片与底图保持原样，只是没有入口可点
             if (enabled) {
                 MemberEntryButton(
                     isMember = state.isMember,
@@ -83,11 +88,10 @@ internal fun MemberCard(
     }
 }
 
-/** 标题 / 会员状态 / 权益摘要三段文字。 */
+/** 标题 / 会员状态 / 权益摘要三段文字，统一用金色（与左侧图标同色）。 */
 @Composable
 private fun MemberCardTexts(
     state: UserCenterUiState,
-    enabled: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier) {
@@ -95,13 +99,13 @@ private fun MemberCardTexts(
             text = MEMBER_TITLE,
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.SemiBold,
-            color = if (enabled) starveilExtraColors.brandGold else starveilExtraColors.textMuted,
+            color = starveilExtraColors.memberText,
             maxLines = 1,
         )
         Text(
             text = memberStatusText(state = state),
             style = MaterialTheme.typography.bodySmall,
-            color = starveilExtraColors.textMuted,
+            color = starveilExtraColors.memberText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -112,52 +116,46 @@ private fun MemberCardTexts(
         Text(
             text = BENEFIT_SUMMARY,
             style = MaterialTheme.typography.labelSmall,
-            color = starveilExtraColors.textFaint,
+            color = starveilExtraColors.memberText,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
-/** 金色胶囊按钮：文案随会员状态在「开通 / 续费」间切换。 */
+/**
+ * 圆形按钮：金底 + 深色箭头图标。
+ *
+ * 文案「开通 / 续费」不再显示——参考设计里这里是纯图标，文案由左侧标题承担。
+ * `contentDescription` 仍然给出，读屏用户才知道这里能点。
+ */
 @Composable
 private fun MemberEntryButton(
     isMember: Boolean,
     onEntryClick: (String) -> Unit,
 ) {
-    Button(
-        onClick = { onEntryClick(MEMBER_ENTRY_LABEL) },
-        shape = AppShape.full,
-        contentPadding = PaddingValues(horizontal = Spacing.lg, vertical = Spacing.sm),
-        colors = ButtonDefaults.buttonColors(
-            containerColor = starveilExtraColors.brandGold,
-            contentColor = MaterialTheme.colorScheme.surface,
-        ),
-    ) {
-        Text(
-            text = if (isMember) ACTION_RENEW else ACTION_SUBSCRIBE,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-    }
-}
-
-@Composable
-private fun goldWash(): Brush {
-    val wash = starveilExtraColors.brandGold.copy(alpha = GOLD_WASH_ALPHA)
-    return Brush.horizontalGradient(
-        0f to wash,
-        GOLD_WASH_STOP to starveilExtraColors.surfaceCard,
+    val label = if (isMember) ACTION_RENEW else ACTION_SUBSCRIBE
+    // 图标本身自带金底圆环：这里不再套 background(brandGold) 的圆形容器，
+    // 否则会在图标外面多出一圈纯金色边，看起来像双层。
+    Image(
+        painter = painterResource(R.drawable.ic_member_arrow),
+        contentDescription = label,
+        modifier = Modifier
+            // 比卡片左侧图标再大一号：它是这张卡唯一的可点目标，小了不好点
+            .size(Spacing.xxl + Spacing.md)
+            .clickable { onEntryClick(MEMBER_ENTRY_LABEL) },
     )
 }
 
 private const val MEMBER_TITLE = "Starveil 会员"
 private const val BENEFIT_SUMMARY = "会员专区免费看 · 高清无广告 · 新片抢先看"
+
 /** 会员卡按钮上抛的入口文案；`:app` 用它路由到会员页，会员关闭时不会再触发。 */
 const val MEMBER_ENTRY_LABEL = "开通会员"
 private const val CLOSED_HINT = "会员开通暂未开放，已开通的权益保留至到期"
 private const val ACTION_SUBSCRIBE = "开通"
 private const val ACTION_RENEW = "续费"
+
 /**
  * 会员卡副标题。
  *
@@ -170,6 +168,5 @@ private fun memberStatusText(state: UserCenterUiState): String = when {
     !state.memberEnabled -> CLOSED_HINT
     else -> state.memberExpiryLabel
 }
-private const val GOLD_WASH_ALPHA = 0.22f
-private const val GOLD_WASH_STOP = 0.55f
+
 private const val WEIGHT_FULL = 1f

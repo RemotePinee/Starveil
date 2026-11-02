@@ -161,7 +161,9 @@ private fun SheetSurface(
             )
             .pointerInput(Unit) { detectTapGestures { /* 空白处吃掉点击，保留子项点击。 */ } },
         shape = AppShape.sheetTop,
-        color = MaterialTheme.colorScheme.surface,
+        // 扁平化：面板底色取 surfaceContainerHigh（`#26272F`），比页面底（`#0B0C0F`）亮 10 个色阶，
+        // 面板浮在内容之上靠这一档色差，不靠阴影
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(Modifier.fillMaxSize()) {
             SheetHandle(callbacks)

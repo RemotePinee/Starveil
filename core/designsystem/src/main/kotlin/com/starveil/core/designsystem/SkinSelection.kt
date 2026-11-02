@@ -85,7 +85,13 @@ fun SkinPickerSheet(
     onSelect: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        // 扁平化：弹层统一走 surfaceContainerHigh（`#26272F`）。M3 默认的
+        // surfaceContainerLow（`#16171C`）压在页面底（`#0B0C0F`）上只差 6 个色阶，
+        // 去掉阴影后看不出这是浮层
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -187,7 +193,11 @@ fun AppearancePickerSheet(
     onSelect: (AppearanceMode) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        // 扁平化：与 SkinPickerSheet 同款，弹层统一走 surfaceContainerHigh（`#26272F`）
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

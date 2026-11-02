@@ -27,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import com.starveil.core.designsystem.LocalDockInset
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.Spacing
@@ -48,7 +49,8 @@ internal fun RankBoardList(
             start = Spacing.pageHorizontal,
             end = Spacing.pageHorizontal,
             top = Spacing.md,
-            bottom = Spacing.lg,
+            // dock 铺在列表之上：底部再留一段，footer 放得进 dock 上方。
+            bottom = Spacing.lg + LocalDockInset.current,
         ),
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
     ) {

@@ -20,7 +20,8 @@ import androidx.compose.runtime.Immutable
  * 可关闭的登录弹层（服务端未开强制登录时用）。
  *
  * 只是 [ModalBottomSheet] 容器 + [LoginPanel]，与选集/倍速等弹层同一套参数
- * （`containerColor = surface`、[AppShape.large]），用户看到的是同一种弹层，不是第三种。
+ * （`containerColor = surfaceContainerHigh`、[AppShape.large]），用户看到的是同一种弹层，
+ * 不是第三种。扁平化后弹层与页面底只差一档色阶，不再有阴影。
  *
  * 内容可滚动并让开输入法：小屏上一弹键盘，登录按钮和协议行必须还能点到。
  */
@@ -38,7 +39,8 @@ fun LoginSheet(
     ModalBottomSheet(
         onDismissRequest = { actions.onDismiss?.invoke() },
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
+        // 扁平化：弹层底取 surfaceContainerHigh（`#26272F`），比页面底（`#0B0C0F`）亮 10 个色阶
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = AppShape.sheetTopLarge,
         modifier = modifier,
     ) {

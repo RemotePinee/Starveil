@@ -3,6 +3,7 @@ package com.starveil.app.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -18,6 +19,7 @@ import com.starveil.core.designsystem.LoginPrompt
 import com.starveil.core.designsystem.LoginReason
 import com.starveil.core.model.Skins
 import com.starveil.core.model.UserCenterVariant
+import com.starveil.feature.user.UserCenterActions
 import com.starveil.feature.user.UserCenterScreen
 import com.starveil.feature.user.UserCenterViewModel
 import com.starveil.feature.user.UserNavigation
@@ -37,39 +39,54 @@ private fun rememberUserCenterVariant(container: AppContainer, localSkin: String
 /** 我的页目的地：从 [AppDestinations] 挪出来，避免那个文件顶到 400 行闸门。 */
 internal fun NavGraphBuilder.userCenterDestination(nav: NavHostController, container: AppContainer) {
     composable(UserNavigation.USER_CENTER_ROUTE) {
-        val localSkin by container.themePreference.skinCode
-            .collectAsStateWithLifecycle(initialValue = "")
-        val variant by rememberUserCenterVariant(container, localSkin)
-        val context = LocalContext.current
-        val memberEnabled = LocalMemberEnabled.current
-        val loginPrompt = LocalLoginPrompt.current
-        val userCenterViewModel = tabViewModel<UserCenterViewModel>(
-            nav = nav,
-            factory = UserCenterViewModel.factory(
-                authRepository = container.authRepository,
-                variant = variant,
-                userRepository = container.userRepository,
-                pointsRepository = container.pointsRepository,
-                memberEnabled = memberEnabled,
-                initialSession = container.sessionSnapshot(),
-                initialProfile = container.userRepository.cachedProfile(),
-                // 头像存的是站内相对路径，拼上域名才能请求
-                apiHost = context.getString(R.string.starveil_api_host),
-            ),
-        )
-        // 登录层不跳路由，页面不会 resume：会话一变就主动同步，否则登录完还显示"登录 / 注册"
-        val session by container.session.collectAsStateWithLifecycle()
-        LaunchedEffect(session?.userId) { userCenterViewModel.syncSession() }
-        UserCenterScreen(
-            viewModel = userCenterViewModel,
+        UserCenterRoute(nav = nav, container = container)
+    }
+}
+
+/**
+ * 目的地内容单独成一个 @Composable：它要读 5 个 CompositionLocal 再拼一串回调，
+ * 挤在 `composable {}` 里会把外层函数顶过 LongMethod 阈值。
+ */
+@Composable
+private fun UserCenterRoute(nav: NavHostController, container: AppContainer) {
+    val localSkin by container.themePreference.skinCode
+        .collectAsStateWithLifecycle(initialValue = "")
+    val variant by rememberUserCenterVariant(container, localSkin)
+    val context = LocalContext.current
+    val memberEnabled = LocalMemberEnabled.current
+    val loginPrompt = LocalLoginPrompt.current
+    val scope = rememberCoroutineScope()
+    val userCenterViewModel = tabViewModel<UserCenterViewModel>(
+        nav = nav,
+        factory = UserCenterViewModel.factory(
+            authRepository = container.authRepository,
+            variant = variant,
+            userRepository = container.userRepository,
+            pointsRepository = container.pointsRepository,
+            historyRepository = container.continueWatchingRepository,
+            memberEnabled = memberEnabled,
+            initialSession = container.sessionSnapshot(),
+            initialProfile = container.userRepository.cachedProfile(),
+            // 头像存的是站内相对路径，拼上域名才能请求
+            apiHost = context.getString(R.string.starveil_api_host),
+        ),
+    )
+    // 登录层不跳路由，页面不会 resume：会话一变就主动同步，否则登录完还显示"登录 / 注册"
+    val session by container.session.collectAsStateWithLifecycle()
+    LaunchedEffect(session?.userId) { userCenterViewModel.syncSession() }
+    UserCenterScreen(
+        viewModel = userCenterViewModel,
+        actions = UserCenterActions(
             onLoginClick = { nav.openUserCenterEntry(container, loginPrompt) },
             onEntryClick = { label -> nav.handleUserEntry(label, memberEnabled, context) },
-            onSignedOut = {
+            onHistoryClick = { item -> nav.openContinueWatching(container, item, scope) },
+            onLogoutClick = {
+                userCenterViewModel.logout()
                 container.onSignedOut()
                 nav.popBackStack()
             },
-        )
-    }
+        ),
+    )
 }
 
 /**

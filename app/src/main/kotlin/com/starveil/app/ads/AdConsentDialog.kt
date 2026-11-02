@@ -5,6 +5,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import com.starveil.core.designsystem.token.Spacing
 
 /**
  * 首次启动的广告隐私说明。
@@ -24,6 +25,10 @@ internal fun AdConsentDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDecline,
+        // 圆角走 M3 默认：上一版把它收到 12dp，用户没要求改圆角，已回滚。
+        // 扁平化只保留"不叠 tonal 提亮"，弹层层级由 containerColor
+        // （surfaceContainerHigh `#26272F`）与窗外遮罩表达
+        tonalElevation = Spacing.none,
         title = { Text("关于广告") },
         text = {
             Column {

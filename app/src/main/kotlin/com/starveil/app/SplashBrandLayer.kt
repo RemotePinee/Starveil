@@ -84,7 +84,14 @@ internal fun SplashBrandLayer() {
     //     animationSpec = infiniteRepeatable(tween(BREATHE_MS), RepeatMode.Reverse),
     //     label = "splash-breathe-alpha",
     // )
-    val compositionResult = rememberLottieComposition(LottieCompositionSpec.Asset("splash_loading.json"))
+    // 深浅两套开屏素材：浅色模式用黑线条那版（浅底上才看得见），深色模式保持原来那版。
+    // 用全限定名读主题，避免为一个调用点多加一条 import。
+    val asset = if (com.starveil.core.designsystem.LocalIsDarkTheme.current) {
+        "splash_loading.json"
+    } else {
+        "splash_loading_light.json"
+    }
+    val compositionResult = rememberLottieComposition(LottieCompositionSpec.Asset(asset))
     val composition by compositionResult
     SplashLottieDiagnostics(compositionResult)
     Box(
@@ -96,7 +103,9 @@ internal fun SplashBrandLayer() {
             composition = composition,
             iterations = 1,
             // 播放速度：素材 3 秒，开屏等不起，2 倍速约 1.5 秒一遍
-            speed = 2f,
+            // 1.2 倍：3.2 秒的素材跑成约 2.7 秒。原来写 2 倍速是给上一版 1 秒的素材调的，
+            // 换素材后同一倍数就显得飞快。
+            speed = 1.2f,
             // 素材里 12 个形状元素是 merge paths。不显式开启时 Lottie 在**解析期**就把它们
             // 丢掉（MergePaths.toContent 返回 null，ContentGroup 过滤掉），图层只剩零碎几何，
             // 168dp 里看着就是没动画。这是解析开关，换渲染模式救不回来，必须开。
@@ -140,11 +149,18 @@ private fun SplashLottieDiagnostics(result: LottieCompositionResult) {
         // await 而不是读当前值：读到的是"还没加载完"的 null，两个状态分不开。
         val loaded = runCatching { result.await() }
         val composition = loaded.getOrNull()
+        val failure = loaded.exceptionOrNull()
+        if (failure != null) {
+            // 完整堆栈：单行 message 只能看出"解析失败"，看不出是哪一层、哪个字段
+            // 按下标越界。printStackTrace 走 System.err，同样进 logcat。
+            println("SplashLottie PARSE FAILED")
+            failure.printStackTrace()
+        }
         println(
             "SplashLottie duration=${composition?.duration} " +
                 "layers=${composition?.layers?.size} " +
                 "warnings=${composition?.warnings} " +
-                "error=${loaded.exceptionOrNull()}",
+                "error=$failure",
         )
     }
 }

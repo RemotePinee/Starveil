@@ -37,6 +37,7 @@ import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ArrowLeft
 import com.starveil.core.designsystem.mirrorIconInRtl
 import com.starveil.core.designsystem.component.StarveilLoadingScreen
+import com.starveil.core.designsystem.LocalDockInset
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.IconSize
@@ -110,7 +111,13 @@ private fun PayContent(state: PayUiState, actions: PayActions, modifier: Modifie
             .background(MaterialTheme.colorScheme.background),
     ) {
         // 外壳全局沉浸后不再替页面留状态栏位置：背景铺满，内容从状态栏下方开始。
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                // dock 浮在内容之上：整页避开它的高度，底部提交栏才不会被盖住。
+                .padding(bottom = LocalDockInset.current),
+        ) {
             PayTopBar(isEpisodeMode = state.isEpisodeMode, onBack = actions.onBack)
             when {
                 state.isLoading -> StarveilLoadingScreen()

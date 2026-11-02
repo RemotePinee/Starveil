@@ -1,5 +1,6 @@
 package com.starveil.feature.user
 
+import com.starveil.core.model.ContinueWatching
 import com.starveil.core.model.MembershipStatus
 import com.starveil.core.model.Session
 import com.starveil.core.model.UserCenterVariant
@@ -30,10 +31,18 @@ data class UserCenterUiState(
     val isLoading: Boolean = true,
     val errorMessage: String? = null,
     /**
+     * 观看记录（`v1.user/videoProgressList`，服务端固定回最近 10 条）。
+     *
+     * 首帧来自 `ContinueWatchingRepository.cachedHistory()` 的快照，网络回来原地覆盖；
+     * 未登录或没看过时为空，页面渲染引导卡而不是空白区。
+     */
+    val history: List<ContinueWatching> = emptyList(),
+    /**
      * 会员体系是否开放。
      *
-     * 关闭只影响"售卖"：会员卡仍然显示（历史会员要看到到期时间），
-     * 但换成弱化样式、不渲染开通/续费按钮；权益本身由服务端继续放行。
+     * 关闭时会员卡照常渲染，只是副标题换成"会员开通暂未开放，已开通的权益保留至到期"
+     * 且不出开通按钮——停售不等于这张卡不存在；「常用工具」里的卡密兑换是开通入口，关闭时隐藏。
+     * 权益本身仍由服务端按老规则继续放行。
      */
     val memberEnabled: Boolean = true,
     /** 接口域名：头像存的是站内相对路径，拼上它才能请求。 */
@@ -50,6 +59,10 @@ data class UserCenterUiState(
 
     val isLoggedIn: Boolean
         get() = session?.isLoggedIn == true
+
+    /** 观看记录为空时那张卡的说法：游客引导登录，登录用户引导去记录页。 */
+    val historyEmptyHint: String
+        get() = if (isLoggedIn) HISTORY_EMPTY_MEMBER else HISTORY_EMPTY_GUEST
 
     /**
      * 昵称：接口值优先，其次会话 cookie，最后账号名；"未登录"是旧 `tv_user_phone` 的占位。
@@ -172,7 +185,17 @@ data class UserCenterMetrics(
     val gold: String = PROFILE_PLACEHOLDER,
     /** 累计观看时长：插件表 `cuican_user_ext.view_seconds`，格式化成"x.x 小时"。 */
     val watch: String = PROFILE_PLACEHOLDER,
-)
+) {
+
+    /**
+     * 金币余额的可展示值。
+     *
+     * 占位符（"——"）或空串说明接口没给数：常用工具那一行就不显示行尾数值，
+     * 而不是在行尾挂两道横线。
+     */
+    val goldShown: String?
+        get() = gold.takeIf { it.isNotBlank() && it != PROFILE_PLACEHOLDER }
+}
 
 /** 秒 → "x.x 小时" / "x 分钟"；0 或负值给占位符，不硬凑"0 分钟"。 */
 private fun Long.toWatchLabel(): String {
@@ -212,6 +235,8 @@ private const val WATCH_RECORD = "观看记录"
 private const val MOTTO = "电影是每秒二十四格的真理"
 private const val DEFAULT_RANK = "普通用户"
 private const val GUEST_HINT = "登录后可同步收藏与观看记录"
+private const val HISTORY_EMPTY_MEMBER = "还没有观看记录，去看看有什么可看的"
+private const val HISTORY_EMPTY_GUEST = "登录后同步观看记录"
 
 /**
  * cookie 里的昵称/组名是 urlencode 原值（苹果CMS 就是这么存的），展示前解码。

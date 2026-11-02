@@ -268,8 +268,10 @@ private fun RankCategoryMenu(
             modifier = Modifier.width(CATEGORY_MENU_WIDTH),
             offset = DpOffset(x = offsetX, y = Spacing.xxs),
             shape = AppShape.medium,
-            containerColor = starveilExtraColors.surfaceCard,
+            // 扁平化：菜单是最高一层，用 surfaceContainerHighest（`#2F3038`）代替原来的 3dp 阴影
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
             tonalElevation = Spacing.none,
+            shadowElevation = Spacing.none,
         ) {
             Column(modifier = Modifier.padding(Spacing.xs)) {
                 visible.forEach { category ->

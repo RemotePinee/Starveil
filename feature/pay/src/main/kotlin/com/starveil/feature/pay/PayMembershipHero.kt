@@ -18,6 +18,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import com.adamglin.PhosphorIcons
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import com.adamglin.phosphoricons.Fill
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.fill.Star
@@ -85,10 +87,10 @@ private fun HeroHeader(state: PayUiState) {
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        Icon(
-            imageVector = if (state.isMember) PhosphorIcons.Fill.Star else PhosphorIcons.Regular.Star,
+        // 会员页 hero 用和"我的"会员卡同一个解锁图标，两处视觉统一
+        Image(
+            painter = painterResource(R.drawable.ic_member_unlock),
             contentDescription = null,
-            tint = if (state.isMember) starveilExtraColors.brandGold else starveilExtraColors.textFaint,
             modifier = Modifier.size(IconSize.md),
         )
     }

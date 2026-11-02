@@ -48,7 +48,8 @@ internal fun VerticalRecommendationSheet(stage: VerticalPlayStage) {
         onDismissRequest = stage.actions.onToggleRecommendations,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         shape = AppShape.sheetTop,
-        containerColor = MaterialTheme.colorScheme.surface,
+        // 扁平化：surface 与页面底同色后会糊在一起，弹层改用高一档的 surfaceContainerHigh（`#26272F`）
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         contentColor = MaterialTheme.colorScheme.onSurface,
         dragHandle = { RecommendationHandle() },
     ) {

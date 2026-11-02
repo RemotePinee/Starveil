@@ -50,6 +50,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.WindowCompat
 import androidx.navigation.NavHostController
 import com.starveil.core.designsystem.LocalIsDarkTheme
+import com.starveil.core.designsystem.LocalDockInset
 import com.starveil.core.designsystem.interaction.HapticKind
 import com.starveil.core.designsystem.interaction.rememberHaptics
 import com.starveil.core.designsystem.starveilExtraColors
@@ -108,7 +109,11 @@ internal fun AppScaffold(
             // 切走时路由先变、页面还在转场：沿用上一帧的短剧前景占位，
             // 否则入口条会先跳到底再被滑出，看起来像"那栏先消失"。
             val foregroundPadding = rememberStableForegroundPadding(state, padding)
-            CompositionLocalProvider(LocalAppContentPadding provides foregroundPadding) {
+            CompositionLocalProvider(
+                LocalAppContentPadding provides foregroundPadding,
+                // dock 浮在内容之上，把它的实际高度传下去，页面自己留出最后一条的位置
+                LocalDockInset provides padding.calculateBottomPadding(),
+            ) {
                 Box(Modifier.fillMaxSize()) { content(padding) }
             }
         },
@@ -236,15 +241,28 @@ internal class AppShellState(
     /** 首页：顶部铺着轮播的同图底色，状态栏图标固定白，避免压在浅色图上读不出来。 */
     fun isHomePage(): Boolean = currentRoute == HOME_ROUTE
 
+    /**
+     * 当前页有没有 dock 浮在上面。
+     *
+     * 只认底栏自己那几栏：[isTabPage] 对历史、搜索、设置这些二级页也返回 true，
+     * 而它们根本没有 dock——这类页面的底边仍要吃系统导航栏，否则最后一行贴着导航栏。
+     */
+    fun hasDock(): Boolean = isTabPage() && tabs.any { it.selectedRoute == currentRoute }
+
     fun contentPadding(
         padding: PaddingValues,
         direction: LayoutDirection,
     ): PaddingValues = PaddingValues(
         start = padding.calculateStartPadding(direction),
         end = padding.calculateEndPadding(direction),
-        // 短剧页也照常扣 dock 占位：它自己会把这块铺回去（见 LocalHostBottomInset）。
-        // 按路由瞬时归零的话，切 tab 的第一帧页面就矮一截，贴底那组会先往上跳。
-        bottom = if (fullscreen || isVerticalPlayer()) Spacing.none else padding.calculateBottomPadding(),
+        // dock 浮在内容之上：有它的页面底边一律不扣，页面铺到屏幕底，
+        // dock 的模糊底才录得到下面的内容；要留白的地方自己加 LocalDockInset。
+        bottom = if (hasDock() || isVerticalPlayer()) {
+            Spacing.none
+        } else {
+            // 二级页没有 dock，仍要吃掉系统导航栏那一条，否则最后一行贴着导航栏。
+            padding.calculateBottomPadding()
+        },
     )
 
     /** 当前页是不是"该有底栏的 tab 页"。 */

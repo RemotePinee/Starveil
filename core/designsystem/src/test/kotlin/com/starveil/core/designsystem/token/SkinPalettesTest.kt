@@ -67,23 +67,23 @@ class SkinPalettesTest {
         skins.forEach { (name, tones) ->
             val scheme = tones.dark.colorScheme
             val extra = tones.dark.extra
-            assertEquals("$name background", Palette.Void, scheme.background)
+            assertEquals("$name background", Palette.Ink950, scheme.background)
             assertEquals("$name surface", Palette.Ink950, scheme.surface)
-            assertEquals("$name surfaceDim", Palette.Ink950, scheme.surfaceDim)
-            assertEquals("$name surfaceBright", Palette.Ink700, scheme.surfaceBright)
+            assertEquals("$name surfaceDim", Palette.Void, scheme.surfaceDim)
+            assertEquals("$name surfaceBright", Palette.Ink600, scheme.surfaceBright)
             assertEquals("$name surfaceContainerLowest", Palette.Void, scheme.surfaceContainerLowest)
-            assertEquals("$name surfaceContainerLow", Palette.Ink900, scheme.surfaceContainerLow)
-            assertEquals("$name surfaceContainer", Palette.Ink900, scheme.surfaceContainer)
-            assertEquals("$name surfaceContainerHigh", Palette.Ink850, scheme.surfaceContainerHigh)
-            assertEquals("$name surfaceContainerHighest", Palette.Ink800, scheme.surfaceContainerHighest)
+            assertEquals("$name surfaceContainerLow", Palette.Ink850, scheme.surfaceContainerLow)
+            assertEquals("$name surfaceContainer", Palette.Ink800, scheme.surfaceContainer)
+            assertEquals("$name surfaceContainerHigh", Palette.Ink700, scheme.surfaceContainerHigh)
+            assertEquals("$name surfaceContainerHighest", Palette.InkMenu, scheme.surfaceContainerHighest)
             assertEquals("$name surfaceVariant", Palette.Ink850, scheme.surfaceVariant)
-            assertEquals("$name surfaceTint", Palette.Ink800, scheme.surfaceTint)
-            assertEquals("$name outline", Palette.Ink700, scheme.outline)
-            assertEquals("$name outlineVariant", Palette.Ink800, scheme.outlineVariant)
-            assertEquals("$name surfaceElevated", Palette.Ink900, extra.surfaceElevated)
-            assertEquals("$name surfaceCard", Palette.Ink850, extra.surfaceCard)
-            assertEquals("$name chipBackground", Palette.Ink800, extra.chipBackground)
-            assertEquals("$name divider", Palette.Ink700, extra.divider)
+            assertEquals("$name surfaceTint", Palette.Ink700, scheme.surfaceTint)
+            assertEquals("$name outline", Palette.Ink600, scheme.outline)
+            assertEquals("$name outlineVariant", Palette.InkMenu, scheme.outlineVariant)
+            assertEquals("$name surfaceElevated", Palette.Ink850, extra.surfaceElevated)
+            assertEquals("$name surfaceCard", Palette.Ink700, extra.surfaceCard)
+            assertEquals("$name chipBackground", Palette.InkMenu, extra.chipBackground)
+            assertEquals("$name divider", Palette.Ink600, extra.divider)
         }
     }
 
@@ -96,11 +96,11 @@ class SkinPalettesTest {
             assertEquals("$name surface", Palette.Paper50, scheme.surface)
             assertEquals("$name surfaceContainer", Palette.Paper100, scheme.surfaceContainer)
             assertEquals("$name surfaceContainerHigh", Palette.Paper200, scheme.surfaceContainerHigh)
-            assertEquals("$name surfaceContainerHighest", Palette.Paper200, scheme.surfaceContainerHighest)
+            assertEquals("$name surfaceContainerHighest", Palette.Paper300, scheme.surfaceContainerHighest)
             assertEquals("$name outline", Palette.Paper300, scheme.outline)
             assertEquals("$name surfaceElevated", Palette.Paper100, extra.surfaceElevated)
             assertEquals("$name surfaceCard", Palette.Paper200, extra.surfaceCard)
-            assertEquals("$name chipBackground", Palette.Paper200, extra.chipBackground)
+            assertEquals("$name chipBackground", Palette.Paper300, extra.chipBackground)
             assertEquals("$name divider", Palette.Paper300, extra.divider)
         }
     }
@@ -109,9 +109,9 @@ class SkinPalettesTest {
     fun `dark selection fill is neutral while its content keeps the accent`() {
         skins.forEach { (name, tones) ->
             val scheme = tones.dark.colorScheme
-            assertEquals("$name primaryContainer", Palette.Ink700, scheme.primaryContainer)
+            assertEquals("$name primaryContainer", Palette.InkMenu, scheme.primaryContainer)
             assertEquals("$name onPrimaryContainer", tones.dark.extra.accent, scheme.onPrimaryContainer)
-            assertEquals("$name secondaryContainer", Palette.Ink800, scheme.secondaryContainer)
+            assertEquals("$name secondaryContainer", Palette.InkMenu, scheme.secondaryContainer)
             assertEquals("$name onSecondaryContainer", tones.dark.extra.badge, scheme.onSecondaryContainer)
         }
     }

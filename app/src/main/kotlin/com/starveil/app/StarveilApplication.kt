@@ -1,6 +1,10 @@
 package com.starveil.app
 
 import android.app.Application
+import com.airbnb.lottie.LottieCompositionFactory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
@@ -28,6 +32,28 @@ class StarveilApplication : Application(), SingletonImageLoader.Factory {
             // 首期占位为空串：后端不校验该参数，接入真实密钥前不影响功能。
             signatureSecret = "",
         )
+        preloadSplashLottie()
+    }
+
+    /**
+     * 开屏 Lottie 预热。
+     *
+     * [LottieCompositionSpec.Asset] 那条路是异步的：读 asset → 解析 JSON → 建图层树，
+     * 一百来 KB 的素材要几十到几百毫秒，这段时间屏幕是空的——点图标之后"要等一下才看见动画"
+     * 就是这个原因，跟素材大小关系不大。
+     *
+     * [LottieCompositionFactory] 解析完会写进自己的内存缓存，按 asset 名命中。这里在
+     * onCreate 里把两套素材都发起一次解析（异步，不阻塞主线程），等 SplashBrandLayer
+     * 去取的时候基本已经好了，首帧就能出图。
+     *
+     */
+    private fun preloadSplashLottie() {
+        // fromAsset 是同步的，放主线程等于把解析时间直接加到冷启动上。
+        // 丢到 IO 线程解析，解析结果会进 Lottie 自己的内存缓存，SplashBrandLayer 取时命中。
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching { LottieCompositionFactory.fromAsset(this@StarveilApplication, SPLASH_DARK_ASSET) }
+            runCatching { LottieCompositionFactory.fromAsset(this@StarveilApplication, SPLASH_LIGHT_ASSET) }
+        }
     }
 
     /**
@@ -56,5 +82,9 @@ class StarveilApplication : Application(), SingletonImageLoader.Factory {
     private companion object {
         /** 可用堆的 8%，见 [newImageLoader]。 */
         const val IMAGE_MEMORY_CACHE_PERCENT = 0.08
+        /** 深色模式的开屏素材。 */
+        const val SPLASH_DARK_ASSET = "splash_loading.json"
+        /** 浅色模式的开屏素材。 */
+        const val SPLASH_LIGHT_ASSET = "splash_loading_light.json"
     }
 }

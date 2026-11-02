@@ -40,6 +40,7 @@ import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.MagnifyingGlass
 import com.starveil.core.designsystem.component.StarveilLoadingScreen
+import com.starveil.core.designsystem.LocalDockInset
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.IconSize
@@ -131,7 +132,13 @@ internal fun TopicGrid(topics: List<Topic>, onTopicClick: (String) -> Unit) {
     LazyVerticalGrid(
         columns = GridCells.Fixed(TOPIC_COLUMNS),
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(Spacing.pageHorizontal),
+        contentPadding = PaddingValues(
+            start = Spacing.pageHorizontal,
+            top = Spacing.pageHorizontal,
+            end = Spacing.pageHorizontal,
+            // dock 铺在网格之上：底部再留一段，最后一排放得进 dock 上方。
+            bottom = Spacing.pageHorizontal + LocalDockInset.current,
+        ),
         horizontalArrangement = Arrangement.spacedBy(Spacing.md),
         verticalArrangement = Arrangement.spacedBy(Spacing.lg),
     ) {

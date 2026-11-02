@@ -2,7 +2,6 @@ package com.starveil.feature.user
 
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,15 +15,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -36,15 +32,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.Palette
 import com.adamglin.phosphoricons.regular.ShareNetwork
+import com.starveil.core.designsystem.LocalDockInset
 import com.starveil.core.designsystem.LocalSkinSelection
 import com.starveil.core.designsystem.SkinPickerSheet
 import com.starveil.core.designsystem.component.StarveilLoadingScreen
@@ -52,18 +48,25 @@ import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Spacing
-
+import com.starveil.core.model.ContinueWatching
 /**
- * 用户中心：彩雾带铺到状态栏做成沉浸顶栏，内容面板压在它上层、上沿圆角露出雾；
- * 会员卡跨在面板的上沿，一半在雾里、一半在面板上。
+ * 用户中心：彩雾带铺到状态栏做成沉浸顶栏，内容面板压在它上层、上沿圆角露出雾。
+ *
+ * 信息层级（自上而下）：
+ * 1. 顶栏（分享 / 皮肤）+ 头像昵称 + 会员状态；
+ * 2. 资料数值（积分 / 金币 / 观看时长）；
+ * 3. 会员卡（后台关闭会员时换成"暂未开放"形态，卡常驻、不出按钮）；
+ * 4. 观看记录（横滑进度卡片）；
+ * 5. 常用工具（收藏 / 金币 / 卡密 / 设置 / 反馈）；
+ * 6. 退出登录。
+ *
+ * 原来"四个圆形快捷入口 + 功能列表"是两段并列平铺，收藏与金币被拆到两个地方；
+ * 现在把动作类入口收进一组，把观看记录提成带进度的一区，页面只剩一条主线。
  */
 @Composable
 fun UserCenterScreen(
     viewModel: UserCenterViewModel,
-    onLoginClick: () -> Unit,
-    onEntryClick: (String) -> Unit,
-    onSignedOut: () -> Unit,
-    modifier: Modifier = Modifier,
+    actions: UserCenterActions,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val shareConfirm by viewModel.shareConfirm.collectAsStateWithLifecycle()
@@ -75,20 +78,13 @@ fun UserCenterScreen(
     }
     // 分享信息到位后画海报、拉系统分享面板；积分等用户回到前台确认后再发
     UserShareLauncher(viewModel = viewModel)
-    val actions = UserCenterActions(
-        onLoginClick = onLoginClick,
-        onEntryClick = onEntryClick,
-        onLogoutClick = {
-            viewModel.logout()
-            onSignedOut()
-        },
-        onRetry = viewModel::refresh,
-    )
+    // 重试永远指回本页的刷新：外面不需要知道这件事，也就不必传进来
+    val resolved = actions.copy(onRetry = viewModel::refresh)
     var showSkinPicker by remember { mutableStateOf(false) }
     val skinSelection = LocalSkinSelection.current
     UserCenterContent(
         state = state,
-        actions = actions,
+        actions = resolved,
         snackbar = snackbarHostState,
         onTopAction = { action ->
             when (action) {
@@ -96,7 +92,6 @@ fun UserCenterScreen(
                 UserCenterTopAction.Share -> viewModel.share()
             }
         },
-        modifier = modifier,
     )
     if (showSkinPicker) {
         SkinPickerSheet(
@@ -208,6 +203,8 @@ private fun UserCenterContent(
                     actions = actions,
                     modifier = Modifier.floatUp(SHEET_RADIUS),
                 )
+                // dock 铺在页面之上：整页铺到屏幕底，末尾补一段让内容滚得出来。
+                Spacer(Modifier.height(LocalDockInset.current))
             }
         }
         SnackbarHost(
@@ -215,22 +212,6 @@ private fun UserCenterContent(
             modifier = Modifier.align(Alignment.BottomCenter),
         )
     }
-}
-
-/** 分享奖励确认：chooser 没有结果回调，"回到前台"不等于"发出去了"，问一句再发。 */
-@Composable
-private fun ShareRewardDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("分享完成了吗？") },
-        text = { Text("确认已经把海报发出去，就领取今日分享积分。") },
-        confirmButton = {
-            TextButton(onClick = onConfirm) { Text("已分享，领取") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("还没发") }
-        },
-    )
 }
 
 @Composable
@@ -247,9 +228,7 @@ private fun UserCenterHero(
                 .padding(top = Spacing.xs),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            UserCenterTitleBar(
-                onAction = onTopAction,
-            )
+            UserCenterTitleBar(onAction = onTopAction)
             UserProfileBlock(
                 state = state,
                 onLoginClick = actions.onLoginClick,
@@ -258,6 +237,7 @@ private fun UserCenterHero(
                 metrics = state.metrics,
                 onEntryClick = actions.onEntryClick,
             )
+            // 会员卡跨在雾带与面板的交界上；卡常驻，占位固定，不随会员体系开关收窄
             Spacer(modifier = Modifier.height(SHEET_RADIUS + MEMBER_FLOAT))
         }
     }
@@ -279,6 +259,7 @@ private fun UserCenterPanel(
             .padding(horizontal = Spacing.pageHorizontal),
         verticalArrangement = Arrangement.spacedBy(Spacing.xl),
     ) {
+        // 会员卡常驻：后台 member_enabled = 0 时只是换成"暂未开放"形态，不整块消失
         MemberCard(
             state = state,
             onEntryClick = actions.onEntryClick,
@@ -288,13 +269,23 @@ private fun UserCenterPanel(
         if (message != null) {
             SyncErrorBanner(message = message, onRetry = actions.onRetry)
         }
-        UserCenterQuickActions(
-            onEntryClick = actions.onEntryClick,
-            memberEnabled = state.memberEnabled,
+        val seeAll: () -> Unit = { actions.onEntryClick(ENTRY_HISTORY) }
+        UserCenterWatchHistory(
+            input = WatchHistoryInput(
+                items = state.history,
+                emptyHint = state.historyEmptyHint,
+                onItemClick = actions.onHistoryClick,
+                onSeeAll = seeAll,
+                onEmptyClick = if (state.isLoggedIn) seeAll else actions.onLoginClick,
+            ),
         )
         Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
             SectionTitle(text = SECTION_TOOLS)
-            UserCenterFeatureList(onEntryClick = actions.onEntryClick)
+            UserCenterTools(
+                onEntryClick = actions.onEntryClick,
+                memberEnabled = state.memberEnabled,
+                goldLabel = state.metrics.goldShown,
+            )
         }
         if (state.isLoggedIn) {
             SignOutRow(onLogoutClick = actions.onLogoutClick)
@@ -360,57 +351,13 @@ internal fun SectionTitle(text: String) {
     )
 }
 
-@Composable
-private fun SyncErrorBanner(message: String, onRetry: () -> Unit) {
-    Surface(
-        shape = AppShape.medium,
-        color = starveilExtraColors.surfaceCard,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.md),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
-        ) {
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.weight(WEIGHT_FULL),
-            )
-            TextButton(onClick = onRetry) {
-                Text(text = "重试", style = MaterialTheme.typography.labelMedium)
-            }
-        }
-    }
-}
-
-@Composable
-private fun SignOutRow(onLogoutClick: () -> Unit) {
-    Surface(
-        shape = AppShape.extraLarge,
-        color = starveilExtraColors.surfaceCard,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onLogoutClick),
-    ) {
-        Text(
-            text = "退出登录",
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.error,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = Spacing.lg),
-        )
-    }
-}
-
 /** 面板上沿圆角，和 [AppShape.sheetTopLarge] 的 32dp 对齐。 */
 private val SHEET_RADIUS = Spacing.xxl
+/** 会员卡向上探出雾带的量；雾带底部占位固定是 [SHEET_RADIUS] + 本值。 */
 private val MEMBER_FLOAT = Spacing.xxl + Spacing.md
 private const val TITLE = "我的"
 private const val ACTION_SHARE = "分享"
 private const val ACTION_THEME = "主题"
 private const val WEIGHT_FULL = 1f
 private const val SECTION_TOOLS = "常用工具"
+private const val ENTRY_HISTORY = "观看记录"

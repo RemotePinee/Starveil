@@ -214,6 +214,10 @@ private fun NickNameDialog(
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = onDismiss,
+        // 圆角走 M3 默认：上一版把它收到 12dp，用户没要求改圆角，已回滚。
+        // 扁平化只保留"不叠 tonal 提亮"，弹层层级由 containerColor
+        // （surfaceContainerHigh `#26272F`）与窗外遮罩表达
+        tonalElevation = Spacing.none,
         title = { Text("修改昵称") },
         text = {
             OutlinedTextField(

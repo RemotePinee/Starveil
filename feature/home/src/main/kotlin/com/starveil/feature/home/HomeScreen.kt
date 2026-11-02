@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
@@ -41,6 +42,7 @@ import com.starveil.core.designsystem.component.LocalAdClick
 import com.starveil.core.designsystem.component.LocalAdPlacements
 import com.starveil.core.designsystem.component.SkeletonBlock
 import com.starveil.core.designsystem.component.StarveilLoadingScreen
+import com.starveil.core.designsystem.LocalDockInset
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.Motion
@@ -159,6 +161,8 @@ private fun HomeFeedList(state: HomeUiState.Content, actions: HomeActions) {
             modifier = Modifier
                 .fillMaxSize()
                 .categorySwipe(categoryIds, state.selectedTypeId, actions.onSelectType),
+            // dock 铺在列表之上：底部留住它的高度，最后一条才滚得出来。
+            contentPadding = PaddingValues(bottom = LocalDockInset.current),
         ) {
             homeSections(state, actions, banner)
         }
