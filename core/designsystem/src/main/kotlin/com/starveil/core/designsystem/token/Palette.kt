@@ -40,7 +40,6 @@ internal object Palette {
     val White50 = Color(0xFF8B8C95)
 
     // 品牌主色（青，延续旧品牌）
-    val Aqua700 = Color(0xFF0E8EA6)
     val Aqua500 = Color(0xFF25CEE8)
     val Aqua200 = Color(0xFF9BE8F5)
 
@@ -48,20 +47,12 @@ internal object Palette {
     val Gold600 = Color(0xFFB98A2E)
     val Gold400 = Color(0xFFE0B354)
     val Coral500 = Color(0xFFFF4159)
-    val Coral600 = Color(0xFFE02742)
     val Violet500 = Color(0xFF7C5CFF)
     val Amber500 = Color(0xFFFFB020)
 
-    // 皮肤主色：五套皮肤各占一个色相，避免两套撞色
-    val Blue500 = Color(0xFF42A1EA)
+    // 皮肤主色：每套皮肤一个色相，避免两套撞色；深浅模式共用同一组，不再分 500/700 两档
     val Azure500 = Color(0xFF03A9F4)
     val Pink500 = Color(0xFFFF679A)
-    /** 浅色主题用的深一档主色：500 档压在白底上对比不足 3:1。 */
-    val Blue700 = Color(0xFF1B74B8)
-    val Pink700 = Color(0xFFD63B75)
-    val Violet700 = Color(0xFF5B3BD6)
-    val Azure700 = Color(0xFF0277BD)
-    val Amber700 = Color(0xFFB26B00)
     // 状态
     val Red500 = Color(0xFFE5484D)
     val Green500 = Color(0xFF2F9E6B)

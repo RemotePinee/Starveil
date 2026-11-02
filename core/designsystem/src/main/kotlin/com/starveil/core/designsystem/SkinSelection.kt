@@ -41,15 +41,15 @@ data class SkinOption(
 )
 
 /**
- * 皮肤选项。色块取**深色版**强调色：它是色相预览，深色版在白底/黑底上都看得清，
- * 不用随当前明暗换一套（浅色版是 700 档，圆点会显得发闷）。
+ * 皮肤选项。色块取皮肤唯一的那组强调色：深浅共用一套色相，色块不必随明暗换，
+ * 在白底和黑底上都看得清。
  */
 val StarveilSkinOptions: List<SkinOption> = buildList {
     add(SkinOption("", "跟随服务端", SkinPalettes.default.dark.extra.accent, SkinPalettes.default.dark.extra.badge))
     add(SkinOption("1", "石墨灰", SkinPalettes.graphite.dark.extra.accent, SkinPalettes.graphite.dark.extra.badge))
     add(SkinOption("2", "暖金", SkinPalettes.katong.dark.extra.accent, SkinPalettes.katong.dark.extra.badge))
     add(SkinOption("3", "B 站粉", SkinPalettes.bilibili.dark.extra.accent, SkinPalettes.bilibili.dark.extra.badge))
-    add(SkinOption("4", "B 站紫", SkinPalettes.bilibili2.dark.extra.accent, SkinPalettes.bilibili2.dark.extra.badge))
+    add(SkinOption("4", "霓虹紫", SkinPalettes.neonViolet.dark.extra.accent, SkinPalettes.neonViolet.dark.extra.badge))
     add(SkinOption("5", "AQC 天蓝", SkinPalettes.aqc.dark.extra.accent, SkinPalettes.aqc.dark.extra.badge))
 }
 

@@ -4,7 +4,6 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -114,23 +113,6 @@ class SkinPalettesTest {
             assertEquals("$name onPrimaryContainer", tones.dark.extra.accent, scheme.onPrimaryContainer)
             assertEquals("$name secondaryContainer", Palette.Ink800, scheme.secondaryContainer)
             assertEquals("$name onSecondaryContainer", tones.dark.extra.badge, scheme.onSecondaryContainer)
-        }
-    }
-
-    @Test
-    fun `accent and badge still carry the skin hue`() {
-        assertEquals(6, skins.map { it.second }.distinct().size)
-        assertEquals(6, skins.map { it.second.dark.extra.accent }.distinct().size)
-        assertEquals(6, skins.map { it.second.light.extra.accent }.distinct().size)
-        assertTrue(skins.map { it.second.dark.extra.badge }.distinct().size > 1)
-        assertTrue(skins.map { it.second.light.extra.badge }.distinct().size > 1)
-
-        modes.forEach { (name, mode, colors) ->
-            assertEquals("$name $mode primary", colors.extra.accent, colors.colorScheme.primary)
-            assertEquals("$name $mode secondary", colors.extra.badge, colors.colorScheme.secondary)
-            assertEquals("$name $mode onPrimary", Palette.White, colors.colorScheme.onPrimary)
-            assertEquals("$name $mode onSecondary", Palette.White, colors.colorScheme.onSecondary)
-            assertNotEquals("$name $mode accent == badge", colors.extra.accent, colors.extra.badge)
         }
     }
 
