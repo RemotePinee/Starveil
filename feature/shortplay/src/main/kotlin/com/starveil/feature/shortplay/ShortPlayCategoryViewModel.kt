@@ -89,6 +89,10 @@ class ShortPlayCategoryViewModel(
         // 首屏还没回来（page 仍是 0）时别翻页：翻的是同一页，只会把第一页请求两遍
         val busy = snapshot.isLoading || snapshot.isLoadingMore || snapshot.page < FIRST_PAGE
         if (busy || !snapshot.hasMore) return
+        // 先把"正在追加"落进 state：底部转圈读的就是这一位，不置位它就永远不出现；
+        // 它也参与上面的 busy 判据，不置位时连续触底会并发发出多个同页请求
+        // （job 只是被下一次赋值覆盖，前一个不会被取消）。分页仍然只追加列表，不重刷分区块。
+        _state.update { it.copy(isLoadingMore = true) }
         job = viewModelScope.launch { loadPage(page = snapshot.page + 1, reset = false) }
     }
 
@@ -161,6 +165,8 @@ class ShortPlayCategoryViewModel(
         loaded: List<ShortPlay>,
         reset: Boolean,
     ): ShortPlayCategoryUiState = copy(
+        // 接口带来的每一项都必须回到 state（列表 / 页码 / 是否到底 / 错误位）：
+        // 只换 items 的话，后台改完数据、刷新明明成功了，页面还是旧的。
         // 首屏也去重：后端偶发重复条目时，LazyColumn 的 key 撞车会直接崩
         items = if (reset) {
             loaded.distinctBy { play -> play.id }

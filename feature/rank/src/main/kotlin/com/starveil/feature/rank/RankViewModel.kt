@@ -153,9 +153,11 @@ class RankViewModel(
         val current = _state.value
         val typeId = current.selectedTypeId
         val board = current.board
+        // Empty 和 Error 走同一支：Empty 是"接口成功、这个分类一条都没有"，空态上就摆着
+        // 「重试」。缺这一支时后台把数据补回来、点重试什么都不会发生，只能杀应用重进。
         if (typeId == null || categories.none { it.typeId == typeId }) {
             loadCatalog()
-        } else if (board is RankBoardState.Error) {
+        } else if (board is RankBoardState.Error || board is RankBoardState.Empty) {
             loadBoard(FIRST_PAGE, typeId)
         } else if (board is RankBoardState.Content && board.appendError != null) {
             loadBoard(board.page + 1, typeId)
@@ -169,16 +171,35 @@ class RankViewModel(
             .distinctBy { it.typeId }
         val first = categories.firstOrNull()
         if (first == null) {
+            // 目录空了就没有"选中分类"这回事：留着旧 id，顶栏会显示一个查不到的分类。
             _state.update {
-                it.copy(catalog = RankCatalogState.Empty, board = RankBoardState.Empty)
+                it.copy(
+                    catalog = RankCatalogState.Empty,
+                    selectedTypeId = null,
+                    board = RankBoardState.Empty,
+                )
             }
         } else {
-            _state.update {
-                it.copy(catalog = RankCatalogState.Content(categories), selectedTypeId = first.typeId)
-            }
+            _state.update { state -> state.withCatalog(categories, first.typeId) }
             loadBoard(FIRST_PAGE, first.typeId)
         }
     }
+
+    /**
+     * 目录刷新成功：分类这一块换成新目录，列表这一块必须跟着**这次选中的**分类走。
+     *
+     * 只更新 catalog / selectedTypeId 的话，界面会是"新的选中分类 + 上一个分类的名单"：
+     * 那份名单属于另一次查询，后台改了分类之后用户看到的还是旧内容——和首页那种
+     * "新数据只进了快照、界面不更新"是同一类问题。
+     * 选中分类没变时保留列表（紧接着 [markBoardLoading] 会把它标成刷新中，不闪转圈）；
+     * 变了就退回 Loading：新分类一条都还没拿到，不能拿别人的名单充数。
+     */
+    private fun RankUiState.withCatalog(categories: List<RankCategory>, typeId: Int): RankUiState =
+        copy(
+            catalog = RankCatalogState.Content(categories),
+            selectedTypeId = typeId,
+            board = if (selectedTypeId == typeId) board else RankBoardState.Loading,
+        )
 
     /** 目录已经有内容（快照或上一次成功）时保留内容，不把整页打成错误态。 */
     private fun applyCatalogFailure(error: AppError) {

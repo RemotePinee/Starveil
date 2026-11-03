@@ -148,6 +148,8 @@ class DetailViewModel(
         }
         val sourceIndex = resolveSourceIndex(vod, previous?.sourceIndex ?: 0)
         val episodes = vod.playSources[sourceIndex].episodes
+        // 推荐是另一次请求，不在这条成功分支里；旧列表先留着，新数据回来原地替换
+        val recommendations = previous?.recommendations.orEmpty()
         _state.value = DetailUiState.Content(
             vod = vod,
             sourceIndex = sourceIndex,
@@ -155,7 +157,15 @@ class DetailViewModel(
             // 收藏状态是一次额外的列表请求，不该挡在首屏渲染前面；先按未收藏画，回来再改
             favorite = previous?.favorite ?: DetailFavoriteState.NotFavorited,
             isBlurbExpanded = previous?.isBlurbExpanded ?: false,
-            recommendationsLoading = vod.typeId > 0,
+            // 推荐区块不能因为"详情刷新成功"就被清空：之前这里不给 recommendations，
+            // 重建后整块推荐消失、只剩骨架，用户屏幕上的内容比刷新前还少。
+            recommendations = recommendations,
+            // 有旧推荐就按"已有内容"画，没内容才显示骨架
+            recommendationsLoading = vod.typeId > 0 && recommendations.isEmpty(),
+            // 「展开全部集数」是用户当场的选择，刷新详情不该把长剧重新收回 30 集
+            isEpisodeGridExpanded = previous?.isEpisodeGridExpanded ?: false,
+            // 试看闸门只在起播时判定一次，详情刷新不会重新请求它；丢掉等于丢提示条
+            trySee = previous?.trySee,
         )
         commentController.loadFirstPage()
         // 收藏与推荐都是次要内容：并行补，谁先回来谁先上屏
@@ -169,7 +179,7 @@ class DetailViewModel(
     /**
      * 相关推荐。旧页在详情成功后按同类型再拉一次列表
      * 失败分支是空 `onError`（`:874-876`）——
-     * 推荐只是附加内容，拉不到就把列表留空，绝不把详情换成错误态。
+     * 推荐只是附加内容，拉不到就保持现状，绝不把详情换成错误态。
      * `typeId` 为 0 表示后端没给类型，直接不请求：旧页这时会带 type=0 拉回全站列表。
      */
     private suspend fun loadRecommendations(typeId: Int) {
@@ -177,11 +187,15 @@ class DetailViewModel(
             updateContent { it.copy(recommendationsLoading = false) }
             return
         }
-        val items = when (val result = deps.vodRepository.recommend(typeId)) {
-            is AppResult.Success -> result.value
-            is AppResult.Failure -> emptyList()
+        when (val result = deps.vodRepository.recommend(typeId)) {
+            is AppResult.Success -> updateContent {
+                it.copy(recommendations = result.value, recommendationsLoading = false)
+            }
+
+            // 失败不动 recommendations：一次网络抖动不该用空列表盖掉上一次的好数据，
+            // 拉不到就先把骨架收掉、旧推荐继续显示
+            is AppResult.Failure -> updateContent { it.copy(recommendationsLoading = false) }
         }
-        updateContent { it.copy(recommendations = items, recommendationsLoading = false) }
     }
 
     /**

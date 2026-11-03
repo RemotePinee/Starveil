@@ -13,6 +13,7 @@ import com.starveil.core.data.PayRepository
 import com.starveil.core.data.StartupRepository
 import com.starveil.core.data.UserRepository
 import com.starveil.core.model.PayPlan
+import com.starveil.core.model.PaymentMethod
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -111,14 +112,19 @@ class PayViewModel(
     /**
      * 回到前台时同步会话。
      *
-     * 会员页是底栏常驻页面，退出登录后 ViewModel 不会重建；不同步的话 Hero 会一直挂着
-     * 上一个账号的状态。只在登录态真的变了时重拉资料，避免每次切 tab 都打一次接口。
+     * 会员页是底栏常驻页面，ViewModel 不会重建，`init` 里的 `reload()` 不会再跑一遍：
+     * 登录态变了先清旧资料再重拉；没变也静默重拉一次（失败保留旧值），
+     * 否则会员到期 / 金币这类后台改的数据要杀进程重进才更新。
      */
     fun syncSession() {
         viewModelScope.launch {
             val loggedIn = authRepository.restore() != null
-            if (loggedIn == _state.value.isLoggedIn) return@launch
-            _state.update { it.copy(isLoggedIn = loggedIn, profile = null) }
+            if (loggedIn != _state.value.isLoggedIn) {
+                _state.update { it.copy(isLoggedIn = loggedIn, profile = null) }
+                if (loggedIn) refreshProfile()
+                return@launch
+            }
+            // 会员页是底栏常驻页，ViewModel 不重建、init 不再跑，只认首帧的话会一直停在旧值
             if (loggedIn) refreshProfile()
         }
     }
@@ -137,14 +143,18 @@ class PayViewModel(
                     it.copy(isCheckingOrder = false, pendingOrderCode = null, lastOrderMessage = result.message)
                 }
 
-                is SettlementResult.Settled -> _state.update {
-                    it.copy(
-                        isCheckingOrder = false,
-                        pendingOrderCode = null,
-                        orderStatus = result.status,
-                        membershipActivated = result.activated,
-                        lastOrderMessage = result.message,
-                    )
+                is SettlementResult.Settled -> {
+                    _state.update {
+                        it.copy(
+                            isCheckingOrder = false,
+                            pendingOrderCode = null,
+                            orderStatus = result.status,
+                            membershipActivated = result.activated,
+                            lastOrderMessage = result.message,
+                        )
+                    }
+                    // 会员卡的到期日读的是 profile，兑换成功后要跟着重拉
+                    if (result.activated) refreshProfile()
                 }
             }
         }
@@ -228,32 +238,27 @@ class PayViewModel(
         // 已有价目表（含快照）时不打回骨架屏：刷新在后台进行，页面保持上一帧
         _state.update { it.copy(isLoading = it.plans.isEmpty(), errorMessage = null) }
         viewModelScope.launch {
-            // 本地会话最先读：骨架屏收起时 Hero 已经知道该显示"登录后查看"还是"尚未开通"，
-            // 不会先给一句占位再跳变。
+            // 本地会话最先读：骨架屏收起时 Hero 已经知道该显示哪种档位，不先给占位再跳变
             _state.update { it.copy(isLoggedIn = authRepository.restore() != null) }
             loadPayments()
-            loadTips()
+            payRepository.tips().getOrNull()?.let { t -> _state.update { it.copy(tips = t) } }
             loadCatalog()
-            // 到期日随后到；读取失败保持 null，Hero 落到"尚未开通"（不弹错，别让人以为没到账）
             refreshProfile()
         }
     }
 
-    /** 支付方式来自启动配置。失败不阻断页面。 */
+    /** 支付方式失败不阻断页面；失败保留旧列表，否则能用的渠道被清空、按钮永久置灰。 */
     private suspend fun loadPayments() {
-        val payments = startupRepository.load().getOrNull()?.payments.orEmpty()
+        val payments = startupRepository.load().getOrNull()?.payments ?: return
         _state.update { current ->
+            val selected = current.selectedPaymentCode
             current.copy(
                 payments = payments,
-                selectedPaymentCode = current.selectedPaymentCode ?: payments.firstOrNull()?.code,
+                // 旧选中项已下架时回落到第一个，否则 canSubmit 会一直是 false
+                selectedPaymentCode = selected?.takeIf { code -> payments.any { it.code == code } }
+                    ?: payments.firstOrNull()?.code,
             )
         }
-    }
-
-    /** 充值提示失败不阻断： payTip 失败只是隐藏卡密入口。 */
-    private suspend fun loadTips() {
-        val tips = payRepository.tips().getOrNull() ?: return
-        _state.update { it.copy(tips = tips) }
     }
 
     private suspend fun loadCatalog() {
@@ -266,7 +271,8 @@ class PayViewModel(
                 current.copy(
                     isLoading = false,
                     plans = result.value,
-                    selectedPlanId = current.selectedPlanId ?: result.value.firstOrNull()?.id,
+                    // 快照里的选中套餐可能已被后台下架，不校正就会停在"请选择套餐"且永远置灰
+                    selectedPlanId = keepSelectedPlan(current.selectedPlanId, result.value),
                     errorMessage = null,
                 )
             }
@@ -284,28 +290,13 @@ class PayViewModel(
 
     private fun failSubmission(error: AppError) {
         _state.update { it.copy(isSubmitting = false) }
-        notify(error.toPayMessage())
+        viewModelScope.launch { _events.send(PayEvent.Message(error.toPayMessage())) }
     }
 
     private fun notify(text: String) {
         viewModelScope.launch { _events.send(PayEvent.Message(text)) }
     }
 
-    companion object {
-
-        fun factory(
-            payRepository: PayRepository,
-            startupRepository: StartupRepository,
-            userRepository: UserRepository? = null,
-            /** 必须接线：没有会话就读不出登录态，Hero 会一直停在占位。 */
-            authRepository: AuthRepository,
-            args: PayArgs,
-        ): ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                PayViewModel(payRepository, startupRepository, authRepository, userRepository, args)
-            }
-        }
-    }
 }
 
 /**
@@ -328,5 +319,23 @@ private fun payInitialState(args: PayArgs, repository: PayRepository): PayUiStat
             selectedPlanId = cached.first().id,
             isLoading = false,
         )
+    }
+}
+
+/** 新列表里没有原选中项时回落到第一个；返回 null 表示后台确实没配任何套餐。 */
+private fun keepSelectedPlan(selected: Int?, plans: List<PayPlan>): Int? =
+    selected?.takeIf { id -> plans.any { it.id == id } } ?: plans.firstOrNull()?.id
+
+/** ViewModel 工厂：挂在类外，避免 [PayViewModel] 顶到 detekt 的类体积阈值。 */
+fun payViewModelFactory(
+    payRepository: PayRepository,
+    startupRepository: StartupRepository,
+    userRepository: UserRepository? = null,
+    /** 必须接线：没有会话就读不出登录态，Hero 会一直停在占位。 */
+    authRepository: AuthRepository,
+    args: PayArgs,
+): ViewModelProvider.Factory = viewModelFactory {
+    initializer {
+        PayViewModel(payRepository, startupRepository, authRepository, userRepository, args)
     }
 }

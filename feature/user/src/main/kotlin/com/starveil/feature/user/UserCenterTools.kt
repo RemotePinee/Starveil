@@ -28,7 +28,6 @@ import com.adamglin.phosphoricons.regular.CaretRight
 import com.adamglin.phosphoricons.regular.ChatText
 import com.adamglin.phosphoricons.regular.Coin
 import com.adamglin.phosphoricons.regular.Gear
-import com.adamglin.phosphoricons.regular.Ticket
 import com.starveil.core.designsystem.mirrorIconInRtl
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
@@ -50,14 +49,11 @@ private class ToolEntry(
  * 收藏与金币从原来的四个圆形快捷入口并进这一组：它们和设置、反馈一样是"一次性动作"，
  * 单独占一排图标反而把页面切成三段。观看记录另有独立区块（带进度卡片），不在这里。
  *
- * 会员关闭时整组不出现「卡密兑换」：它落在会员下单页里，会员页没了点进去只会是空页。
- *
  * @param goldLabel 金币余额（`cuican_user_ext.gold` 原样字符串）；接口没给时为 null，行尾不显示数值
  */
 @Composable
 internal fun UserCenterTools(
     onEntryClick: (String) -> Unit,
-    memberEnabled: Boolean,
     goldLabel: String?,
     modifier: Modifier = Modifier,
 ) {
@@ -67,18 +63,17 @@ internal fun UserCenterTools(
         modifier = modifier.fillMaxWidth(),
     ) {
         Column {
-            toolEntries(memberEnabled = memberEnabled, goldLabel = goldLabel).forEach { tool ->
+            toolEntries(goldLabel).forEach { tool ->
                 ToolRow(tool = tool, onClick = { onEntryClick(tool.entry) })
             }
         }
     }
 }
 
-/** 顺序即页面顺序：收藏 → 金币 → （卡密）→ 设置 → 反馈。 */
-private fun toolEntries(memberEnabled: Boolean, goldLabel: String?): List<ToolEntry> = buildList {
+/** 顺序即页面顺序：收藏 → 金币 → 设置 → 反馈。 */
+private fun toolEntries(goldLabel: String?): List<ToolEntry> = buildList {
     add(ToolEntry(PhosphorIcons.Fill.Heart, ENTRY_FAVORITE, ENTRY_FAVORITE))
     add(ToolEntry(PhosphorIcons.Regular.Coin, LABEL_GOLD, ENTRY_GOLD, value = goldLabel))
-    if (memberEnabled) add(ToolEntry(PhosphorIcons.Regular.Ticket, ENTRY_CARD, ENTRY_CARD))
     add(ToolEntry(PhosphorIcons.Regular.Gear, ENTRY_SETTINGS, ENTRY_SETTINGS))
     add(ToolEntry(PhosphorIcons.Regular.ChatText, ENTRY_FEEDBACK, ENTRY_FEEDBACK))
 }
@@ -138,6 +133,5 @@ private const val WEIGHT_FULL = 1f
 private const val LABEL_GOLD = "金币"
 private const val ENTRY_FAVORITE = "我的收藏"
 private const val ENTRY_GOLD = "金币提现"
-private const val ENTRY_CARD = "卡密兑换"
 private const val ENTRY_SETTINGS = "设置"
 private const val ENTRY_FEEDBACK = "反馈"

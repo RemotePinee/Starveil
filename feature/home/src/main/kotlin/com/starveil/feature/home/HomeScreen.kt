@@ -322,7 +322,12 @@ private fun androidx.compose.foundation.lazy.LazyListScope.hotSection(
 ) {
     val hotItems = state.hot.items.ifEmpty { state.items.drop(3) }
     item { SectionTitle(title = state.hot.title.ifBlank { "热度榜" }) }
-    item { RankRow(items = hotItems, onVodClick = actions.onVodClick) }
+    // 数据还没到的那一帧用等高占位顶住：直接不渲染会让下面的猜你喜欢整体上移再弹回
+    if (hotItems.isEmpty()) {
+        item { RankRowPlaceholder() }
+    } else {
+        item { RankRow(items = hotItems, onVodClick = actions.onVodClick) }
+    }
 }
 
 /** 猜你喜欢：同上，回退切片从第七条起。 */
@@ -335,12 +340,17 @@ private fun androidx.compose.foundation.lazy.LazyListScope.guessSection(
     val fallback = state.items.drop(GUESS_SKIP).ifEmpty { state.items }
     val guessItems = gridFilled(state.guess.items.ifEmpty { fallback }, state.columns)
     item { SectionTitle(title = state.guess.title.ifBlank { "猜你喜欢" }) }
-    item {
-        PosterRows(
-            items = guessItems,
-            columns = state.columns,
-            onVodClick = actions.onVodClick,
-        )
+    // 同上：空窗期留一块等高占位，避免整块消失后下面的区块先上移再弹回
+    if (guessItems.isEmpty()) {
+        item { PosterRowsPlaceholder(columns = state.columns) }
+    } else {
+        item {
+            PosterRows(
+                items = guessItems,
+                columns = state.columns,
+                onVodClick = actions.onVodClick,
+            )
+        }
     }
 }
 

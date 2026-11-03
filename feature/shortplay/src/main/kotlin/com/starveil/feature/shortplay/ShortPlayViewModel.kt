@@ -213,6 +213,8 @@ class ShortPlayViewModel(
 
     private fun applyFirstPage(plays: List<ShortPlay>, resetPosition: Boolean) {
         if (pinnedPlaybackId != null) return
+        // 首屏 / 刷新 / 快照重校验都走这一条：整份 Content 重建（列表、分类、选中项、
+        // 页码标记全部按这次结果重来）。只换列表的话，后台改动要"刷新 → 再杀一次应用"才看得见。
         val previousId = (_state.value as? ShortPlayUiState.Content)?.currentPlayId
         val shuffled = shuffle(plays).distinctBy { it.id }
         val retainedId = previousId?.takeIf { id -> !resetPosition && shuffled.any { it.id == id } }

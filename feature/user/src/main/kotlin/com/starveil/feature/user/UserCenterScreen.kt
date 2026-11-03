@@ -57,7 +57,7 @@ import com.starveil.core.model.ContinueWatching
  * 2. 资料数值（积分 / 金币 / 观看时长）；
  * 3. 会员卡（后台关闭会员时换成"暂未开放"形态，卡常驻、不出按钮）；
  * 4. 观看记录（横滑进度卡片）；
- * 5. 常用工具（收藏 / 金币 / 卡密 / 设置 / 反馈）；
+ * 5. 常用工具（收藏 / 金币 / 设置 / 反馈）；
  * 6. 退出登录。
  *
  * 原来"四个圆形快捷入口 + 功能列表"是两段并列平铺，收藏与金币被拆到两个地方；
@@ -283,7 +283,6 @@ private fun UserCenterPanel(
             SectionTitle(text = SECTION_TOOLS)
             UserCenterTools(
                 onEntryClick = actions.onEntryClick,
-                memberEnabled = state.memberEnabled,
                 goldLabel = state.metrics.goldShown,
             )
         }

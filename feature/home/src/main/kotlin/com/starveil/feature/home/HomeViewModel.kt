@@ -29,7 +29,10 @@ import com.starveil.core.model.Topic
 import com.starveil.core.model.TopicDetail
 import com.starveil.core.model.VodType
 import com.starveil.core.model.Vod
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -105,31 +108,35 @@ class HomeViewModel(
 
     fun refresh() = load(refreshing = true)
 
-    /**
-     * 切换顶部 Tab。
-     *
-     * 三件事必须同时发生，否则就是"点了没反应"：高亮换掉、列表换成目标分类的内容（命中缓存
-     * 直接铺，没缓存就先清空）、旧请求取消。绝不能把上一个分类的列表留在屏幕上等网络——
-     * 那段时间用户看到的是"切了但没变"。
-     */
+    /** 切 Tab：命中完整缓存就同步切，否则整块进切换态，三份数据取齐后一次性提交。 */
     fun selectType(typeId: Int) {
         if (typeId == selectedTypeId) return
         selectedTypeId = typeId
-        val current = _state.value
-        if (current !is HomeUiState.Content) {
-            load(refreshing = false)
-            return
+        when (val current = _state.value) {
+            is HomeUiState.Content -> switchTo(current, typeId)
+            else -> load(refreshing = false)
         }
-        val cached = feedCache.cached(typeId)
-        _state.value = current.copy(
-            selectedTypeId = typeId,
-            items = cached.orEmpty(),
-            // 没缓存就先上骨架：预取还没回来时用户看到的是"正在换"，不是上一个分类的内容
-            isSwitching = cached == null,
-        )
+    }
+
+    private fun switchTo(current: HomeUiState.Content, typeId: Int) {
         itemsJob?.cancel()
-        itemsJob = viewModelScope.launch { loadItems(typeId) }
-        loadSpotlights(typeId)
+        val cached = feedCache.cached(typeId)
+        val spots = spotlightsByType[typeId]
+        if (cached != null && spots != null) {
+            hot = spots.first
+            guess = spots.second
+            _state.value = contentOf(cached)
+        } else {
+            // 缺数据：整块进切换态（等高占位），别把上一个分类的榜留在屏上
+            _state.value = current.copy(
+                selectedTypeId = typeId,
+                items = emptyList(),
+                hot = HomeSpotlight(),
+                guess = HomeSpotlight(),
+                isSwitching = true,
+            )
+            itemsJob = viewModelScope.launch { loadCategory(typeId) }
+        }
     }
 
     private fun load(refreshing: Boolean) {
@@ -157,8 +164,15 @@ class HomeViewModel(
             }
             loadItems()
             // 首屏已经铺出来了才预热其它分类：这一步不参与首屏，慢一点也没关系
-            prefetchTypes()
+            prefetchRest()
         }
+    }
+
+    /** 预热其余分类：列表 + 两个卡片位，切 Tab 直接命中缓存，不用每次闪骨架。 */
+    private fun prefetchRest() {
+        val others = types.map { it.id }.filter { it != selectedTypeId }
+        feedCache.prefetch(others)
+        prefetchSpotlights(others, spotlightsByType, repository, viewModelScope)
     }
 
     /** 启动配置失败时保持默认皮肤，不把错误抛给 UI。 */
@@ -206,20 +220,43 @@ class HomeViewModel(
         }
     }
 
+    /**
+     * 切分类的统一加载：列表与两个卡片位并发去取，全部到齐才提交一次。
+     *
+     * 分两路各写一次状态的话，先回来的那路会把界面推到半成品——
+     * 先是空、再是上一个分类的榜、最后才轮到本分类。
+     */
+    private suspend fun loadCategory(typeId: Int) = coroutineScope {
+        val items = async { feedCache.load(typeId) }
+        val spots = async { spotlightsOf(typeId, spotlightsByType, repository) }
+        val list = items.await()
+        val pair = spots.await()
+        if (typeId != selectedTypeId) return@coroutineScope
+        hot = pair.first
+        guess = pair.second
+        when (list) {
+            is AppResult.Success ->
+                _state.value = contentOf(list.value).copy(isSwitching = false, isRefreshing = false)
+
+            is AppResult.Failure -> _state.update { it.withItemsFailure(list.error.toMessage()) }
+        }
+        if (_state.value !is HomeUiState.Loading) onReady()
+    }
+
     /** 列表到手：只写当前分类的 UI，切走的分类结果留给缓存自己用。 */
     private fun applyList(typeId: Int, list: List<Vod>) {
         // 用户已经切走：结果留给缓存，别改屏幕上那个分类
         if (typeId != selectedTypeId) return
         val previous = _state.value as? HomeUiState.Content
         _state.value = when {
-            // 分类行、轮播、模块都沿用当前状态：切分类只换正文，不重建整页
-            previous != null -> previous.copy(
-                items = list,
-                // 分类行跟着最新一次 types 走：快照里可能还是老数据（或含二级分类）
-                types = types,
-                selectedTypeId = selectedTypeId,
+            // 首页首屏/下拉刷新走这里：内容位一起落地，只换 items 的话后台改完要杀两次
+            previous != null -> contentOf(list).copy(
                 isSwitching = false,
                 isRefreshing = false,
+                // 卡片位由 loadCategory/loadContent 单独维护，这里不拿成员变量覆盖，
+                // 否则两路请求顺序不同会变成"先显示 A 的榜，再跳成 B 的"
+                hot = previous.hot,
+                guess = previous.guess,
             )
 
             list.isEmpty() ->
@@ -262,44 +299,6 @@ class HomeViewModel(
         searchHot = searchHot,
     )
 
-    /**
-     * 首屏铺好之后，后台把其余分类的列表都拉一遍。
-     *
-     * 不阻塞首屏：预热自己起 job，失败也不影响任何 UI（用户切过去时再按需请求一次）。
-     */
-    private fun prefetchTypes() {
-        feedCache.prefetch(types.map { it.id }.filter { it != selectedTypeId })
-    }
-
-    /**
-     * 分类页的热度榜/猜你喜欢。
-     *
-     * 后端按 `type_id` 返回该分类的配置，没单独配时回退全局（type_id=0）；
-     * 客户端只按当前分类取一次，结果缓存，切走再切回不重复请求。
-     * 请求期间又切了分类就丢弃，避免高亮与内容对不上。
-     */
-    private fun loadSpotlights(typeId: Int) {
-        val cached = spotlightsByType[typeId]
-        if (cached != null) {
-            applySpotlights(typeId, cached)
-            return
-        }
-        viewModelScope.launch {
-            val hot = (repository.hotByType(typeId) as? AppResult.Success)?.value ?: HomeSpotlight()
-            val guess = (repository.guessByType(typeId) as? AppResult.Success)?.value ?: HomeSpotlight()
-            val pair = hot to guess
-            spotlightsByType[typeId] = pair
-            applySpotlights(typeId, pair)
-        }
-    }
-
-    private fun applySpotlights(typeId: Int, pair: Pair<HomeSpotlight, HomeSpotlight>) {
-        if (typeId != selectedTypeId) return
-        (_state.value as? HomeUiState.Content)?.let { current ->
-            _state.value = current.copy(hot = pair.first, guess = pair.second)
-        }
-    }
-
     companion object {
 
         fun factory(
@@ -321,6 +320,30 @@ class HomeViewModel(
                     onReady = onReady,
                 )
             }
+        }
+    }
+}
+
+private suspend fun spotlightsOf(
+    typeId: Int,
+    cache: MutableMap<Int, Pair<HomeSpotlight, HomeSpotlight>>,
+    repository: VodRepository,
+): Pair<HomeSpotlight, HomeSpotlight> {
+    cache[typeId]?.let { return it }
+    val hotSpot = (repository.hotByType(typeId) as? AppResult.Success)?.value ?: HomeSpotlight()
+    val guessSpot = (repository.guessByType(typeId) as? AppResult.Success)?.value ?: HomeSpotlight()
+    return (hotSpot to guessSpot).also { cache[typeId] = it }
+}
+
+private fun prefetchSpotlights(
+    typeIds: List<Int>,
+    cache: MutableMap<Int, Pair<HomeSpotlight, HomeSpotlight>>,
+    repository: VodRepository,
+    scope: CoroutineScope,
+) {
+    scope.launch {
+        typeIds.forEach { typeId ->
+            cache[typeId] = spotlightsOf(typeId, cache, repository)
         }
     }
 }

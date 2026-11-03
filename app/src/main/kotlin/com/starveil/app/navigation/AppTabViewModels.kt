@@ -15,6 +15,7 @@ import com.starveil.feature.pay.ARG_VOD_ID
 import com.starveil.feature.pay.PAY_MODE_EPISODE
 import com.starveil.feature.pay.PayViewModel
 import com.starveil.feature.pay.payArgs
+import com.starveil.feature.pay.payViewModelFactory
 
 /**
  * 底栏根页面的 ViewModel，挂到整张图的起始 entry 上：切 tab 不销毁。
@@ -50,7 +51,7 @@ internal fun rememberPayViewModel(
     container: AppContainer,
     args: Bundle?,
 ): PayViewModel {
-    val factory = PayViewModel.factory(
+    val factory = payViewModelFactory(
         payRepository = container.payRepository,
         startupRepository = container.startupRepository,
         userRepository = container.userRepository,

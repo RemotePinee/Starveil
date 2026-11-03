@@ -272,7 +272,7 @@ class UserCenterViewModel(
             userRepository: UserRepository? = null,
             pointsRepository: PointsRepository? = null,
             historyRepository: ContinueWatchingRepository? = null,
-            /** 会员体系开关；关闭时会员卡只不出开通按钮，常用工具里的卡密兑换整行隐藏。 */
+            /** 会员体系开关；关闭时会员卡只不出开通按钮。 */
             memberEnabled: Boolean = true,
             initialSession: Session? = null,
             initialProfile: UserProfile? = null,

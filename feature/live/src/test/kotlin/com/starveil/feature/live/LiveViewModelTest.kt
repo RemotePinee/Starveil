@@ -3,6 +3,7 @@ package com.starveil.feature.live
 import app.cash.turbine.test
 import com.starveil.core.common.AppError
 import com.starveil.core.common.AppResult
+import com.starveil.core.data.LiveGroup
 import com.starveil.core.data.LivePage
 import com.starveil.core.data.LiveRepository
 import com.starveil.core.model.LiveChannel
@@ -118,15 +119,47 @@ class LiveViewModelTest {
         Assert.assertEquals(listOf(1L, 2L), state.items.map { it.id })
     }
 
+    @Test
+    fun `load more keeps the group bar from the first page`() = runTest {
+        val repository = FakeLiveRepository(
+            page(channel(1), hasMore = true, groups = listOf(LiveGroup(name = "央视", count = 1))),
+            page(channel(2), hasMore = false),
+        )
+        val viewModel = LiveViewModel(repository)
+
+        viewModel.loadMore()
+
+        val state = viewModel.state.value as LiveUiState.Content
+        // 第 2 页没带分类：分类条必须沿用第 1 页的，不能在滑动途中消失
+        Assert.assertEquals(listOf("央视"), state.groups.map { it.name })
+    }
+
+    @Test
+    fun `refresh replaces the whole page including the group bar`() = runTest {
+        val repository = FakeLiveRepository(
+            page(channel(1), groups = listOf(LiveGroup(name = "央视", count = 1))),
+            page(channel(2), groups = listOf(LiveGroup(name = "卫视", count = 1))),
+        )
+        val viewModel = LiveViewModel(repository)
+
+        viewModel.refresh()
+
+        // 刷新是整页重建：列表与分类条都要换成这次拉到的，不能只换列表
+        val state = viewModel.state.value as LiveUiState.Content
+        Assert.assertEquals(listOf(2L), state.items.map { it.id })
+        Assert.assertEquals(listOf("卫视"), state.groups.map { it.name })
+    }
+
     private fun page(
         vararg items: LiveChannel,
         hasMore: Boolean = false,
         total: Int = items.size,
+        groups: List<LiveGroup> = emptyList(),
     ): AppResult<LivePage> = AppResult.Success(
         LivePage(
             items = items.toList(),
             total = total,
-            groups = emptyList(),
+            groups = groups,
             hasMore = hasMore,
         ),
     )

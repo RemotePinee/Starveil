@@ -94,8 +94,12 @@ class PointsViewModel(private val repository: PointsRepository) : ViewModel() {
                         signPoints = status.value.signPoints,
                         // 签到由顶部按钮承担，列表里不再重复一行
                         tasks = (tasks as AppResult.Success).value.filterNot { it.key == SIGN_KEY },
-                        shareUrl = (share as? AppResult.Success)?.value?.url.orEmpty(),
-                        shareTitle = (share as? AppResult.Success)?.value?.title.orEmpty(),
+                        // 分享文案是独立数据源：它失败时保留上一次的文案。
+                        // 原来写成 `.orEmpty()`，share 接口抖动一次就把后台配好的分享标题/链接
+                        // 清成空串，页面从"后台文案"回落到应用名——一次子请求失败
+                        // 不该抹掉另一块已经拿到的内容。
+                        shareUrl = (share as? AppResult.Success)?.value?.url ?: current.shareUrl,
+                        shareTitle = (share as? AppResult.Success)?.value?.title ?: current.shareTitle,
                     )
                 }
             }

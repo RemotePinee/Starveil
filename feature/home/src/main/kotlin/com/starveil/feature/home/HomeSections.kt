@@ -15,14 +15,17 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
@@ -30,6 +33,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import coil3.compose.AsyncImage
+import com.starveil.core.designsystem.component.SkeletonBlock
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.Spacing
@@ -113,23 +117,21 @@ private fun RowScope.EditorialCard(vod: Vod, onClick: () -> Unit) {
     }
 }
 
-/** 三列榜单卡：左上角 TOP 角标 + 底部集数，像商业 App 的热度榜。 */
+/** 热度榜：一行一张横滑，后台配几条就出几条。 */
 @Composable
 fun RankRow(
     items: List<Vod>,
     onVodClick: (Vod) -> Unit,
 ) {
-    val top = items.take(RANK_COLUMNS)
-    if (top.isEmpty()) {
+    if (items.isEmpty()) {
         return
     }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = Spacing.lg),
+    // 横向滚动：后台配几条就出几条，不再截到一行三张。
+    LazyRow(
+        contentPadding = PaddingValues(horizontal = Spacing.lg),
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        top.forEachIndexed { index, vod ->
+        itemsIndexed(items = items, key = { _, vod -> vod.id }) { index, vod ->
             RankCard(
                 vod = vod,
                 rank = index + 1,
@@ -141,10 +143,10 @@ fun RankRow(
 
 /** 榜单的一张：海报 + 片名 + 集数。 */
 @Composable
-private fun RowScope.RankCard(vod: Vod, rank: Int, onClick: () -> Unit) {
+private fun RankCard(vod: Vod, rank: Int, onClick: () -> Unit) {
     Column(
         modifier = Modifier
-            .weight(1f)
+            .width(RANK_CARD_WIDTH)
             .clickable(onClick = onClick),
     ) {
         Box {
@@ -301,5 +303,63 @@ internal const val POSTER_RATIO = 0.66f
 
 /** 行内最多摆几张：列数固定，后台数据只切分不改变排布。 */
 private const val EDITORIAL_COLUMNS = 2
-private const val RANK_COLUMNS = 3
 private const val MAX_COLUMNS = 4
+
+/** 榜单卡宽度：三列时的单格宽，横向滚动时右侧露出下一张，提示还能滑。 */
+private val RANK_CARD_WIDTH: Dp = Spacing.xxl * 3 + Spacing.lg
+
+/** 占位行摆几张：一行三张与真实榜单首屏一致，换数据时高度不变。 */
+private const val RANK_PLACEHOLDER_CELLS = 3
+@Composable
+private fun PlaceholderBlock(modifier: Modifier) {
+    // 用全站统一的呼吸骨架：一块静止灰和「加载失败」长得一样
+    SkeletonBlock(modifier = modifier)
+}
+
+/** 热度榜空窗期占位：尺寸与一行卡片一致，数据到了原地替换，下面区块不会跳。 */
+@Composable
+fun RankRowPlaceholder() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.lg),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        repeat(RANK_PLACEHOLDER_CELLS) {
+            Column(modifier = Modifier.width(RANK_CARD_WIDTH)) {
+                PlaceholderBlock(modifier = Modifier.aspectRatio(POSTER_RATIO))
+                Spacer(Modifier.height(Spacing.xs))
+                PlaceholderBlock(
+                    modifier = Modifier
+                        .fillMaxWidth(0.82f)
+                        .height(Spacing.md),
+                )
+                Spacer(Modifier.height(Spacing.xxs))
+                PlaceholderBlock(
+                    modifier = Modifier
+                        .fillMaxWidth(0.5f)
+                        .height(Spacing.sm),
+                )
+            }
+        }
+    }
+}
+
+/** 猜你喜欢空窗期占位：一整行海报格，高度按当前列数算。 */
+@Composable
+fun PosterRowsPlaceholder(columns: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.lg),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+    ) {
+        repeat(columns.coerceIn(1, MAX_COLUMNS)) {
+            PlaceholderBlock(
+                modifier = Modifier
+                    .weight(1f)
+                    .aspectRatio(POSTER_RATIO),
+            )
+        }
+    }
+}

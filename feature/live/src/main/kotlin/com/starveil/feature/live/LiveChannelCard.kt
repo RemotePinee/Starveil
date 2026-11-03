@@ -15,19 +15,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.Image
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import coil3.compose.AsyncImage
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.Play
-import com.adamglin.phosphoricons.regular.Waveform
+import com.starveil.core.designsystem.LocalIsDarkTheme
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.IconSize
@@ -82,11 +84,17 @@ private fun LiveChannelThumb(channel: LiveChannel, playing: Boolean) {
                 modifier = Modifier.fillMaxSize(),
             )
         } else {
-            Icon(
-                imageVector = PhosphorIcons.Regular.Waveform,
+            // 无台标：浅色模式配深色图、深色模式配浅色图，两条素材同一形状。
+            Image(
+                painter = painterResource(
+                    if (LocalIsDarkTheme.current) {
+                        R.drawable.feature_live_placeholder_dark
+                    } else {
+                        R.drawable.feature_live_placeholder_light
+                    },
+                ),
                 contentDescription = null,
-                tint = starveilExtraColors.textFaint,
-                modifier = Modifier.size(IconSize.lg),
+                modifier = Modifier.size(Spacing.livePlaceholder),
             )
         }
         LiveBadge(

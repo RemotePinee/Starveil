@@ -70,6 +70,9 @@ object Spacing {
     /** 全屏选台面板里左侧分类栏的宽度：分组名本来就短，再窄会挤掉每组数量。 */
     val livePickerGroupWidth: Dp = 96.dp
 
+    /** 直播卡无台标时的占位图：约半个封面高，扫过一屏不显得空。 */
+    val livePlaceholder: Dp = 44.dp
+
     /** 弹幕行高：与优酷同源，y 直接取「行号 × (行高 + 行间距)」。 */
     val danmuLineHeight: Dp = 24.dp
 

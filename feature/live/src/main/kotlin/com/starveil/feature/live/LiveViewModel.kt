@@ -8,6 +8,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.starveil.core.common.AppError
 import com.starveil.core.common.AppResult
 import com.starveil.core.data.LiveRepository
+import com.starveil.core.data.LivePage
 import com.starveil.core.model.LiveChannel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -45,13 +46,23 @@ class LiveViewModel(private val repository: LiveRepository) : ViewModel() {
         if (page.items.isEmpty()) return
         // 快照存的就是第一页，翻页从这里接着往后取
         loadedPage = 1
-        _state.value = LiveUiState.Content(
-            items = page.items,
-            total = page.total,
-            groups = page.groups,
-            hasMore = page.hasMore,
-        )
+        _state.value = contentOf(page, group = activeGroup)
     }
+
+    /**
+     * 用一次接口响应重建整页内容。
+     *
+     * 分区块（分类条 groups、全量 total、有没有下一页 hasMore）全部集中在这里落位。
+     * 三个调用点各写一遍 `LiveUiState.Content(...)` 时，漏一个字段就是
+     * 「网络回来了，界面上还是旧分类条 / 旧条数」——集中一处，漏不掉。
+     */
+    private fun contentOf(page: LivePage, group: String): LiveUiState.Content = LiveUiState.Content(
+        items = page.items,
+        total = page.total,
+        groups = page.groups,
+        activeGroup = group,
+        hasMore = page.hasMore,
+    )
 
     fun refresh() = load(refreshing = true)
 
@@ -74,7 +85,7 @@ class LiveViewModel(private val repository: LiveRepository) : ViewModel() {
         }
         loadingMore = true
         _state.value = current.copy(isLoadingMore = true)
-        viewModelScope.launch { fetchNext(current.items) }
+        viewModelScope.launch { fetchNext() }
     }
 
     private fun load(refreshing: Boolean) {
@@ -96,16 +107,11 @@ class LiveViewModel(private val repository: LiveRepository) : ViewModel() {
             is AppResult.Success -> {
                 loadedPage = 1
                 val page = result.value
+                // 整页重建：列表、分类条、全量条数、hasMore 一起换成这次拉到的
                 _state.value = if (page.items.isEmpty()) {
                     LiveUiState.Empty(EMPTY_MESSAGE)
                 } else {
-                    LiveUiState.Content(
-                        items = page.items,
-                        total = page.total,
-                        groups = page.groups,
-                        activeGroup = activeGroup,
-                        hasMore = page.hasMore,
-                    )
+                    contentOf(page, group = activeGroup)
                 }
             }
 
@@ -128,36 +134,40 @@ class LiveViewModel(private val repository: LiveRepository) : ViewModel() {
         _state.value = LiveUiState.Error(error.toLiveMessage())
     }
 
-    private suspend fun fetchNext(existing: List<LiveChannel>) {
+    /**
+     * 追加下一页。
+     *
+     * 翻页只追加列表：分类条、全量条数这些分区块字段沿用屏上已有的内容，不拿某一页的
+     * 响应去重建整页——第 2 页的 groups 可能为空或与第 1 页不同（后端只给首页带分类），
+     * 一覆盖分类条就会在滑动途中消失或换掉。
+     */
+    private suspend fun fetchNext() {
         val next = loadedPage + 1
+        val result = repository.list(page = next, group = activeGroup)
+        loadingMore = false
+        // 回包之前用户可能点过刷新：以最新状态为底，别用请求前的旧副本覆盖屏幕
         val current = _state.value as? LiveUiState.Content
-        when (val result = repository.list(page = next, group = activeGroup)) {
+        when (result) {
             is AppResult.Success -> {
                 loadedPage = next
-                loadingMore = false
-                _state.value = LiveUiState.Content(
-                    // 去重：翻页期间后台可能新增/删除条目，导致某条跨页重复出现
-                    items = (existing + result.value.items).distinctBy { it.id },
-                    total = result.value.total,
-                    groups = result.value.groups,
-                    activeGroup = activeGroup,
-                    hasMore = result.value.hasMore,
-                )
+                _state.value = appended(current, result.value)
             }
 
-            is AppResult.Failure -> {
-                // 失败不改页码也不清列表：保留已加载内容，用户可以再滑一次重试
-                loadingMore = false
-                _state.value = LiveUiState.Content(
-                    items = existing,
-                    total = current?.total ?: existing.size,
-                    groups = current?.groups.orEmpty(),
-                    activeGroup = activeGroup,
-                    hasMore = true,
-                )
-            }
+            // 失败不改页码、不清列表、不动分区块：用户再滑一次就能重试
+            is AppResult.Failure -> _state.value = current?.copy(isLoadingMore = false) ?: _state.value
         }
     }
+
+    /** 拼接后的整页状态：列表接上本页，其余分区块沿用 [current]，缺失时才用本页兜底。 */
+    private fun appended(current: LiveUiState.Content?, page: LivePage): LiveUiState.Content =
+        (current ?: contentOf(page, group = activeGroup)).copy(
+            // 去重：翻页期间后台可能新增/删除条目，导致某条跨页重复出现
+            items = (current?.items.orEmpty() + page.items).distinctBy { it.id },
+            // 本页没带总数时沿用已有值，别把标题里的「共 N 路」抹成 0
+            total = page.total.takeIf { it > 0 } ?: current?.total ?: page.items.size,
+            hasMore = page.hasMore,
+            isLoadingMore = false,
+        )
 
     companion object {
         private const val EMPTY_MESSAGE = "暂无直播"

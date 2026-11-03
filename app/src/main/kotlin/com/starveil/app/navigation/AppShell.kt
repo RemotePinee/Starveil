@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Icon
@@ -87,10 +89,12 @@ internal fun AppScaffold(
     AppSystemBars(state)
     val presentation = LocalShortPlayPresentation.current
     val inlineDock = state.currentRoute == SHORT_PLAY_ROUTE && state.isTabPage()
+    // 横屏时系统导航栏贴在侧边：systemBars 的水平 inset 会把整棵内容子树往里推，
+    // 左侧留出一条没人绘制的空白。页面只吃垂直方向的系统栏，侧边交由内容自己铺满。
     val contentInsets = if (state.fullscreen) {
         WindowInsets(0, 0, 0, 0)
     } else {
-        ScaffoldDefaults.contentWindowInsets
+        ScaffoldDefaults.contentWindowInsets.only(WindowInsetsSides.Vertical)
     }
     Scaffold(
         modifier = if (state.locked) Modifier.blockPointers() else Modifier,
@@ -287,7 +291,8 @@ private fun BottomBar(
         modifier = modifier
             .fillMaxWidth()
             .background(starveilExtraColors.surfaceElevated)
-            .windowInsetsPadding(WindowInsets.navigationBars)
+            // 只要底部那一条：横屏时导航栏在侧边，全方向 padding 会把五个 tab 左右各缩一条。
+            .windowInsetsPadding(WindowInsets.navigationBars.only(WindowInsetsSides.Bottom))
             .height(if (showIcons) Spacing.tabBarHeightIcons else Spacing.tabBarHeightText),
         verticalAlignment = Alignment.CenterVertically,
     ) {

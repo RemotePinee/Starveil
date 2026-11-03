@@ -15,6 +15,7 @@ import com.starveil.core.model.Session
 import com.starveil.core.model.Vod
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -153,6 +154,36 @@ class DetailViewModelTest {
 
         assertEquals(0, vods.recommendCalls)
         assertTrue(contentOf(viewModel).recommendations.isEmpty())
+    }
+
+    @Test
+    fun `refresh keeps previous recommendations when the new request fails`() = runTest {
+        val vods = FakeVodRepository(
+            detailResult = AppResult.Success(vod()),
+            recommendResult = AppResult.Success(listOf(vod(id = 101))),
+        )
+        val viewModel = createViewModel(vods = vods)
+        assertEquals(listOf(101), contentOf(viewModel).recommendations.map { it.id })
+
+        // 第二次详情成功、推荐失败：推荐区块不该被空列表盖掉，骨架也要收掉
+        vods.recommendResult = AppResult.Failure(AppError.Network(cause = null))
+        viewModel.refresh()
+
+        val content = contentOf(viewModel)
+        assertEquals(listOf(101), content.recommendations.map { it.id })
+        assertFalse(content.recommendationsLoading)
+    }
+
+    @Test
+    fun `refresh keeps the expanded episode grid`() = runTest {
+        val viewModel = createViewModel()
+        viewModel.toggleEpisodeGrid()
+        assertTrue(contentOf(viewModel).isEpisodeGridExpanded)
+
+        // 刷新详情只换影片数据，用户当场点开的「展开全部集数」不该被收回
+        viewModel.refresh()
+
+        assertTrue(contentOf(viewModel).isEpisodeGridExpanded)
     }
 
     private fun createViewModel(

@@ -128,7 +128,10 @@ class ProfileViewModel(
         _state.update { it.copy(isLoading = it.profile == null, errorMessage = null) }
         viewModelScope.launch {
             if (authRepository.restore() == null) {
-                _state.update { it.copy(isLoading = false, isLoggedIn = false) }
+                // 会话已经没了：把资料一起清掉。只改 isLoggedIn 的话，页面会挂着
+                // 上一个账号的昵称 / 头像 / 会员到期——昵称与头像都优先取 profile，
+                // 不清空就仍然读得到旧值（与 UserCenterViewModel 的未登录分支一致）。
+                _state.update { it.copy(isLoading = false, isLoggedIn = false, profile = null) }
                 return@launch
             }
             when (val result = userRepository.loadProfile()) {
@@ -146,7 +149,8 @@ class ProfileViewModel(
 
     private fun applyFailure(error: AppError) {
         if (error.isUnauthorized()) {
-            _state.update { it.copy(isLoading = false, isLoggedIn = false, errorMessage = null) }
+            // 403 是登录态失效，旧账号的资料同样不能留在页面上
+            _state.update { it.copy(isLoading = false, isLoggedIn = false, profile = null, errorMessage = null) }
             return
         }
         _state.update { it.copy(isLoading = false, errorMessage = error.toPageMessage()) }
