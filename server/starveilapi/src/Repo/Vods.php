@@ -130,7 +130,16 @@ final class Vods
 
         $keyword = (string)($filter['wd'] ?? '');
         if ($keyword !== '') {
-            $query->whereLike('vod_name', '%' . $keyword . '%');
+            // 片名、演员、导演一起匹配：用户搜「胡歌」「张艺谋」这类人名时，
+            // 只搜 vod_name 会什么都搜不到——库里明明有这部片。
+            // 用闭包把它们包成一组 OR，否则会和上面的 type/level 串成
+            // 「分类对了但演员不匹配」也被放行的错误结果。
+            $like = '%' . $keyword . '%';
+            $query->where(function ($sub) use ($like) {
+                $sub->where('vod_name', 'like', $like)
+                    ->whereOr('vod_actor', 'like', $like)
+                    ->whereOr('vod_director', 'like', $like);
+            });
         }
 
         // 三个"枚举字段"筛选：macCMS 一律 `['in', explode(',', 参数)]`。

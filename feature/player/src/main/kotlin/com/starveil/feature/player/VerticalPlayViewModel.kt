@@ -72,7 +72,10 @@ class VerticalPlayViewModel(
         source = deps.danmuSource.takeIf { danmuEnabled },
         scope = scope,
         // 短剧只有一条源（VERTICAL_PLAY_SOURCE_INDEX），集号用当前集下标
-        videoRef = { DanmuTarget(currentVodId(), VERTICAL_PLAY_SOURCE_INDEX, currentEpisodeIndex()) },
+        // nid 用当前集下标原值：弹幕表存的也是 0 起索引，加 1 会整体偏移一集
+        videoRef = {
+            DanmuTarget(currentVodId(), VERTICAL_PLAY_SOURCE_INDEX, currentEpisodeIndex())
+        },
         clock = deps.clock,
     )
 

@@ -25,6 +25,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.starveil.app.AppContainer
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.ShortPlay
+import com.starveil.core.model.ShortPlayType
 import com.starveil.feature.player.FIRST_EPISODE_NUMBER
 import com.starveil.feature.shortplay.SHORT_PLAY_ROUTE
 import com.starveil.feature.shortplay.SHORT_PLAY_CATEGORY_ARG_TYPE_ID
@@ -74,11 +75,18 @@ private fun ShortPlayCategoryEntry(
     nav: NavHostController,
     initialTypeId: Int,
 ) {
+    // 分类条的数据来自启动配置。cached() 在 startup 还没回来时是空列表，
+    // 那一刻一级分类整行塌陷、二级分类上移；值到了又出现把它挤回去——
+    // 用户看到的就是"一级分类慢一步、把下面的挤过去"。留一份最近的非空值兜住中间那几帧。
+    val rememberedParents = remember { mutableStateOf(emptyList<ShortPlayType>()) }
+    val liveParents = container.startupRepository.cached()?.shortplayCategories.orEmpty()
+    if (liveParents.isNotEmpty()) rememberedParents.value = liveParents
+    val parents = liveParents.ifEmpty { rememberedParents.value }
     val categoryViewModel: ShortPlayCategoryViewModel = viewModel(
         factory = ShortPlayCategoryViewModel.factory(
             repository = container.shortPlayRepository,
             // 与剧场页同源：后台下发的两级分类（mac_type.type_pid），客户端不改语义、不改数量
-            parents = container.startupRepository.cached()?.shortplayCategories.orEmpty(),
+            parents = parents,
             initialTypeId = initialTypeId,
         ),
     )

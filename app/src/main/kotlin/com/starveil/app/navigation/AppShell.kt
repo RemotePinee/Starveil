@@ -235,6 +235,14 @@ internal class AppShellState(
     val fullscreen: Boolean,
     /** 底栏是否画图标；关闭后只画文字（后台「底部菜单 → 底栏显示图标」）。 */
     val showTabIcons: Boolean = true,
+    /**
+     * 转场结束之后才更新的路由：dock 显隐与内容区底边只认它。
+     *
+     * 直接用 [currentRoute] 的话，转场第一帧就把 dock 判成"该消失"，
+     * 已进入但还在滑的旧页面高度随之变化，被顶上去、底部露黑。
+     * 页面高亮之类仍用 [currentRoute]，那里需要实时。
+     */
+    val settledRoute: String? = currentRoute,
 ) {
     fun isVerticalPlayer(): Boolean = currentRoute?.startsWith("$VERTICAL_PLAY_ROUTE/") == true
 
@@ -251,7 +259,9 @@ internal class AppShellState(
      * 只认底栏自己那几栏：[isTabPage] 对历史、搜索、设置这些二级页也返回 true，
      * 而它们根本没有 dock——这类页面的底边仍要吃系统导航栏，否则最后一行贴着导航栏。
      */
-    fun hasDock(): Boolean = isTabPage() && tabs.any { it.selectedRoute == currentRoute }
+    // 只认 settledRoute：转场第一帧 currentRoute 已经是目标页，
+    // 拿它判断会让 dock 立刻消失、内容区高度跟着变，旧页面被顶上移、底部露黑。
+    fun hasDock(): Boolean = isTabPage() && tabs.any { it.selectedRoute == settledRoute }
 
     fun contentPadding(
         padding: PaddingValues,

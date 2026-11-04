@@ -120,7 +120,9 @@ private fun CommentField(
         modifier = modifier
             .height(CommentFieldHeight)
             .clip(AppShape.large)
-            .background(starveilExtraColors.surfaceCard)
+            // 用 chipBackground 而不是 surfaceCard：评论面板本身就是 surfaceCard，
+            // 同色叠同色等于没有输入框——真机上只看得到一行占位文字和一个光标。
+            .background(starveilExtraColors.chipBackground)
             .padding(horizontal = Spacing.md),
         contentAlignment = Alignment.CenterStart,
     ) {

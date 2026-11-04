@@ -18,6 +18,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -176,14 +181,21 @@ private fun SeriesSummary(stage: VerticalPlayStage, modifier: Modifier = Modifie
  */
 @Composable
 private fun CategoryTags(category: String, parent: String) {
+    // 切剧那一瞬 categoryParent 是空（新剧详情还没回来），父药丸整个不画、
+    // 子药丸顶到它的位置；数据回来父药丸又插回去，把子药丸挤到右边——
+    // 用户看到的就是「一级分类消失又出现、把二级分类挤过去」。
+    // 记住上一个非空值：换父分类时最多一瞬间显示旧名，比整行跳动好得多。
+    var lastParent by remember { mutableStateOf("") }
+    if (parent.isNotBlank()) lastParent = parent
+    val shownParent = parent.ifBlank { lastParent }
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
     ) {
-        if (parent.isNotBlank()) {
+        if (shownParent.isNotBlank()) {
             CategoryPill(
-                label = parent,
+                label = shownParent,
                 modifier = Modifier.weight(1f, fill = false),
             )
         }
@@ -280,7 +292,12 @@ private fun SynopsisLine(stage: VerticalPlayStage) {
 /** 试看态入口：整幅贴住底栏，进整剧播放。 */
 @Composable
 private fun FullSeriesStrip(stage: VerticalPlayStage) {
-    val count = stage.state.episodeCount
+    // 切剧瞬间 episodeCount 会掉到 0（新剧的详情还没回来），底条于是先变成「观看完整短剧」、
+    // 下一秒又跳回「全 N 集」——用户看到的就是"先消失再更新"。
+    // 记住上一个非零值：只有新数据真的到了才替换，空值不覆盖。
+    var lastCount by remember { mutableIntStateOf(0) }
+    if (stage.state.episodeCount > 0) lastCount = stage.state.episodeCount
+    val count = lastCount
     Row(
         modifier = Modifier.fillMaxSize()
             .verticalPress(

@@ -35,6 +35,9 @@ class PlayerDanmuTest {
         assertEquals(listOf(0L), source.loads.map { it.atTimeMs })
         assertEquals(7, source.loads.single().target.vodId)
         assertEquals(0, source.loads.single().target.sid)
+        // nid 用 episodeIndex 原值：苹果CMS 弹幕表存的就是 0 起索引。
+        // 后台显示的「源/集 0/215」对应客户端第 216 集（episodeIndex=215），
+        // 加 1 会整体偏移一集，反而取不到。
         assertEquals(0, source.loads.single().target.nid)
         assertEquals(listOf("弹幕1"), viewModel.danmu.value.map { it.text })
     }

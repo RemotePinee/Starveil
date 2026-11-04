@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -67,6 +68,12 @@ internal fun UserCenterWatchHistory(input: WatchHistoryInput, modifier: Modifier
             return@Column
         }
         val listState = rememberLazyListState()
+        // 数据整批换掉时回到第一张。
+        // LazyRow 会保留上一次的 index，从短剧切回来时观看记录已经换成另一批片，
+        // 位置还停在旧的中段——看起来就是「自己滚到中间去了」。
+        LaunchedEffect(input.items.firstOrNull()?.vodId) {
+            listState.scrollToItem(0)
+        }
         // 哪一端还有内容才擦哪一端：滚到最左时左端完整，滚到最右时右端完整。
         // 无条件擦两端会让「只有三张卡、根本不需要滚」的时候左边也灰掉一条。
         Box(

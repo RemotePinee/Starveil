@@ -80,6 +80,9 @@ class PlayerViewModel(
     private val danmuDispatcher = PlayerDanmuDispatcher(
         source = deps.danmuSource,
         scope = scope,
+        // nid 用 episodeIndex 原值：苹果CMS 弹幕表存的也是 0 起索引。
+        // 后台列表里显示「源/集 0/215」的那条，对应客户端第 216 集（episodeIndex=215）。
+        // 之前误按"1 起集号"加了 1，结果整体偏移一集，反而取不到。
         videoRef = { DanmuTarget(vod.id, session.sourceIndex, session.episodeIndex) },
         clock = deps.clock,
         emit = ::sendEvent,

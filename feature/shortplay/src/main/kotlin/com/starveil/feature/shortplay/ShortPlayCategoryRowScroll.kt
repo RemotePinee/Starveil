@@ -42,7 +42,9 @@ internal fun ShortPlayCategoryRowScroll(
         } else {
             selectedFirstTarget(scrollState, selectedSpan, leadingInset, density) ?: return@LaunchedEffect
         }
-        scrollState.scrollTo(target)
+        // 用 animate 而不是 scrollTo：切分类时 contentKey 变了会重定位一次，
+        // 瞬跳就是用户看到的"药丸闪一下"。滑动把这次重定位变成连续运动。
+        scrollState.animateScrollTo(target)
         placed = true
     }
 }
@@ -59,12 +61,21 @@ private fun selectedFirstTarget(
     leadingInset: Dp,
     density: Density,
 ): Int? {
-    val selected = span ?: return null
-    val leftPx = with(density) { selected.left.toPx() }
-    val rightPx = leftPx + with(density) { selected.width.toPx() }
-    val windowStart = scrollState.value.toFloat()
-    val windowEnd = windowStart + scrollState.viewportSize.toFloat()
-    val alreadyVisible = leftPx >= windowStart && rightPx <= windowEnd
-    val target = (leftPx - with(density) { leadingInset.toPx() }).toInt()
-    return if (alreadyVisible) null else target.coerceIn(0, scrollState.maxValue)
+    // 单出口：span 缺失与"已经完整可见"都折成 null，末尾统一返回。
+    // 三个提前 return 会撞 detekt 的 ReturnCount（上限 2）。
+    val offset = span?.let { selected ->
+        val leftPx = with(density) { selected.left.toPx() }
+        val rightPx = leftPx + with(density) { selected.width.toPx() }
+        val windowStart = scrollState.value.toFloat()
+        val windowEnd = windowStart + scrollState.viewportSize.toFloat()
+        val insetPx = with(density) { leadingInset.toPx() }
+        // 只在「看不到」时做最小滚动，不再一律拉回行首：
+        // 选最后一项时拉回行首会把左边两项整块推出屏幕，用户看到的就是"被挤位移"。
+        when {
+            rightPx > windowEnd -> rightPx - windowEnd + insetPx
+            leftPx < windowStart -> leftPx - insetPx
+            else -> null
+        }
+    }
+    return offset?.toInt()?.coerceIn(0, scrollState.maxValue)
 }

@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -112,9 +113,15 @@ fun ShortPlayScreen(
     // 全集面板展开 / 开合动画期间：菜单与分类条不可点，避免叠出第二套导航。
     val menuLocked = presentation.seriesExpanded || presentation.interactionLocked
     // 顶部横条与左右翻页共用同一份分类列表：页数 = 分类数，点第几个 chip 就滚到第几页。
-    val categories = tabs.ifEmpty { state.types }
-    val pager = rememberShortPlayCategoryPager(categories, state.selectedTypeId)
+    // tabs 来自启动配置，每次重组都会重新读一次 cached()。为 null 的那一刻列表会退回
+    // state.types（另一组分类），项数与文案都变了——看起来就是「一级分类消失又出现」。
+    // 留一份最近的非空值，避免中间这几帧换数据源。
+    val rememberedTabs = remember { mutableStateOf(emptyList<ShortPlayType>()) }
+    if (tabs.isNotEmpty()) rememberedTabs.value = tabs
+    val categories = tabs.ifEmpty { rememberedTabs.value.ifEmpty { state.types } }
     // 挂 feed 的那一页：滑动全程锁在旧页，松手落页才换——滑过半就换会让左右两页的角色瞬间对调。
+    // 顶部分类条的页数与左右翻页共用同一份列表：点第几个 chip 就滚到第几页
+    val pager = rememberPagerState(pageCount = { categories.size.coerceAtLeast(1) })
     val ownerPage = rememberCategoryOwnerPage(pager)
     // 分类请求随落页发出（ownerPage 只在滚动结束后变），新分类的 feed 在落页之后组合。
     // 落页到数据回来这一段由占位层兜着：新分类的快照不再先铺成 Content——过期的列表会让
@@ -296,13 +303,19 @@ private fun ShortPlayHeader(ui: ShortPlayHeaderUi, modifier: Modifier = Modifier
                 }
             }
         }
+        // 固定最小高度：切剧时 ui.categories 会有一帧是空列表（分类来自启动配置，
+        // 那一帧还没就绪），行高塌到 0、下面的内容整体上移，等它回来又被挤下去——
+        // 用户看到的就是「一级分类消失又出现、把下面挤过去」。留住高度就不动了。
         ShortPlayCategoryRow(
             categories = ui.categories,
             selectedTypeId = ui.selectedTypeId,
             enabled = !ui.locked,
             onSelect = ui.onTypeSelect,
             progress = ui.progress,
-            modifier = Modifier.weight(1f).padding(horizontal = Spacing.sm),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = Spacing.control)
+                .padding(horizontal = Spacing.sm),
         )
         // 展开走弹簧：胶囊宽度连续变化，中间任何一帧都是药丸。
         val barWidth by animateDpAsState(

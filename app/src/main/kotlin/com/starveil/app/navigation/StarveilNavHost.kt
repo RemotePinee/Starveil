@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import com.starveil.feature.user.LoginChoices
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -190,12 +191,19 @@ fun StarveilNavHost(container: AppContainer) {
 
     val fullscreen = rememberFullscreenController()
     val shortPlayPresentation = rememberShortPlayPresentation(backStackEntry)
+    // dock 与内容区底边只认「转场结束后」的路由：转场第一帧就翻会让已进入但还在滑的
+    // 旧页面高度突变，被顶上去、底部露黑。延迟一档动画时长，结束后再让 dock 参与布局。
+    val settledRoute by produceState(initialValue = currentRoute, currentRoute) {
+        delay(DOCK_SETTLE_MS)
+        value = currentRoute
+    }
     val shellState = AppShellState(
         currentRoute = currentRoute,
         tabs = tabs,
         locked = locked,
         fullscreen = fullscreen.isFullscreen,
         showTabIcons = startup?.bottomTabIcons ?: true,
+        settledRoute = settledRoute,
     )
     CompositionLocalProvider(
         LocalFullscreenController provides fullscreen,
@@ -332,4 +340,7 @@ internal fun Context.showPlayerEvent(event: PlayerEvent) {
     }
     Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
 }
+
+/** dock 与内容区底边等多久再跟着新路由走：一档转场动画的长度。 */
+private const val DOCK_SETTLE_MS = 300L
 
