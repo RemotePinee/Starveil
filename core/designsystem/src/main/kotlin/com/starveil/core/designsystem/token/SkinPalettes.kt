@@ -97,14 +97,14 @@ private fun skinTones(accent: Color, badge: Color): SkinTones = SkinTones(
 /**
  * 深色：中性阶梯固定，与皮肤无关，皮肤只决定 primary/secondary 及其 on 色。
  *
- * 扁平化删掉了所有阴影，层级只剩色阶。四层可见高度，越往上越亮，相邻至少差 8 个 0-255 色阶
- * （括号里是 R 通道值与相对下一档的差值，由 SkinPalettesTest 断言）：
- * - 页面底 / surface：Ink950 `#0B0C0F`（R 11，Material 3 里 background 与 surface 同色）
- * - 卡片 / 导航栏：Ink800 `#1C1D23`（R 28，+17——上一次卡片 `#16171C` 只差 5 个色阶，
- *   深色下和页面底糊成一片，这一档就是那次问题的修复点）
- * - 弹层 / Dialog：Ink700 `#26272F`（R 38，+10）
- * - 菜单 / 胶囊 / 选中态 / 分隔线：InkMenu `#2F3038`（R 47，+9）
- * 再往下是下沉面：Void / Ink900 只用于视频留边这类"凹陷"，不参与分层。
+ * 扁平化删掉了所有阴影，层级只剩色阶。四层可见高度，越往上越亮（括号里是 R 通道值与
+ * 相对下一档的差值，由 SkinPalettesTest 断言）：
+ * - 页面底 / surface：Ink950 `#252525`（R 37，Material 3 里 background 与 surface 同色）
+ * - 卡片 / 导航栏：Ink800 `#2C2C2C`（R 44，+7——"我的"页那种整块大卡片只抬这一档，
+ *   再亮就变成压不住的大色块，和页面底抢视线）
+ * - 弹层 / Dialog：Ink700 `#2E2E2E`（R 46，+2）
+ * - 菜单 / 胶囊 / 选中态 / 分隔线：InkMenu `#363636`（R 54，+8）
+ * 再往下是下沉面：Void `#070809` 只用于视频留边、遮罩这类"凹陷"，不参与分层。
  * 主色容器用中性 InkMenu（选中态落在最亮一档，压在弹层上也看得出），
  * 只把 onPrimaryContainer 留给强调色——选中态仍能看出皮肤，但容器底不再被染色。
  */
@@ -138,7 +138,7 @@ private fun darkSchemeOf(accent: Color, badge: Color): ColorScheme = darkColorSc
     onError = Palette.White,
     scrim = Palette.Void,
     inverseSurface = Palette.White,
-    inverseOnSurface = Palette.Ink900,
+    inverseOnSurface = Palette.TextOnLight,
 )
 
 /** 浅色：白底 + 浅灰层次，色相与深色同一组，前景色按对比度挑，保证 4.3:1 以上可辨识度。 */
@@ -153,11 +153,11 @@ private fun lightSchemeOf(accent: Color, badge: Color): ColorScheme = lightColor
     secondaryContainer = Palette.Paper200,
     onSecondaryContainer = badge,
     background = Palette.Paper50,
-    onBackground = Palette.Ink900,
+    onBackground = Palette.TextOnLight,
     surface = Palette.Paper50,
-    onSurface = Palette.Ink900,
+    onSurface = Palette.TextOnLight,
     surfaceVariant = Palette.Paper200,
-    onSurfaceVariant = Palette.Ink500,
+    onSurfaceVariant = Palette.MutedOnLight,
     surfaceDim = Palette.Paper200,
     surfaceBright = Palette.Paper50,
     surfaceContainerLowest = Palette.Paper50,
@@ -171,22 +171,22 @@ private fun lightSchemeOf(accent: Color, badge: Color): ColorScheme = lightColor
     error = Palette.Red500,
     onError = Palette.White,
     scrim = Palette.Void,
-    inverseSurface = Palette.Ink900,
+    inverseSurface = Palette.TextOnLight,
     inverseOnSurface = Palette.Paper50,
 )
 
 /**
- * 亮色底配深字、暗色底配白字：在 [Palette.White] 与 [Palette.Ink900] 里取对比度更高的那个。
+ * 亮色底配深字、暗色底配白字：在 [Palette.White] 与 [Palette.TextOnLight] 里取对比度更高的那个。
  *
  * 浅色主色里 `#FF679A` 对白字只有 2.74:1、`#FFB020` 只有 1.83:1，都不到 WCAG AA 的 4.5:1；
- * 换成 Ink900 后分别是 6.83:1 与 10.23:1。唯一留白字的是霓虹紫 `#7C5CFF`（白字 4.35:1，
+ * 换成 TextOnLight 后分别是 6.83:1 与 10.23:1。唯一留白字的是霓虹紫 `#7C5CFF`（白字 4.35:1，
  * 深字 4.31:1，两者都够不到 4.5，取高的那个）。
  */
 private fun onColorFor(background: Color): Color =
-    if (contrastRatio(Palette.White, background) >= contrastRatio(Palette.Ink900, background)) {
+    if (contrastRatio(Palette.White, background) >= contrastRatio(Palette.TextOnLight, background)) {
         Palette.White
     } else {
-        Palette.Ink900
+        Palette.TextOnLight
     }
 
 /** WCAG 2.1 对比度：(较亮相对亮度 + 0.05) / (较暗相对亮度 + 0.05)。 */
@@ -202,8 +202,8 @@ private fun lightExtraOf(accent: Color, badge: Color): StarveilExtraColors =
         brandGold = Palette.Gold600,
         surfaceElevated = Palette.Paper100,
         surfaceCard = Palette.Paper200,
-        textMuted = Palette.Ink500,
-        textFaint = Palette.Ink300,
+        textMuted = Palette.MutedOnLight,
+        textFaint = Palette.FaintOnLight,
         divider = Palette.Paper300,
         // 遮罩仍是黑的：浮层要压暗下面的内容，浅色主题也不该变白
         // 会员卡浅色模式偏绿一档：同样的墨绿挨着白底会读成近黑，提饱和才显绿。

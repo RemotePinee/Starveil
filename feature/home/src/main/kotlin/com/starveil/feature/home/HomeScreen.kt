@@ -87,7 +87,7 @@ fun HomeScreen(
     actions: HomeActions = HomeActions(),
     modifier: Modifier = Modifier,
 ) {
-    // 轮播的同图底色铺到状态栏后面：颜色只来自当前页那张图，切页淡入。
+    // 轮播 pager 提到外层：切页时列表与顶部栏共用同一个状态。
     val banners = (state as? HomeUiState.Content)?.banners.orEmpty()
     val bannerPager = rememberPagerState(pageCount = { banners.size.coerceAtLeast(1) })
     Box(
@@ -98,22 +98,25 @@ fun HomeScreen(
         HomeBannerBackdrop(banners = banners, pager = bannerPager)
         CompositionLocalProvider(LocalHomeBannerPager provides bannerPager) {
             Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-                when (state) {
-                    is HomeUiState.Loading -> StarveilLoadingScreen()
+                    when (state) {
+                        is HomeUiState.Loading -> StarveilLoadingScreen()
 
-                    is HomeUiState.Error -> Centered {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(text = state.message, color = starveilExtraColors.textMuted)
-                            Button(onClick = actions.onRetry, modifier = Modifier.height(Spacing.xxl)) {
-                                Text("重试")
+                        is HomeUiState.Error -> Centered {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(text = state.message, color = starveilExtraColors.textMuted)
+                                Button(
+                                    onClick = actions.onRetry,
+                                    modifier = Modifier.height(Spacing.xxl),
+                                ) {
+                                    Text("重试")
+                                }
                             }
                         }
+
+                        is HomeUiState.Empty -> EmptyFeed(state = state, actions = actions)
+
+                        is HomeUiState.Content -> HomeFeed(state = state, actions = actions)
                     }
-
-                    is HomeUiState.Empty -> EmptyFeed(state = state, actions = actions)
-
-                    is HomeUiState.Content -> HomeFeed(state = state, actions = actions)
-                }
             }
         }
     }
@@ -257,7 +260,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.homeSections(
 ) {
     state.modules.forEach { module -> homeModuleSection(module, state, actions) }
     item { Spacer(Modifier.height(Spacing.xl)) }
-    // 横幅固定压在最后一条：无素材时整条 item 都不生成，不会留下空位或占位灰块。
     if (banner.drawable) {
         item { HomeBannerAd(creative = banner) }
     }
@@ -272,7 +274,7 @@ private fun androidx.compose.foundation.lazy.LazyListScope.homeModuleSection(
     when (module) {
         HomeModule.BANNER -> if (state.banners.isNotEmpty()) {
             item { BannerHero(banners = state.banners, onClick = actions.onBannerClick) }
-            item { Spacer(Modifier.height(Spacing.md)) }
+            item { Spacer(Modifier.height(Spacing.xs)) }
         }
 
         HomeModule.FEATURED -> if (state.featured.items.isNotEmpty()) {
@@ -322,7 +324,6 @@ private fun androidx.compose.foundation.lazy.LazyListScope.hotSection(
 ) {
     val hotItems = state.hot.items.ifEmpty { state.items.drop(3) }
     item { SectionTitle(title = state.hot.title.ifBlank { "热度榜" }) }
-    // 数据还没到的那一帧用等高占位顶住：直接不渲染会让下面的猜你喜欢整体上移再弹回
     if (hotItems.isEmpty()) {
         item { RankRowPlaceholder() }
     } else {
@@ -335,12 +336,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.guessSection(
     state: HomeUiState.Content,
     actions: HomeActions,
 ) {
-    // 按列数取整：末行不留空位。回退用的是"主列表去掉前 6 部"（20-6=14），
-    // 三列时 14 除不尽，最后一行就空一个——14 这个数不是配置，是 20 减 6 的差。
+    // 末行不留空位：回退切片是"主列表去掉前 6 部"，三列时除不尽要补齐。
     val fallback = state.items.drop(GUESS_SKIP).ifEmpty { state.items }
     val guessItems = gridFilled(state.guess.items.ifEmpty { fallback }, state.columns)
     item { SectionTitle(title = state.guess.title.ifBlank { "猜你喜欢" }) }
-    // 同上：空窗期留一块等高占位，避免整块消失后下面的区块先上移再弹回
     if (guessItems.isEmpty()) {
         item { PosterRowsPlaceholder(columns = state.columns) }
     } else {
@@ -393,7 +392,6 @@ private fun Centered(content: @Composable () -> Unit) {
 private fun HomeBannerAd(creative: AdPlacement) {
     val openLanding = LocalAdClick.current
     Column(modifier = Modifier.fillMaxWidth()) {
-        // 上下都要留白：之前只有底部一条 Spacer，贴着上一块内容会读成"填满了"。
         Spacer(Modifier.height(Spacing.lg))
         AdCreativeCard(
             creative = creative,

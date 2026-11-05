@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 皮肤强调色：每套皮肤只有一组 accent/badge，深色浅色共用同一组，差别只在 `on` 色。
+ * 深色的按钮前景固定白字（深色是主形态，不随皮肤变）；浅色按 WCAG 对比度在白字与 TextOnLight
  *
  * 深色的按钮前景固定白字（深色是主形态，不随皮肤变）；浅色按 WCAG 对比度在白字与 Ink900
  * 之间挑一个，亮色底配深字。
@@ -73,12 +73,12 @@ class SkinPaletteAccentTest {
         }
     }
 
-    /** 与 `SkinPalettes` 里的 on 色规则一致：白字与 Ink900 之间取对比度高的那个。 */
+    /** 与 `SkinPalettes` 里的 on 色规则一致：白字与 TextOnLight 之间取对比度高的那个。 */
     private fun expectedOn(background: Color): Color =
-        if (contrast(Palette.White, background) >= contrast(Palette.Ink900, background)) {
+        if (contrast(Palette.White, background) >= contrast(Palette.TextOnLight, background)) {
             Palette.White
         } else {
-            Palette.Ink900
+            Palette.TextOnLight
         }
 
     /** WCAG 2.1 对比度：(较亮相对亮度 + 0.05) / (较暗相对亮度 + 0.05)。 */

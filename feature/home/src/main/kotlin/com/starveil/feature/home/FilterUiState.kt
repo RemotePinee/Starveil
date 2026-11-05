@@ -90,13 +90,14 @@ internal fun buildFilterRows(types: List<VodType>, selection: FilterSelection): 
     val roots = types.filter { it.parentId == 0 }
     // 分类行点亮谁：选中子分类时点亮它的父分类，选中「全部」时点亮「全部」
     val typeSelected = typeSelectedOf(current)
-    // 二级分类：选了某个一级分类就只列它的子分类；选「全部」时把所有二级分类都摆出来
+    // 二级分类只在选定了某个一级分类时列出。全局「全部」下把**所有**父分类的子分类
+    // 摊在一行里，等于把不同父分类的东西（日韩综艺 / 玄幻 / 科幻片）混在一起，
+    // 看起来就像"二级分类出现了两行、还互相重复"——那不是两行，是这一行太杂。
     val subtypes = if (typeSelected > 0) {
         types.filter { it.parentId == typeSelected }
     } else {
-        types.filter { it.parentId > 0 }
+        emptyList()
     }
-    // 二级行的「全部」：选了一级分类就等于"这个父分类下不细分"，全局「全部」时是 0
     val subtypeAll = if (typeSelected > 0) typeSelected.toString() else ALL_TYPE_VALUE
     val subtypeSelected = if (selection.typeId == 0) subtypeAll else selection.typeId.toString()
     // 初始「全部」没有对应分类，但 macCMS 的筛选词是挂在分类上的：借用第一个一级分类
@@ -104,7 +105,7 @@ internal fun buildFilterRows(types: List<VodType>, selection: FilterSelection): 
     return buildList {
         if (roots.isNotEmpty()) add(rootTypeRow(roots, typeSelected))
         addSubtypeRow(subtypes, subtypeAll, subtypeSelected)
-        addExtendRows(extend, selection)
+        addExtendRows(extend, selection, showClass = typeSelected > 0)
         // 排序放最后一行：它改的是「怎么排」，不是「筛什么」，贴在海报墙上方更顺手
         add(orderRow(selection.order))
     }
@@ -117,11 +118,20 @@ private fun typeSelectedOf(current: VodType?): Int = when {
     else -> current.id
 }
 
-/** 地区/年份/题材/语言四行；对应键为空时 [addExtendRow] 自己会跳过。 */
-private fun MutableList<FilterRow>.addExtendRows(extend: TypeExtend, selection: FilterSelection) {
+/**
+ * 地区/年份/题材/语言四行；对应键为空时 [addExtendRow] 自己会跳过。
+ *
+ * [showClass] 为假时不出现题材行：全局「全部」下没有父分类，题材候选只能借用第一个
+ * 分类的，摆出来等于把某个分类的题材当成全局筛选项。
+ */
+private fun MutableList<FilterRow>.addExtendRows(
+    extend: TypeExtend,
+    selection: FilterSelection,
+    showClass: Boolean,
+) {
     addExtendRow(FilterKind.AREA, extend.area, selection.area)
     addExtendRow(FilterKind.YEAR, extend.year, selection.year)
-    addExtendRow(FilterKind.CLASS, extend.classNames, selection.className)
+    if (showClass) addExtendRow(FilterKind.CLASS, extend.classNames, selection.className)
     addExtendRow(FilterKind.LANG, extend.lang, selection.lang)
 }
 
@@ -189,16 +199,19 @@ private fun MutableList<FilterRow>.addExtendRow(
     selected: String,
 ) {
     if (values.isEmpty()) return
+    // 多源采集会在同一个维度里塞重复值（同名不同源），去重后再铺。
+    val unique = values.distinct()
     add(
         FilterRow(
             kind = kind,
-            options = listOf(FilterOption(ALL_LABEL, FILTER_ALL)) + values.map { FilterOption(it, it) },
+            options = listOf(FilterOption(ALL_LABEL, FILTER_ALL)) +
+                unique.map { FilterOption(it, it) },
             selected = selected,
         ),
     )
 }
 
-private const val ALL_LABEL = "全部"
+internal const val ALL_LABEL = "全部"
 
 /** 分类行的「全部」= type 0（后端按全部返回）。 */
-private const val ALL_TYPE_VALUE = "0"
+internal const val ALL_TYPE_VALUE = "0"

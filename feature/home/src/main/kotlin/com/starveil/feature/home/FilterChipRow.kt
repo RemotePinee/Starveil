@@ -9,10 +9,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -47,10 +51,21 @@ internal fun FilterChipRow(row: FilterRow, onSelect: (FilterKind, String) -> Uni
             verticalAlignment = Alignment.CenterVertically,
         ) {
             row.options.forEach { option ->
+                val isSelected = option.value == row.selected
+                val anchor = remember { BringIntoViewRequester() }
+                // 一级分类行：点亮的那一项自动滚进可视区。
+                // 选中二级分类后父分类会被点亮，它可能正停在屏幕外——
+                // 只"选中"不锚点，用户看不到自己被定位到了哪。
+                LaunchedEffect(row.kind, row.selected) {
+                    if (row.kind == FilterKind.TYPE && isSelected) {
+                        anchor.bringIntoView()
+                    }
+                }
                 FilterChip(
                     label = option.label,
-                    selected = option.value == row.selected,
+                    selected = isSelected,
                     onClick = { onSelect(row.kind, option.value) },
+                    modifier = Modifier.bringIntoViewRequester(anchor),
                 )
             }
         }

@@ -69,7 +69,7 @@ private fun SectionShell(title: String, content: @Composable ColumnScope.() -> U
             .fillMaxWidth()
             .padding(horizontal = Spacing.pageHorizontal),
         shape = AppShape.medium,
-        // 扁平化：页面底和 surface 同色（`#0B0C0F`），卡片必须再高一档（`#1C1D23`，差 17 个色阶）
+        // 扁平化：页面底和 surface 同色（`#252525`），卡片必须再高一档（`#363636`，差 17 个色阶）
         // 才分得出来；卡片不再带阴影，层级全靠这一档色差
         colors = CardDefaults.cardColors(containerColor = starveilExtraColors.surfaceCard),
     ) {

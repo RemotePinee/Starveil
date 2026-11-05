@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -28,7 +29,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -79,18 +87,21 @@ fun BannerHero(
             }
         }
     }
-    Column(
+    // 贴边：两套模式同一套结构。顶部与底部过渡、标题、圆点都画在这一层——
+    // 这里高度由 aspectRatio 定死，`fillMaxHeight` 才算得出真实像素。
+    val mask = starveilExtraColors.fadeMask
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = Spacing.lg),
+            .aspectRatio(BANNER_RATIO)
+            .clipToBounds(),
     ) {
-        // 圆角定在容器上，而不是每张卡片自己裁：滑动时页面在容器内部平移，
-        // 圆角属于容器、始终完整，不会被相邻页盖住也不会在边缘被裁掉。
+        // 顶部对图做 alpha 抠洞，淡进背后的模糊底（与深色模式同一套）。
         Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(BANNER_RATIO)
-                .clip(AppShape.large),
+                .fillMaxSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .bannerTopMask(mask),
         ) {
             HorizontalPager(
                 state = pager,
@@ -98,119 +109,36 @@ fun BannerHero(
             ) { page ->
                 BannerCard(banner = pages[page], onClick = { onClick(pages[page]) })
             }
-            // 指示器直接压在剧照上，不再增加胶囊底。
-            Row(
-                modifier = Modifier.align(Alignment.BottomEnd).padding(Spacing.lg),
-                horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-            ) {
-                repeat(pages.size) { index ->
-                    val active = index == pager.currentPage
-                    Box(
-                        modifier = Modifier
-                            .height(Spacing.xs)
-                            .width(if (active) Spacing.lg else Spacing.xs)
-                            .clip(AppShape.full)
-                            .background(
-                                if (active) {
-                                    starveilExtraColors.onImage
-                                } else {
-                                    starveilExtraColors.onImage.copy(alpha = DOTS_INACTIVE_ALPHA)
-                                },
-                            ),
-                    )
-                }
-            }
         }
-    }
-}
-
-@Composable
-private fun BannerCard(banner: HomeBanner, onClick: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(starveilExtraColors.surfaceCard)
-            .clickable(onClick = onClick),
-    ) {
-        SubcomposeAsyncImage(
-            model = banner.pic,
-            contentDescription = banner.title,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
-        ) {
-            val imageState by painter.state.collectAsState()
-            if (imageState is AsyncImagePainter.State.Success) {
-                SubcomposeAsyncImageContent()
-            } else {
-                // 图没加载出来只做一层中性占位，**不显示任何文案**：
-                // 卡片本身（标题/副标题/点击）是正常的，"暂无推荐内容"那种
-                // "后台没配"的语气会让人以为整块坏了。
-                BannerImageFallback()
-            }
-        }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.55f to starveilExtraColors.heroScrimStart,
-                        1f to starveilExtraColors.heroScrimEnd,
-                    ),
-                ),
-        )
-        Column(
+        BannerTitles(
+            banner = pages[pager.currentPage.coerceAtMost(pages.lastIndex)],
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(Spacing.lg),
+        )
+        // 指示器直接压在剧照上，不再增加胶囊底。
+        Row(
+            modifier = Modifier.align(Alignment.BottomEnd).padding(Spacing.lg),
+            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
         ) {
-            Text(
-                text = banner.title,
-                style = MaterialTheme.typography.titleLarge,
-                // 压在剧照上：固定白，不能跟主题（浅色下会变深、直接看不见）
-                color = starveilExtraColors.onImage,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (banner.subtitle.isNotBlank()) {
-                Text(
-                    text = banner.subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = starveilExtraColors.onImage.copy(alpha = ON_IMAGE_MUTED),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+            repeat(pages.size) { index ->
+                val active = index == pager.currentPage
+                val dotColor = MaterialTheme.colorScheme.onBackground
+                Box(
+                    modifier = Modifier
+                        .height(Spacing.xs)
+                        .width(if (active) Spacing.lg else Spacing.xs)
+                        .clip(AppShape.full)
+                        .background(
+                            if (active) dotColor else dotColor.copy(alpha = DOTS_INACTIVE_ALPHA),
+                        ),
                 )
             }
         }
     }
 }
 
-/**
- * 轮播图未就绪时的底：一层柔和渐变 + 一颗淡星，没有任何文案。
- *
- * 只在"已经有 banner 数据、但这张图没加载出来"时出现——它不该像空状态那样
- * 解释"去后台配置"，用户此时只想知道图为什么没出来，而卡片是可点击可用的。
- */
-@Composable
-private fun BannerImageFallback() {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    0f to starveilExtraColors.surfaceElevated,
-                    1f to starveilExtraColors.surfaceCard,
-                ),
-            ),
-        contentAlignment = Alignment.Center,
-    ) {
-        Icon(
-            imageVector = PhosphorIcons.Regular.FilmStrip,
-            contentDescription = null,
-            tint = starveilExtraColors.textFaint.copy(alpha = 0.35f),
-            modifier = Modifier.size(IconSize.lg),
-        )
-    }
-}
+
 
 /** 唯一的轮播空态：占位卡与图片加载失败都复用它，避免出现两套文案/排版。 */
 @Composable
@@ -250,7 +178,7 @@ private fun BannerEmptyState() {
 /**
  * 轮播占位卡：后台还没配 banner（或 BANNER 开关开着但接口返回空）时不留黑块。
  *
- * 尺寸与 [BannerCard] 完全一致（同样的 16:9 全宽 + [BANNER_RATIO]）：
+ * 尺寸与 [BannerCard] 完全一致（同样是贴边的 16:9 全宽 + [BANNER_RATIO]）：
  * 底色用 surfaceElevated→surfaceCard 的渐变，比纯色更像"待装修"的占位。
  * [onClick] 为 null 时只是纯占位，不可点击。
  */
@@ -262,9 +190,7 @@ fun BannerPlaceholder(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = Spacing.lg)
             .aspectRatio(BANNER_RATIO)
-            .clip(AppShape.large)
             .background(
                 Brush.verticalGradient(
                     0f to starveilExtraColors.surfaceElevated,
@@ -394,6 +320,53 @@ private const val LINK_SCRIM_END = 1f
 
 /** 轮播卡片与轮播占位共用的比例：16:9 传统横向大图 */
 internal const val BANNER_RATIO = 16f / 9f
+
+
+
+/** 顶部抠洞到哪里为止：只收最上面一小条，再大就把图糊没了。 */
+private const val BANNER_TOP_FADE = 0.12f
+
+/**
+ * 只对顶部做 alpha 抠洞：把图淡进背后的模糊底。
+ *
+ * 底部不抠洞——那里下面就是页面底色，抠出来只会是一块"什么也没有"的白，
+ * 用一层白色渐变盖上去反而干净，代价是标题与圆点要改用深色。
+ */
+private fun Modifier.bannerTopMask(mask: Color): Modifier = drawWithContent {
+    drawContent()
+    drawRect(
+        brush = Brush.verticalGradient(
+            0f to Color.Transparent,
+            BANNER_TOP_FADE to mask,
+            1f to mask,
+        ),
+        blendMode = BlendMode.DstIn,
+    )
+}
+
+
+/** 轮播标题：固定在卡片左下角，跟着当前页换。 */
+@Composable
+private fun BannerTitles(banner: HomeBanner, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            text = banner.title,
+            style = MaterialTheme.typography.titleLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        if (banner.subtitle.isNotBlank()) {
+            Text(
+                text = banner.subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
 
 /** 自动轮播间隔：比常见的 3s 慢一点，阅读标题不被打断。 */
 private const val BANNER_AUTO_MS = 4_500L

@@ -15,6 +15,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import coil3.compose.AsyncImage
@@ -31,24 +32,37 @@ import com.starveil.core.model.HomeBanner
  */
 internal val LocalHomeBannerPager = compositionLocalOf<PagerState?> { null }
 
-/** 底色铺到屏幕高度的这个比例：覆盖状态栏与轮播卡片，再往下就不该有颜色了。 */
-private const val BACKDROP_HEIGHT_FRACTION = 0.42f
+/**
+ * 底色铺到屏幕高度的这个比例：覆盖状态栏与轮播卡片，再往下就不该有颜色了。
+ *
+ * 这个值必须让底色**在轮播卡底边之前**就结束。之前是 0.42（1008px），卡底边在 982px，
+ * 多出来的 26px 露出模糊图的暗部——深色下和 #252525 差不多看不出来，浅色下就是一道暗缝。
+ */
+private const val BACKDROP_HEIGHT_FRACTION = 0.40f
 
-/** 顶部压暗的下限位置：保证浅色主题下状态栏那排白图标仍然读得出来。 */
-private const val BACKDROP_SHADE_STOP = 0.1f
+/** 往下到这里开始收回页面底色，保证任何设备上都不会在卡底边之外露出模糊图。 */
+private const val BACKDROP_TAIL_START = 0.86f
 
-/** 从这里开始完全透明，交给页面底色收尾。 */
-private const val BACKDROP_CLEAR_STOP = 0.34f
+/** 顶部压暗：深色要压得住状态栏白图标。 */
+private const val BACKDROP_TOP_ALPHA = 0.72f
+
+/** 浅色压得浅一档：压深了整块顶部发灰，压浅了白字读不出来。 */
+private const val BACKDROP_TOP_ALPHA_LIGHT = 0.45f
+
+/** 背景亮度低于它就算深色。 */
+private const val DARK_LUMINANCE = 0.5f
+
 
 /**
  * 首页顶部轮播的同图底色。
  *
- * 取当前页那一张图，走 [blurredImageRequest] 拿小尺寸模糊图铺满顶部，
- * 上面再压一层竖直渐变：顶部够暗（状态栏图标恒白也能读），中段透出图片颜色，
- * 底部回到页面底色，和下面正文自然接上。
+ * 取当前页那一张图，走 [blurredImageRequest] 拿小尺寸模糊图铺满顶部，切页淡入，
+ * 顶部的颜色于是跟着轮播走。明暗两种模式的差别只在"压暗还是压白"：
+ * - 深色：压一层黑，状态栏白图标读得出来，往下收到透明；
+ * - 浅色：压一层页面底色，把剧照调成淡彩，深色文字读得出来。
  *
- * 切页只做淡入（[Crossfade]），不跟手位移：跟手要么再复制一个 pager 的位移计算，
- * 要么每帧重算模糊，两个都不划算。
+ * 收尾一律收到**透明**而不是纯色：轮播卡顶部用同一个 alpha 接上，接缝两侧亮度一致，
+ * 才不会在卡顶边说出现一条线。
  */
 @Composable
 internal fun HomeBannerBackdrop(
@@ -61,17 +75,24 @@ internal fun HomeBannerBackdrop(
     val request = remember(context, pic) {
         pic.takeIf(String::isNotBlank)?.let { blurredImageRequest(context, it) }
     }
+    // 模糊两种模式都铺：这是首页的主角，切轮播顶部要跟着换色。
+    // 明暗用背景色亮度判断，和下面 Card 的口径一致——读 LocalIsDarkTheme 曾拿到过旧值，
+    // 结果背景是深色、分支却走浅色，压暗整层失效。
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .fillMaxHeight(BACKDROP_HEIGHT_FRACTION),
+            .fillMaxHeight(BACKDROP_HEIGHT_FRACTION)
+            .background(MaterialTheme.colorScheme.background),
     ) {
         Crossfade(
             targetState = request,
             animationSpec = tween(durationMillis = Motion.MediumMs),
             label = "home-backdrop",
         ) { target ->
-            Box(Modifier.fillMaxSize().background(starveilExtraColors.scrimStrong)) {
+            // 垫底必须用页面底色，不能用 scrimStrong：
+            // 模糊图往下淡到透明后，露出的就是这层。深色下 #070809 和页面 #252525
+            // 差得不多看不出来，浅色下它就是一条纯黑的横带——底部那条"缝"就是它。
+            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                 if (target != null) {
                     AsyncImage(
                         model = target,
@@ -86,10 +107,19 @@ internal fun HomeBannerBackdrop(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
+                    // 顶部压暗到底、过渡全部交给图片自己的 alpha（卡片顶部有抠洞）。
+                    // 压多深只跟明暗有关：深色底要压得住状态栏白图标，浅色底压太深就灰了。
                     Brush.verticalGradient(
-                        0f to starveilExtraColors.heroScrimEnd,
-                        BACKDROP_SHADE_STOP to starveilExtraColors.playerControlBackground,
-                        BACKDROP_CLEAR_STOP to Color.Transparent,
+                        0f to starveilExtraColors.scrimStrong.copy(
+                            alpha = if (MaterialTheme.colorScheme.background.luminance() < DARK_LUMINANCE) {
+                                BACKDROP_TOP_ALPHA
+                            } else {
+                                BACKDROP_TOP_ALPHA_LIGHT
+                            },
+                        ),
+                        // 中段完全交给模糊图，末段收回页面底色：
+                        // 底色一定在卡底边之前盖住，任何屏高上都不会露出模糊图的暗部。
+                        BACKDROP_TAIL_START to Color.Transparent,
                         1f to MaterialTheme.colorScheme.background,
                     ),
                 ),

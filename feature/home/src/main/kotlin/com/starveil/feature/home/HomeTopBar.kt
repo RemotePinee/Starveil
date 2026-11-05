@@ -128,7 +128,10 @@ private fun SearchPill(
                 .height(SearchPillHeight)
                 .clickable(onClick = onSearch),
             shape = AppShape.full,
-            color = starveilExtraColors.imageGlass,
+            // 压在剧照上：深色用玻璃（半透明白 + 白字），浅色顶上是淡彩，玻璃会糊，
+            // 换成不透明的容器色 + 深色文字。
+            color = pillBackground(),
+            contentColor = pillContent(),
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = Spacing.md),
@@ -137,7 +140,7 @@ private fun SearchPill(
                 Text(
                     text = hotWord.ifBlank { "搜索影片、演员" },
                     style = MaterialTheme.typography.bodyMedium,
-                    color = starveilExtraColors.onImage,
+                    color = pillContent(),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f),
@@ -146,7 +149,7 @@ private fun SearchPill(
                 Icon(
                     imageVector = PhosphorIcons.Regular.MagnifyingGlass,
                     contentDescription = "搜索",
-                    tint = starveilExtraColors.onImage,
+                    tint = pillContent(),
                     modifier = Modifier.size(IconSize.sm),
                 )
             }
@@ -168,7 +171,8 @@ private fun FilterButton(onClick: () -> Unit) {
             .clip(AppShape.full)
             .clickable(onClick = onClick),
         shape = AppShape.full,
-        color = starveilExtraColors.imageGlass,
+        color = pillBackground(),
+        contentColor = pillContent(),
     ) {
         Box(
             modifier = Modifier.padding(horizontal = Spacing.md),
@@ -177,7 +181,7 @@ private fun FilterButton(onClick: () -> Unit) {
             Text(
                 text = "筛选",
                 style = MaterialTheme.typography.bodyMedium,
-                color = starveilExtraColors.onImage,
+                color = pillContent(),
                 maxLines = 1,
             )
         }
@@ -195,6 +199,14 @@ private fun UnreadDot(modifier: Modifier = Modifier) {
             .background(MaterialTheme.colorScheme.error),
     )
 }
+
+/** 胶囊底：压在剧照上统一用玻璃（半透明白），深浅两套一样。 */
+@Composable
+private fun pillBackground() = starveilExtraColors.imageGlass
+
+/** 胶囊内容：压在剧照上统一白字。 */
+@Composable
+private fun pillContent() = starveilExtraColors.onImage
 
 /** 搜索胶囊与筛选按钮共用行高：操作区三个元素对齐到同一条基线。 */
 internal val SearchPillHeight = Spacing.xxl + Spacing.xs

@@ -172,16 +172,14 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
         ),
         label = "category-chip-scale",
     )
+    // 顶部压着剧照模糊（两套一样），文字统一用白系。
     val textColor by animateColorAsState(
         targetValue = if (selected) {
-            // 选中：画面级纯白。分类行压在首页顶部的模糊底色上，
-            // 用 onSurface 在浅色主题下是深色字，会直接糊进底部颜色里。
             starveilExtraColors.onImage
         } else {
-            // 未选中：浅灰（90% 阶梯灰，实色不透明），与选中的纯白拉开一档。
-            starveilExtraColors.onImageSubtle
+            starveilExtraColors.onImageFaint
         },
-        animationSpec = tween(Motion.MediumMs, easing = Motion.standard),
+        animationSpec = tween(Motion.MediumMs),
         label = "category-chip-text",
     )
     val interaction = remember { MutableInteractionSource() }
@@ -208,6 +206,7 @@ private val CHIP_HEIGHT = Spacing.xxl + Spacing.lg
 
 /** 选中放大倍数：优酷的量级，再大就挤到相邻项。 */
 private const val SELECTED_SCALE = 1.16f
+
 
 /** 渐隐宽度：约一个胶囊的高，够提示又不遮文字。 */
 private val FADE_WIDTH = Spacing.xxl

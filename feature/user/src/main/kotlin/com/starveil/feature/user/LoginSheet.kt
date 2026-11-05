@@ -39,7 +39,7 @@ fun LoginSheet(
     ModalBottomSheet(
         onDismissRequest = { actions.onDismiss?.invoke() },
         sheetState = sheetState,
-        // 扁平化：弹层底取 surfaceContainerHigh（`#26272F`），比页面底（`#0B0C0F`）亮 10 个色阶
+        // 扁平化：弹层底取 surfaceContainerHigh（`#404040`），比页面底（`#252525`）亮 10 个色阶
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = AppShape.sheetTopLarge,
         modifier = modifier,

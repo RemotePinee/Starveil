@@ -13,30 +13,40 @@ internal object Palette {
 
     /*
      * 页面底 Ink950 → 卡片 Ink800 → 浮层（Sheet / Dialog）Ink700 → 菜单 / 胶囊 / 选中 InkMenu。
-     * R 通道 11 → 28（+17，卡片和页面底融色的修复点）→ 38（+10）→ 47（+9），与 Material 3
-     * 官方深色 ramp 同构；"越往上越亮、相邻至少差 8 个色阶"由 SkinPalettesTest 断言。
+     * R 通道 37 → 44（+7）→ 46（+2）→ 54（+8），与 Material 3 官方深色 ramp 同构。
+     * 页面底是 `#252525` 而不是纯黑：纯黑下海报边缘与背景没有界线，卡片再亮一档就成了"贴纸"；
+     * 抬到 37 之后四层高度都落在同一段中性灰里。这一版把整条阶梯压得很紧——
+     * "我的"页那种整块大卡片，差值一旦到 27 个色阶就成了压不住的大色块，和页面底抢视线。
      */
-
     // 中性（暗色阶梯）
     val Void = Color(0xFF070809)
-    val Ink950 = Color(0xFF0B0C0F)
-    val Ink900 = Color(0xFF111216)
-    val Ink850 = Color(0xFF16171C)
-    val Ink800 = Color(0xFF1C1D23)
-    val Ink700 = Color(0xFF26272F)
+    val Ink950 = Color(0xFF252525)
+    val Ink900 = Color(0xFF292929)
+    val Ink850 = Color(0xFF2A2A2A)
+    val Ink800 = Color(0xFF2C2C2C)
+    val Ink700 = Color(0xFF2E2E2E)
     /** 深色阶梯最亮的一档：菜单、胶囊、选中态、分隔线共用，压在浮层上仍能分辨。 */
-    val InkMenu = Color(0xFF2F3038)
-    val Ink600 = Color(0xFF34353E)
-    val Ink500 = Color(0xFF5A5C66)
-    val Ink300 = Color(0xFF9A9CA6)
-    val Ink100 = Color(0xFFE3E8EF)
-    val Ink50 = Color(0xFFF5F7FA)
+    val InkMenu = Color(0xFF363636)
+    val Ink600 = Color(0xFF3E3E3E)
+    val Ink500 = Color(0xFF7A7A7A)
+    val Ink300 = Color(0xFFB4B4B4)
+    val Ink100 = Color(0xFFE6E6E6)
+    val Ink50 = Color(0xFFF5F5F5)
     val White = Color(0xFFFFFFFF)
     /** 24% 白：压在图片 / 视频上的玻璃底，透出下面的底色而不是盖住它。 */
     val White24 = Color(0x3DFFFFFF)
 
+    /*
+     * 亮底上的深字：浅色主题的正文、反色面上的文字。
+     * 刻意与上面的深色阶梯分开——深色阶梯整体抬亮时（页面底从纯黑到 `#252525`），
+     * 这组必须停在原地，否则浅色主题的正文会跟着一起变浅。
+     */
+    val TextOnLight = Color(0xFF111216)
+    val MutedOnLight = Color(0xFF5A5C66)
+    val FaintOnLight = Color(0xFF9A9CA6)
+
     // 浅色阶梯：浅色主题的中性色，与上面的 Ink 阶梯对称（越往下越深）。
-    // 浅色下的"层次"靠 Paper 由浅到深，正文文字直接用 Ink900 / Ink500 / Ink300。
+    // 浅色下的"层次"靠 Paper 由浅到深，正文文字直接用 TextOnLight / MutedOnLight / FaintOnLight。
     val Paper50 = Color(0xFFFFFFFF)
     val Paper100 = Color(0xFFF7F8FA)
     val Paper200 = Color(0xFFEFF1F5)
@@ -45,7 +55,8 @@ internal object Palette {
     // 文字档位
     val White90 = Color(0xFFE9E9EE)
     val White70 = Color(0xFFB9BAC2)
-    val White50 = Color(0xFF8B8C95)
+    /** 三级文字：背景抬到 `#252525` 后要跟着提亮，否则压不住 4.5:1。 */
+    val White50 = Color(0xFF9A9BA4)
 
     // 品牌主色（青，延续旧品牌）
     val Aqua500 = Color(0xFF25CEE8)

@@ -87,8 +87,8 @@ fun SkinPickerSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismiss,
-        // 扁平化：弹层统一走 surfaceContainerHigh（`#26272F`）。M3 默认的
-        // surfaceContainerLow（`#16171C`）压在页面底（`#0B0C0F`）上只差 6 个色阶，
+        // 扁平化：弹层统一走 surfaceContainerHigh（`#404040`）。M3 默认的
+        // surfaceContainerLow（`#303030`）压在页面底（`#252525`）上只差 11 个色阶，
         // 去掉阴影后看不出这是浮层
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
