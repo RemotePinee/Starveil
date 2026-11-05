@@ -251,10 +251,18 @@ class Media3Player(
         return if (hasReferer && !hasUserAgent) DESKTOP_BROWSER_UA else null
     }
 
-    /** 按地址后缀选 source：HLS 走 [HlsMediaSource]，其余按 progressive 处理。 */
+    /**
+     * 按地址后缀选 source：HLS 走 [HlsMediaSource]，其余按 progressive 处理。
+     *
+     * 进播放器前统一把 http 升到 https：芒果等 CDN 会下发明文地址，而 App 的网络安全策略
+     * 禁止明文（AGENTS.md 安全基线，不允许 usesCleartextTraffic），播放器直接抛
+     * `CLEARTEXT communication not permitted`，UI 上表现成「线路连不上」，用户无从判断。
+     * 同一台 CDN 的 TLS 实测可用，升级后大多数能正常播。
+     */
     private fun buildSource(url: String, dataSource: DataSource.Factory): MediaSource {
-        val item = MediaItem.Builder().setUri(Uri.parse(url)).setMediaId(frames.mediaId).build()
-        return if (isHls(url)) {
+        val secureUrl = url.toSecureScheme()
+        val item = MediaItem.Builder().setUri(Uri.parse(secureUrl)).setMediaId(frames.mediaId).build()
+        return if (isHls(secureUrl)) {
             HlsMediaSource.Factory(dataSource)
                 // 资源站的 m3u8 大多没有独立 init segment：允许 chunkless 准备，少一次请求
                 .setAllowChunklessPreparation(true)
@@ -335,6 +343,18 @@ class Media3Player(
         url.substringBefore('?').endsWith(HLS_SUFFIX, ignoreCase = true)
 
     /**
+     * http → https；https、file、asset 等其它协议原样返回。
+     *
+     * 只换协议头，不动路径与查询串：CDN 的签名都算在 query 里，改其它部分会让签名失效。
+     */
+    private fun String.toSecureScheme(): String =
+        if (startsWith(HTTP_PREFIX, ignoreCase = true)) {
+            HTTPS_PREFIX + substring(HTTP_PREFIX.length)
+        } else {
+            this
+        }
+
+    /**
      * 沿异常链找 CDN 的 403。
      *
      * 状态码只有 [HttpDataSource.InvalidResponseCodeException] 这一层带着，而 Media3 会把上游
@@ -366,6 +386,9 @@ class Media3Player(
 
     private companion object {
         const val HLS_SUFFIX = ".m3u8"
+        /** 明文协议头：换成 https 时只替换这一段，路径与 query 里的签名原样保留。 */
+        const val HTTP_PREFIX = "http://"
+        const val HTTPS_PREFIX = "https://"
 
         /** CDN 拒绝访问。签名地址过了 `t` 的 6 小时 TTL 就是这个状态码。 */
         const val HTTP_FORBIDDEN = 403
