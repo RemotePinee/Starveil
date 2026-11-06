@@ -155,7 +155,17 @@ class PlayerViewModel(
         lastSavedSec = 0
         urlRefreshAttempts = 0
         currentPositionMs = 0L
-        edit { it.copy(durationMs = 0L, isPlaying = false) }
+        // 重来一轮时把 UI 侧的临时态一起清掉：`isBuffering` 不清，`rememberStalled`
+        // 会立刻重新判定「线路没有响应」——用户点完重试，那块提示过一会儿又原地冒出来，
+        // 看起来就是"点了没反应"。`errorMessage` 同理，旧错误的文案不该带进新一轮。
+        edit {
+            it.copy(
+                durationMs = 0L,
+                isPlaying = false,
+                isBuffering = false,
+                errorMessage = null,
+            )
+        }
         // 红果解密开关随片源下发，默认关；写进运行时供 DataSource 层读取
         val pi = session.playerInfo
         PlayerLog.warn { PlayerLog.describePlayerInfo("viewModel", pi) }
