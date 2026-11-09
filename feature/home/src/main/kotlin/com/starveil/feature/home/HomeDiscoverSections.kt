@@ -19,8 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
-import coil3.compose.AsyncImage
-import com.starveil.core.designsystem.starveilExtraColors
+import com.starveil.core.designsystem.component.PosterImage
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.LiveChannel
@@ -78,15 +77,13 @@ private fun DiscoverCard(
             .width(DISCOVER_CARD_WIDTH)
             .clickable(onClick = onClick),
     ) {
-        AsyncImage(
-            model = cover,
+        PosterImage(
+            url = cover,
             contentDescription = name,
-            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(DISCOVER_CARD_RATIO)
-                .clip(AppShape.medium)
-                .background(starveilExtraColors.surfaceCard),
+                .aspectRatio(DISCOVER_CARD_RATIO),
+            shape = AppShape.medium,
         )
         Spacer(Modifier.height(Spacing.xs))
         Text(

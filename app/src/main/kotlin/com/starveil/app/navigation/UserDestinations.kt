@@ -1,8 +1,11 @@
 package com.starveil.app.navigation
 
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.compose.composable
 import com.starveil.app.AppContainer
 import com.starveil.feature.detail.detailRoute
@@ -10,6 +13,8 @@ import com.starveil.feature.user.FavoriteScreen
 import com.starveil.feature.user.FavoriteViewModel
 import com.starveil.feature.user.FeedbackScreen
 import com.starveil.feature.user.FeedbackViewModel
+import com.starveil.feature.user.MessageListScreen
+import com.starveil.feature.user.MessageListViewModel
 import com.starveil.feature.user.LoginScreen
 import com.starveil.feature.user.LoginViewModel
 import com.starveil.feature.user.PointsScreen
@@ -98,22 +103,50 @@ private fun NavGraphBuilder.collectionDestinations(nav: NavHostController, conta
 
 private fun NavGraphBuilder.withDestinations(nav: NavHostController, container: AppContainer) {
     historyDestination(nav, container)
+    // 消息中心：入口是「我的」顶栏铃铛。注册在这里而不是独立文件，
+    // 因为它和收藏/反馈/积分一样是用户中心的二级页。
+    composable(UserNavigation.MESSAGES_ROUTE) {
+        val messageViewModel: MessageListViewModel = viewModel(
+            factory = MessageListViewModel.factory(container.messageRepository),
+        )
+        val messageState by messageViewModel.state.collectAsStateWithLifecycle()
+        val context = LocalContext.current
+        MessageListScreen(
+            state = messageState,
+            onBack = { nav.popBackStack() },
+            onOpen = { message ->
+                messageViewModel.markRead(message)
+                nav.openMessageAction(context, message)
+            },
+            onRetry = messageViewModel::load,
+        )
+    }
     composable(UserNavigation.FEEDBACK_ROUTE) {
         FeedbackScreen(
             viewModel = viewModel(factory = FeedbackViewModel.factory(container.feedbackRepository)),
             onBack = { nav.popBackStack() },
         )
     }
+    memberOnlyDestinations(nav, container)
+}
+
+/** 只有登录后才有意义的二级页：积分中心与提现。 */
+private fun NavGraphBuilder.memberOnlyDestinations(nav: NavHostController, container: AppContainer) {
     composable(UserNavigation.POINTS_ROUTE) {
-        PointsScreen(
-            viewModel = viewModel(factory = PointsViewModel.factory(container.pointsRepository)),
-            onBack = { nav.popBackStack() },
-        )
+        RequireLogin(nav, container) {
+            PointsScreen(
+                viewModel = viewModel(factory = PointsViewModel.factory(container.pointsRepository)),
+                onBack = { nav.popBackStack() },
+            )
+        }
     }
     composable(UserNavigation.WITHDRAW_ROUTE) {
-        WithdrawScreen(
-            viewModel = viewModel(factory = WithdrawViewModel.factory(container.withdrawRepository)),
-            onBack = { nav.popBackStack() },
-        )
+        RequireLogin(nav, container) {
+            WithdrawScreen(
+                viewModel = viewModel(factory = WithdrawViewModel.factory(container.withdrawRepository)),
+                onBack = { nav.popBackStack() },
+            )
+        }
     }
+
 }

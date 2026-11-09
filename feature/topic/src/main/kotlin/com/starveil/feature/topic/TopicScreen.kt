@@ -35,7 +35,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
+import com.starveil.core.designsystem.component.PosterImage
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.MagnifyingGlass
@@ -86,8 +86,8 @@ fun TopicScreen(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+    Box(modifier = modifier.fillMaxSize().statusBarsPadding()) {
+        Box(modifier = Modifier.fillMaxSize()) {
             TopicState(state = state, onTopicClick = onTopicClick, onRetry = onRetry)
             RefreshBar(
                 refreshing = state is TopicListUiState.Content && state.isRefreshing,
@@ -157,14 +157,13 @@ private fun TopicCard(topic: Topic, onClick: () -> Unit) {
 
 @Composable
 private fun TopicCardContent(topic: Topic) {
-    AsyncImage(
-        model = topic.poster,
+    PosterImage(
+        url = topic.poster,
         contentDescription = topic.name,
-        contentScale = ContentScale.Crop,
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(TOPIC_COVER_ASPECT)
-            .clip(AppShape.medium),
+            .aspectRatio(TOPIC_COVER_ASPECT),
+        shape = AppShape.medium,
     )
     Text(
         text = topic.name,

@@ -3,6 +3,9 @@ package com.starveil.app.navigation
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import coil3.SingletonImageLoader
+import coil3.request.ImageRequest
+import coil3.size.Size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.DisposableEffect
@@ -34,6 +37,7 @@ import com.starveil.feature.home.HomeRoute
 import com.starveil.feature.home.SearchRoute
 import com.starveil.feature.home.SearchViewModel
 import com.starveil.feature.home.HomeViewModel
+import com.starveil.feature.home.homeViewModelFactory
 import com.starveil.feature.home.FILTER_ROUTE
 import com.starveil.feature.home.FilterRoute
 import com.starveil.feature.home.FilterViewModel
@@ -157,17 +161,35 @@ private fun NavGraphBuilder.filterEntry(nav: NavHostController, container: AppCo
 
 /** 首页 ViewModel 的装配点：六个仓库的注入放这里取，`homeDestination` 才不至于超长。 */
 @Composable
-private fun homeViewModel(container: AppContainer): HomeViewModel = viewModel(
-    factory = HomeViewModel.factory(
-        repository = container.vodRepository,
-        startupRepository = container.startupRepository,
-        continueWatchingRepository = container.continueWatchingRepository,
-        // 首页的专题/直播区块；不给就退回空实现，这两块整片不渲染
-        topicRepository = container.topicRepository,
-        liveRepository = container.liveRepository,
-        onReady = AdSplashGate::markHomeReady,
-    ),
-)
+private fun homeViewModel(container: AppContainer): HomeViewModel {
+    val imageContext = LocalContext.current.applicationContext
+    return viewModel(
+        factory = homeViewModelFactory(
+            repository = container.vodRepository,
+            startupRepository = container.startupRepository,
+            continueWatchingRepository = container.continueWatchingRepository,
+            // 首页的专题/直播区块；不给就退回空实现，这两块整片不渲染
+            topicRepository = container.topicRepository,
+            liveRepository = container.liveRepository,
+            onReady = AdSplashGate::markHomeReady,
+            // 首屏封面先解好再放行启动屏：进去就是满图，不是一排等着图的卡片
+            warmFirstPage = { urls ->
+                val loader = SingletonImageLoader.get(imageContext)
+                for (url in urls) {
+                    loader.execute(
+                        ImageRequest.Builder(imageContext)
+                            .data(url)
+                            .size(FIRST_PAGE_COVER_SIZE)
+                            .build(),
+                    )
+                }
+            },
+        ),
+    )
+}
+
+/** 首屏预热的解码尺寸：比三列格子大、比整屏小，命中内存缓存即可。 */
+private val FIRST_PAGE_COVER_SIZE = Size(480, 720)
 
 /** 首页对外动作的装配点：页面只上报点击，跳哪一页在这里定。 */
 private fun homeActions(
@@ -281,6 +303,9 @@ private fun NavGraphBuilder.payDestination(
             LaunchedEffect(Unit) { nav.popBackStack() }
             return@composable
         }
+        // 会员购买要账号（历史会员的观看权限不在这里判）：未登录弹登录层并退回
+        val guestAllowed = args?.getString(PAY_ARG_MODE) == PAY_MODE_EPISODE
+        if (!payLoginAllowed(nav, container, guestAllowed)) return@composable
         val payViewModel: PayViewModel = rememberPayViewModel(nav, container, args)
         // 从浏览器回跳时页面不会重建，靠 ON_RESUME 触发一次订单状态查询；
         // 页面常驻，顺带同步一次登录态，退出登录后 Hero 不会挂在旧账号上
@@ -360,4 +385,25 @@ private fun NavGraphBuilder.rankDestination(nav: NavHostController, container: A
     }
 }
 
+
+/**
+ * 会员购买要账号：未登录弹登录层并退回上一格，返回 false 表示这次不渲染页面。
+ *
+ * 抽成函数让 payDestination 留在 detekt 的 40 行阈值内，顺便把"什么算访客"收在一处。
+ */
+@Composable
+private fun payLoginAllowed(
+    nav: NavHostController,
+    container: AppContainer,
+    guestAllowed: Boolean,
+): Boolean {
+    val session by container.session.collectAsStateWithLifecycle()
+    if (guestAllowed || session?.isLoggedIn == true) return true
+    val prompt = LocalLoginPrompt.current
+    LaunchedEffect(Unit) {
+        prompt.show(LoginReason.GENERAL)
+        nav.popBackStack()
+    }
+    return false
+}
 

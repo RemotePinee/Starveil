@@ -12,6 +12,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import com.starveil.core.designsystem.mirrorIconInRtl
 import com.starveil.core.designsystem.token.AppShape
@@ -20,6 +22,21 @@ import com.starveil.core.designsystem.token.Spacing
 
 /** 控制层按钮直径：36dp，比底部安全区小一档，不跟画面抢注意力。 */
 internal val ChromeButtonSize: Dp = Spacing.xxl + Spacing.xs
+
+/**
+ * 控制层文字统一档位：时间 / 倍速 / 弹幕开关都走它。
+ *
+ * 比原来的 labelMedium 大一档、粗一档，和加粗后的图标同一视觉重量；
+ * 时间槽宽也用它来量（见 PlayerControls 的 rememberTimeSlotWidth），
+ * 两处必须是同一个 style，否则量出来的槽和画出来的字对不上。
+ */
+@Composable
+internal fun playerChromeLabelStyle(): TextStyle =
+    MaterialTheme.typography.labelLarge.copy(
+        fontWeight = FontWeight.Bold,
+        // 等宽数字：时间每秒刷新时 0 和 1 宽度一致，进度条和圆点不会跟着抖
+        fontFeatureSettings = "tnum",
+    )
 
 /** 半透明底：「压暗画面但不遮画面」的统一口径，顶栏与底栏共用。 */
 internal const val CHROME_GLASS_ALPHA = 0.32f
@@ -62,7 +79,8 @@ internal fun ChromeIconButton(
             imageVector = icon,
             contentDescription = description,
             tint = tint,
-            modifier = Modifier.size(IconSize.item).then(iconMirror),
+            // 24dp：20dp 放在压暗的视频画面上偏小，加粗后要同步放大才立得住
+            modifier = Modifier.size(IconSize.md).then(iconMirror),
         )
     }
 }

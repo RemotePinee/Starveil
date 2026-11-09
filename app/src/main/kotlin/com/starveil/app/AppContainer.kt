@@ -3,6 +3,8 @@ package com.starveil.app
 import android.app.Activity
 import android.content.Context
 import androidx.datastore.preferences.preferencesDataStore
+import com.starveil.app.dialog.DialogHistoryStore
+import com.starveil.app.dialog.DialogScheduler
 import com.starveil.app.ads.LocalAdGateway
 import com.starveil.app.ads.AdProviders
 import com.starveil.app.ads.RewardRequestContext
@@ -27,11 +29,15 @@ import com.starveil.core.data.DefaultDanmuRepository
 import com.starveil.core.data.DefaultFavoriteRepository
 import com.starveil.core.data.DefaultLiveRepository
 import com.starveil.core.data.DefaultPayRepository
+import com.starveil.core.data.DefaultMessageRepository
+import com.starveil.core.data.DefaultUpdateRepository
 import com.starveil.core.data.DefaultPlaybackRepository
 import com.starveil.core.data.DefaultRankRepository
 import com.starveil.core.data.DefaultShortPlayRepository
 import com.starveil.core.data.DefaultStartupRepository
 import com.starveil.core.data.DefaultTopicRepository
+import com.starveil.core.data.MessageRepository
+import com.starveil.core.data.UpdateRepository
 import com.starveil.core.data.DefaultUserRepository
 import com.starveil.core.data.DefaultVodRepository
 import com.starveil.core.data.DefaultWithdrawRepository
@@ -305,6 +311,22 @@ class AppContainer(
     val pointsRepository: PointsRepository = DefaultPointsRepository(
         api = apiClient.pointsApi,
         snapshot = pageSnapshot,
+    )
+
+    /** 消息中心：公告与推送共用一张表，列表与未读数走同一个接口。 */
+    val messageRepository: MessageRepository = DefaultMessageRepository(api = apiClient.messageApi)
+
+    /** 在线更新：只负责拿后端说的最新版本，下载与安装要 Context，放在 :app 侧。 */
+    val updateRepository: UpdateRepository = DefaultUpdateRepository(api = apiClient.messageApi)
+
+    /**
+     * 弹窗调度：隐私同意 / 版本更新 / 运营公告共用一个队。
+     *
+     * 放在容器里而不是各宿主自己记状态——三个弹窗的条件是同时满足的，
+     * 各自持有布尔值就会同时为 true，屏幕上一叠三层。
+     */
+    internal val dialogScheduler: DialogScheduler = DialogScheduler(
+        history = DialogHistoryStore(context.applicationContext),
     )
 
     /** 反馈（留言板 v1.gbook）。 */

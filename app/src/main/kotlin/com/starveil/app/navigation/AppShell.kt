@@ -48,6 +48,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.core.view.WindowCompat
 import androidx.navigation.NavHostController
@@ -59,11 +60,17 @@ import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Motion
 import com.starveil.core.designsystem.token.Spacing
+import com.starveil.core.designsystem.LocalLoginPrompt
+import com.starveil.core.designsystem.LoginReason
 import com.starveil.feature.player.VERTICAL_PLAY_ROUTE
 import com.starveil.feature.shortplay.SHORT_PLAY_ROUTE
+import com.starveil.feature.user.UserNavigation
 
 /** 短剧前景在完整 viewport 中避让的实测占位；其它页面已在宿主扣除，不再重复传递。 */
 internal val LocalAppContentPadding = compositionLocalOf<PaddingValues> { PaddingValues() }
+
+/** 当前有没有登录会话。底栏的会员 tab 要在导航前就问一句，不再靠页面自己拦。 */
+internal val LocalLoggedIn = compositionLocalOf { false }
 
 /**
  * 宿主已经从 NavHost 底边扣掉的 dock 占位。
@@ -155,7 +162,7 @@ private fun rememberStableForegroundPadding(
     return retained.value
 }
 
-/** 视频背景固定使用浅色状态栏图标；底栏仍跟随当前应用主题。 */
+/** 视频背景固定使用浅色状态栏图标；首页自己按顶栏进度切（见 `HomeTopBar.SyncStatusBarIcons`）。 */
 @Composable
 private fun AppSystemBars(state: AppShellState) {
     val window = LocalActivity.current?.window ?: return
@@ -163,8 +170,10 @@ private fun AppSystemBars(state: AppShellState) {
     val videoBackdrop = !state.locked && state.isVideoPage()
     SideEffect {
         val controller = WindowCompat.getInsetsController(window, window.decorView)
-        controller.isAppearanceLightStatusBars =
-            !darkTheme && !videoBackdrop && !state.isHomePage()
+        // 首页顶部是剧照、往下滚又是页面底色，两种底色两种图标色，交给首页按进度自己切
+        if (!state.isHomePage()) {
+            controller.isAppearanceLightStatusBars = !darkTheme && !videoBackdrop
+        }
         controller.isAppearanceLightNavigationBars = !darkTheme && !state.isVerticalPlayer() && !state.fullscreen
     }
 }
@@ -253,6 +262,7 @@ internal class AppShellState(
     /** 首页：顶部铺着轮播的同图底色，状态栏图标固定白，避免压在浅色图上读不出来。 */
     fun isHomePage(): Boolean = currentRoute == HOME_ROUTE
 
+
     /**
      * 当前页有没有 dock 浮在上面。
      *
@@ -263,19 +273,35 @@ internal class AppShellState(
     // 拿它判断会让 dock 立刻消失、内容区高度跟着变，旧页面被顶上移、底部露黑。
     fun hasDock(): Boolean = isTabPage() && tabs.any { it.selectedRoute == settledRoute }
 
+    /**
+     * NavHost 要扣掉的安全区。
+     *
+     * @param systemBottom 系统导航栏那一条（由调用方从 WindowInsets 取）
+     *
+     * 二级页以前直接拿 Scaffold 的 bottom padding，而那个值跟着 dock 的进出动画在变：
+     * 从「我的」点进收藏/设置的那一刻，dock 正在收起，页面可用高度一路缩，
+     * 居中的占位就"先偏下、再跳回中间"。这里改成只吃系统导航栏——跟 dock 动画无关。
+     */
     fun contentPadding(
         padding: PaddingValues,
         direction: LayoutDirection,
+        systemBottom: Dp,
     ): PaddingValues = PaddingValues(
         start = padding.calculateStartPadding(direction),
         end = padding.calculateEndPadding(direction),
+        // 顶部一律不在这里裁：NavHost 一旦被 top padding 裁切，页面根就缩到状态栏
+        // 下沿，转场时源页往左滑走、状态栏那条没有任何页面在画它，露出 Scaffold 底色
+        // ——就是"切换页面时顶部先闪一条黑条"。
+        // 所以页面根永远铺满，避让交给各页面的**内容层**（首页/我的本来就这么做，
+        // 其余页面用 `statusBarsPadding()`），这样背景跟着整页一起滑，不会断层。
+        top = Spacing.none,
         // dock 浮在内容之上：有它的页面底边一律不扣，页面铺到屏幕底，
         // dock 的模糊底才录得到下面的内容；要留白的地方自己加 LocalDockInset。
         bottom = if (hasDock() || isVerticalPlayer()) {
             Spacing.none
         } else {
-            // 二级页没有 dock，仍要吃掉系统导航栏那一条，否则最后一行贴着导航栏。
-            padding.calculateBottomPadding()
+            // 二级页没有 dock，只吃掉系统导航栏那一条
+            systemBottom
         },
     )
 
@@ -314,11 +340,20 @@ private fun BottomBar(
                 icon = if (showIcons) bottomTabIcon(tab.icon) else null,
                 style = labelStyle,
             )
+            // CompositionLocal 只能在组合里读：先取出来，点击回调里再用
+            val loggedIn = LocalLoggedIn.current
+            val prompt = LocalLoginPrompt.current
             val onClick: () -> Unit = {
                 // 已经在当前页：不导航、不震动、不出涟漪，点了等于没点
                 if (!selected) {
-                    haptics(HapticKind.Tick)
-                    navController.navigateSingleTop(tab.route)
+                    // 会员页要先有账号：没登录直接弹登录层，不导航——
+                    // 靠页面自己拦会先滑进一个空页再弹回来，看着像抖了一下。
+                    if (tab.requiresAccount && !loggedIn) {
+                        prompt.show(LoginReason.GENERAL)
+                    } else {
+                        haptics(HapticKind.Tick)
+                        navController.navigateSingleTop(tab.route)
+                    }
                 }
             }
             val item: @Composable () -> Unit = { TabItem(visual, onClick) }

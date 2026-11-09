@@ -3,10 +3,13 @@ package com.starveil.app.ads
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.res.Configuration
+import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
 import android.widget.FrameLayout
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.ComponentActivity
 import androidx.core.content.ContextCompat
@@ -53,6 +56,8 @@ class SplashAdActivity : ComponentActivity() {
         // 这样窗口底色一铺开就是皮肤色，不会先闪一下系统白/黑底。
         installSplashScreen()
         super.onCreate(savedInstanceState)
+        // 状态栏图标跟随明暗：浅色开屏上白图标压白底等于没有，深色开屏反过来
+        applySystemBarIcons()
         // 窗口背景是 splash_window（layer-list：底色 + 底部 lockup），必须在任何内容
         // 绘制前铺好，否则窗口已经按主题里的静态资源画过一帧了。
         applySplashWindowBackground()
@@ -142,7 +147,16 @@ class SplashAdActivity : ComponentActivity() {
         window.setBackgroundDrawable(drawable)
     }
 
-    /** 系统当前是不是深色：用户没强制浅/深时用它兜底窗口底色。 */
+    /** 状态栏/导航栏图标跟随明暗，与窗口底色同源（[SplashSkinStore]）。 */
+    private fun applySystemBarIcons() {
+        val style = if (SplashSkinStore.isDark(this, isNightMode())) {
+            SystemBarStyle.dark(Color.TRANSPARENT)
+        } else {
+            SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        }
+        enableEdgeToEdge(statusBarStyle = style, navigationBarStyle = style)
+    }
+
     private fun isNightMode(): Boolean =
         resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK ==
             Configuration.UI_MODE_NIGHT_YES

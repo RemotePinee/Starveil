@@ -222,6 +222,9 @@ class ApiClient(
     /** 反馈留言，见 [GbookApi]。 */
     val gbookApi: GbookApi = retrofit.create(GbookApi::class.java)
 
+    /** 消息中心与在线更新，见 [MessageApi]。 */
+    val messageApi: MessageApi = retrofit.create(MessageApi::class.java)
+
     fun clearSession() = cookieJar.clear()
 
     /** 用持久化的会话 cookie 填充内存 jar（冷启动调用一次）。 */

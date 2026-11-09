@@ -32,7 +32,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import coil3.compose.AsyncImage
+import com.starveil.core.designsystem.component.PosterImage
 import com.starveil.core.designsystem.component.SkeletonBlock
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
@@ -214,14 +214,13 @@ private fun RowScope.PosterCell(vod: Vod, onClick: () -> Unit) {
             .weight(1f)
             .clickable(onClick = onClick),
     ) {
-        AsyncImage(
-            model = vod.poster,
+        PosterImage(
+            url = vod.poster,
             contentDescription = vod.name,
-            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(POSTER_RATIO)
-                .clip(AppShape.small),
+                .aspectRatio(POSTER_RATIO),
+            shape = AppShape.small,
         )
         Spacer(Modifier.height(Spacing.xs))
         Text(
@@ -247,23 +246,24 @@ private fun PosterWithTitle(
             .aspectRatio(ratio)
             .clip(AppShape.medium),
     ) {
-        AsyncImage(
-            model = vod.poster,
+        PosterImage(
+            url = vod.poster,
             contentDescription = vod.name,
-            contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
-        )
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        0.6f to starveilExtraColors.heroScrimStart,
-                        1f to starveilExtraColors.heroScrimEnd,
-                    ),
-                ),
+            shape = AppShape.medium,
         )
         if (showTitle) {
+            // 压暗层只为托住底部片名：没有片名的卡片（榜单）不该有一道黑色渐变
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0.6f to starveilExtraColors.heroScrimStart,
+                            1f to starveilExtraColors.heroScrimEnd,
+                        ),
+                    ),
+            )
             Text(
                 text = vod.name,
                 style = titleStyle,

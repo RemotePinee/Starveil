@@ -153,8 +153,9 @@ final class Startup
             // 播放器广告：暂停图 / 角标 / 历史入口数据，后台「播放器广告」页维护
             // 详情页三个开关，后台「运营设置 → 详情页」维护
             'detail_sections' => DetailFlags::all(),
-            // 推送条数：客户端按 >0 冒红点
-            'push' => (new Push())->count(),
+            // 推送条数：客户端按 >0 冒红点。与 v1.main/push 同口径（当前用户未读数），
+            // 否则列表读完以后启动配置里的红点还在：两处红点各算各的。
+            'push' => (new Push())->unreadCount((int)$this->userId),
             // 0 = 客户端不展示推送入口；缺字段按展示处理
             'push_enabled' => Setting::get('push_enabled', '1'),
         ];

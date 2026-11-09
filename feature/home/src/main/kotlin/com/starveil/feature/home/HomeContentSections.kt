@@ -29,14 +29,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -87,8 +86,9 @@ fun BannerHero(
             }
         }
     }
-    // 贴边：两套模式同一套结构。顶部与底部过渡、标题、圆点都画在这一层——
+    // 贴边：两套模式同一套结构。标题、圆点都画在这一层——
     // 这里高度由 aspectRatio 定死，`fillMaxHeight` 才算得出真实像素。
+    // 顶部抠洞做在图里：背后是模糊底色，抠开才露得出来；范围只到卡片顶部 12%。
     val mask = starveilExtraColors.fadeMask
     Box(
         modifier = Modifier
@@ -96,7 +96,6 @@ fun BannerHero(
             .aspectRatio(BANNER_RATIO)
             .clipToBounds(),
     ) {
-        // 顶部对图做 alpha 抠洞，淡进背后的模糊底（与深色模式同一套）。
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -321,16 +320,14 @@ private const val LINK_SCRIM_END = 1f
 /** 轮播卡片与轮播占位共用的比例：16:9 传统横向大图 */
 internal const val BANNER_RATIO = 16f / 9f
 
-
-
-/** 顶部抠洞到哪里为止：只收最上面一小条，再大就把图糊没了。 */
+/** 顶部抠洞到哪里为止：卡片顶部 12%，再长就把剧照上半截也吃掉了。 */
 private const val BANNER_TOP_FADE = 0.12f
 
 /**
- * 只对顶部做 alpha 抠洞：把图淡进背后的模糊底。
+ * 顶部抠洞：卡片按 [BANNER_TOP_FADE] 淡出，露出背后那层模糊底色。
  *
- * 底部不抠洞——那里下面就是页面底色，抠出来只会是一块"什么也没有"的白，
- * 用一层白色渐变盖上去反而干净，代价是标题与圆点要改用深色。
+ * 必须用 DstIn 真抠：背后是模糊图，盖一层纯色永远对不上色，
+ * 看上去就是"一条遮罩"而不是图淡出去。
  */
 private fun Modifier.bannerTopMask(mask: Color): Modifier = drawWithContent {
     drawContent()

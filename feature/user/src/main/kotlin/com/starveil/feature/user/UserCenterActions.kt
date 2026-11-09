@@ -10,4 +10,6 @@ data class UserCenterActions(
     val onRetry: () -> Unit = {},
     /** 点观看记录卡片：与历史页同一套分流（短剧 → 竖屏播放器，普通影片 → 详情页）。 */
     val onHistoryClick: (ContinueWatching) -> Unit = {},
+    /** 点顶栏铃铛：进消息中心。 */
+    val onOpenMessages: () -> Unit = {},
 )

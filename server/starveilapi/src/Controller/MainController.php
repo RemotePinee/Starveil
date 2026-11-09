@@ -13,6 +13,7 @@ use Starveil\Api\Repo\Links;
 use Starveil\Api\Repo\PlayerAd;
 use Starveil\Api\Repo\Push;
 use Starveil\Api\Service\Startup;
+use Starveil\Api\Service\Update;
 
 final class MainController extends BaseController
 {
@@ -22,23 +23,15 @@ final class MainController extends BaseController
     }
 
     /**
-     * 插件版本：读 `info.ini` 的 `version`，读不到再退到 macCMS 的 `config('version')`。
+     * 在线更新：APK 版本信息，后台「版本更新」页维护（值存在 `cuican_setting`）。
      *
-     * `Kernel::ROUTES` 一直放行 `getVersion`，但类里以前没有这个方法——路由先通过，
-     * 再 `$instance->getVersion()` 触发 Error，被兜成 `{"code":500}`，README 承诺的
-     * 接口实际不可用。
+     * 以前这里返回的是插件自身版本 `{version:"<插件版本>"}`，与客户端 `VersionDto`
+     * （code / name / url / sha256 / force / changelog）对不上，字段全空等于永不提示更新；
+     * 现在按客户端契约下发，没配时 code=0，客户端据此跳过。
      */
     public function getVersion(): void
     {
-        $version = '';
-        $ini = @parse_ini_file(dirname(__DIR__, 2) . '/info.ini', false, INI_SCANNER_RAW);
-        if (is_array($ini)) {
-            $version = trim((string)($ini['version'] ?? ''));
-        }
-        if ($version === '') {
-            $version = trim((string)config('version'));
-        }
-        Json::ok(['version' => $version]);
+        Json::ok(Update::payload());
     }
 
     /** 首页轮播。 */
@@ -96,10 +89,42 @@ final class MainController extends BaseController
         Json::ok(['list' => (new Links())->list()]);
     }
 
-    /** 推送条数：客户端按 >0 冒红点，未配置时返回 0。 */
+    /**
+     * 未读条数：客户端按 >0 冒红点。
+     *
+     * 与消息列表的 `unread` 同口径；未登录没有阅读记录，整批广播都算未读。
+     * 以前返回的是"今天已发条数"——那个数与用户无关，读完也不会消失。
+     */
     public function getPush(): void
     {
-        Json::ok(['count' => (new Push())->count()]);
+        Json::ok(['count' => (new Push())->unreadCount($this->userId())]);
+    }
+
+    /**
+     * 消息中心列表：公告与推送共用一条消息，靠 kind 区分语义、template 区分弹窗样式。
+     *
+     * 游客也能拉（公告是公开的），`read` 恒为 false；已读标记只对登录用户生效。
+     */
+    public function getMessages(): void
+    {
+        $page = max(1, $this->input->int('page', 1));
+        // size 上限 50：客户端一页 20，再大 UI 也接不住，还给了一次拉全表的口子
+        $size = min(max(1, $this->input->int('size', 20)), 50);
+        Json::ok((new Push())->list($this->userId(), $page, $size));
+    }
+
+    /**
+     * 批量标记已读（`{"ids":[1,2,3]}`）。
+     *
+     * 必须登录：已读按 user_id 一行一条存，游客没有可写的行；
+     * 走 requireLogin 的既有闸门，未登录回 `code=401`（HTTP 仍是 200，见 Json::fail 的注释）。
+     */
+    public function postMessageRead(): void
+    {
+        $this->requireLogin();
+        (new Push())->markRead($this->userId(), $this->input->intList('ids'));
+        // 空对象，不是 null 也不是 []：契约里 data 是 {}，json_encode([]) 会变成数组
+        Json::ok((object)[]);
     }
 
     /**

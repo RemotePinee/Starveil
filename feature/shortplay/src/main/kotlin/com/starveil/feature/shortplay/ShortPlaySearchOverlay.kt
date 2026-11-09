@@ -40,13 +40,13 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.ContentScale
+
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import coil3.compose.AsyncImage
+import com.starveil.core.designsystem.component.PosterImage
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.MagnifyingGlass
@@ -203,14 +203,13 @@ private fun CandidateList(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),
             ) {
-                AsyncImage(
-                    model = play.cover,
+                PosterImage(
+                    url = play.cover,
                     contentDescription = null,
-                    contentScale = ContentScale.Crop,
                     modifier = Modifier
                         .width(Spacing.xxl + Spacing.md)
-                        .height(Spacing.xxl + Spacing.xl)
-                        .clip(AppShape.small),
+                        .height(Spacing.xxl + Spacing.xl),
+                    shape = AppShape.small,
                 )
                 Column(Modifier.weight(1f)) {
                     Text(

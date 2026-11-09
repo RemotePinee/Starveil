@@ -1,5 +1,6 @@
 package com.starveil.feature.player
 
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.lifecycle.Lifecycle
@@ -184,8 +186,11 @@ fun PlayerScreen(
     // 页面级纯 UI 状态（弹层 / 弹幕偏好 / 控制层显隐 / 横滑预览 / 亮度）收进一个持有者：
     // 都是"换一下就要存一次盘没有意义"的东西，不进 ViewModel
     val page = rememberPlayerPage()
-    val immersive = rememberImmersive(state.isFullscreen)
-    // 播放中常亮：横屏看片与内嵌小窗都会在系统休眠时限里黑屏。
+    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+    // 底栏的全屏图标与倍速胶囊跟"已生效全屏"走：点下去那一帧不抢先翻图标，
+    // 也不会在中途插一个胶囊把进度条挤窄；immersive 仍由同一份 settled 推出
+    val chromeFullscreen = rememberSettledFullscreen(state.isFullscreen, landscape)
+    val immersive = isImmersive(chromeFullscreen, landscape)
     // 传 isPlaying 而不是恒为 true：内嵌在详情页时暂停就该让系统正常息屏。
     KeepScreenOnWhilePlaying(enabled = state.isPlaying)
     // 回前台兜底恢复（不重建 SurfaceView，重建会把正在拉的流打断）
@@ -232,7 +237,11 @@ fun PlayerScreen(
             state = state,
             actions = actions,
             page = page,
-            extras = ChromeExtras(position = position, immersive = immersive),
+            extras = ChromeExtras(
+                position = position,
+                immersive = immersive,
+                fullscreen = chromeFullscreen,
+            ),
         )
         // 弹层在这里调用：它要读 immersive 决定弹层窗口要不要隐藏系统栏
         PlayerSheets(state = state, actions = actions, page = page, immersive = immersive)
@@ -309,30 +318,31 @@ private fun blockingForDanmu(state: PlayerUiState): Boolean =
 internal fun chromeShownOf(visible: Boolean, sheet: PlayerSheetKind?): Boolean =
     visible && sheet == null
 
-/** 退出全屏后等系统转回竖屏再切布局的宽限；设备锁竖屏时靠它兜底，不能永远等。 */
+/** 转屏宽限：设备锁竖屏时永远等不到横屏，靠它兜底，不能一直卡在旧状态上。 */
 private const val FULLSCREEN_SETTLE_GRACE_MS = 600L
 
 /**
  * "已经生效的全屏态"。
  *
- * 进入全屏立刻算全屏（系统马上开始转屏，先按全屏排不会错）；
- * 退出时只在**真的变回竖屏**（或超过宽限）之后才算退出——否则会出现
- * "点返回先被拉成全屏再跳回竖屏"的抖动。
+ * 两个方向都要等系统真的转完屏才算：进全屏等**真的横过来**（或宽限兜底），
+ * 退出等**真的变回竖屏**（或宽限）。只认 `isFullscreen` 会让底栏图标在按下的那一帧
+ * 就翻面、画面几百毫秒后才铺满——就是"图标先变状态再切全屏"。
  */
 @Composable
 public fun rememberSettledFullscreen(fullscreen: Boolean, landscape: Boolean): Boolean {
     var settled by remember { mutableStateOf(fullscreen) }
     LaunchedEffect(fullscreen, landscape) {
-        if (fullscreen) {
+        if (fullscreen && landscape) {
             settled = true
             return@LaunchedEffect
         }
-        if (!landscape) {
+        if (!fullscreen && !landscape) {
             settled = false
             return@LaunchedEffect
         }
+        // 转屏进行中：key 一变就重启本 effect；真没转（锁竖屏）就宽限到点兜底
         delay(FULLSCREEN_SETTLE_GRACE_MS)
-        settled = false
+        settled = fullscreen
     }
     return settled
 }

@@ -54,13 +54,26 @@ class AppNavGraphTest {
         val secondLevel = AppShellState("history", dockTabs, locked = false, fullscreen = false)
 
         // dock 浮在页面之上：底边一律不扣，页面铺到屏幕底，模糊快照才录得到 dock 那块。
-        // 需要留白的页面自己加 LocalDockInset（首页、直播、榜单、专题、会员、我的页）。
-        assertEquals(Spacing.none, feed.contentPadding(scaffoldPadding, direction).calculateBottomPadding())
+        assertEquals(
+            Spacing.none,
+            feed.contentPadding(scaffoldPadding, direction, Spacing.none).calculateBottomPadding(),
+        )
         // 竖屏整页播放没有 dock，保持 0。
-        assertEquals(Spacing.none, episodes.contentPadding(scaffoldPadding, direction).calculateBottomPadding())
-        assertEquals(Spacing.none, regularTab.contentPadding(scaffoldPadding, direction).calculateBottomPadding())
-        // 二级页没有 dock：底边仍留给系统导航栏，归零会让最后一行压在导航栏上。
-        assertEquals(116.dp, secondLevel.contentPadding(scaffoldPadding, direction).calculateBottomPadding())
+        assertEquals(
+            Spacing.none,
+            episodes.contentPadding(scaffoldPadding, direction, Spacing.none).calculateBottomPadding(),
+        )
+        assertEquals(
+            Spacing.none,
+            regularTab.contentPadding(scaffoldPadding, direction, Spacing.none).calculateBottomPadding(),
+        )
+        // 二级页没有 dock：底边只吃系统导航栏那一档，不再跟 dock 的高度动画一起变
+        //（跟着变的那版，从「我的」点进收藏/设置时占位会先偏下再跳回中间）。
+        assertEquals(
+            24.dp,
+            secondLevel.contentPadding(scaffoldPadding, direction, 24.dp).calculateBottomPadding(),
+        )
+        assertEquals(24.dp, secondLevel.contentPadding(scaffoldPadding, direction, 24.dp).calculateBottomPadding())
     }
 
     @Test

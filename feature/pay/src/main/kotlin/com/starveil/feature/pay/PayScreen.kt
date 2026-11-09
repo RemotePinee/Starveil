@@ -105,16 +105,16 @@ private data class PayActions(
 
 @Composable
 private fun PayContent(state: PayUiState, actions: PayActions, modifier: Modifier = Modifier) {
+    // 状态栏避让放在页面内容层：背景铺满整屏，内容整体下移一个状态栏高度。
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding(),
     ) {
-        // 外壳全局沉浸后不再替页面留状态栏位置：背景铺满，内容从状态栏下方开始。
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
                 // dock 浮在内容之上：整页避开它的高度，底部提交栏才不会被盖住。
                 .padding(bottom = LocalDockInset.current),
         ) {

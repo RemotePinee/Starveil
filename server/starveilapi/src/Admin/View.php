@@ -30,8 +30,8 @@ final class View
         '内容' => [
             'topics' => '专题',
             'live' => '直播',
-            // 推送保留但灰置：客户端只按条数亮红点，还没有内容落地页（见 PushPage 的警示）
-            'push' => '推送（灰度）',
+            // 消息中心：公告 / 推送都在这页发，客户端列表页见 v1.main/messages
+            'push' => '消息推送',
         ],
         '交易' => [
             'cards' => '卡密',
@@ -40,7 +40,11 @@ final class View
             'orders' => '订单',
         ],
         '用户' => ['users' => '用户'],
-        '设置' => ['settings' => '运营设置'],
+        '设置' => [
+            'settings' => '运营设置',
+            // 在线更新：维护 v1.main/version 下发的 APK 版本信息
+            'version' => '版本更新',
+        ],
     ];
 
     public static function layout(string $page, string $title, string $html, string $csrf): string

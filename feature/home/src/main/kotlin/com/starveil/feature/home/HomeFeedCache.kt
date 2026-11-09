@@ -20,6 +20,8 @@ import kotlinx.coroutines.launch
  */
 internal class HomeFeedCache(
     private val scope: CoroutineScope,
+    /** 列表一落地就回调一次：首页拿它把封面排进预热队列（见 [HomeCoverWarmup]）。 */
+    private val onLoaded: (List<Vod>) -> Unit = {},
     private val fetch: suspend (typeId: Int) -> AppResult<List<Vod>>,
 ) {
 
@@ -42,6 +44,7 @@ internal class HomeFeedCache(
         val result = request(typeId).await()
         if (result is AppResult.Success) {
             items[typeId] = result.value
+            onLoaded(result.value)
         }
         return result
     }

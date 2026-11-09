@@ -31,6 +31,9 @@ import androidx.compose.ui.Modifier
 // import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.colorResource
+import androidx.activity.compose.LocalActivity
+import androidx.compose.material3.MaterialTheme
+import androidx.core.view.WindowCompat
 import com.airbnb.lottie.RenderMode
 import com.airbnb.lottie.compose.LottieAnimation
 import com.airbnb.lottie.compose.LottieCompositionResult
@@ -85,11 +88,13 @@ internal fun SplashBrandLayer() {
     //     label = "splash-breathe-alpha",
     // )
     // 深浅两套开屏素材：浅色模式用黑线条那版（浅底上才看得见），深色模式保持原来那版。
-    // 用全限定名读主题，避免为一个调用点多加一条 import。
-    val asset = if (com.starveil.core.designsystem.LocalIsDarkTheme.current) {
-        "splash_loading.json"
-    } else {
-        "splash_loading_light.json"
+    // 这一屏的底色与状态栏图标都跟着同一个 darkTheme，不再各自去读系统 uiMode。
+    val darkTheme = com.starveil.core.designsystem.LocalIsDarkTheme.current
+    val asset = if (darkTheme) "splash_loading.json" else "splash_loading_light.json"
+    val activity = LocalActivity.current
+    LaunchedEffect(darkTheme, activity) {
+        val window = activity?.window ?: return@LaunchedEffect
+        WindowCompat.getInsetsController(window, window.decorView).isAppearanceLightStatusBars = !darkTheme
     }
     val compositionResult = rememberLottieComposition(LottieCompositionSpec.Asset(asset))
     val composition by compositionResult
@@ -97,7 +102,7 @@ internal fun SplashBrandLayer() {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(colorResource(R.color.splash_background)),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         LottieAnimation(
             composition = composition,
@@ -173,7 +178,7 @@ private fun SplashLottieDiagnostics(result: LottieCompositionResult) {
  * 的时候就开始扣秒，用户真正看见广告时只剩两三秒。
  */
 @Composable
-internal fun SplashBrandOverlay() {
+internal fun SplashBrandOverlay(onHidden: () -> Unit = {}) {
     var visible by remember { mutableStateOf(!AdSplashGate.homeReady()) }
     LaunchedEffect(Unit) {
         val started = SystemClock.elapsedRealtime()
@@ -189,6 +194,8 @@ internal fun SplashBrandOverlay() {
         // 淡出走完再放开倒计时：这一层还盖着的时候用户看不到广告
         delay(BRAND_FADE_MS.toLong())
         AdSplashGate.markBrandLayerGone()
+        // 交回首页：这时候首页顶栏压着剧照，状态栏该用浅色图标了
+        onHidden()
     }
     AnimatedVisibility(
         visible = visible,

@@ -3,6 +3,9 @@ package com.starveil.feature.user
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -24,13 +27,19 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -38,6 +47,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
+import com.adamglin.phosphoricons.regular.Bell
 import com.adamglin.phosphoricons.regular.Palette
 import com.adamglin.phosphoricons.regular.ShareNetwork
 import com.starveil.core.designsystem.LocalDockInset
@@ -50,7 +60,7 @@ import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.ContinueWatching
 /**
- * 用户中心：彩雾带铺到状态栏做成沉浸顶栏，内容面板压在它上层、上沿圆角露出雾。
+ * 用户中心：插画背景顶到状态栏做成沉浸顶栏，内容面板压在它上层、上沿圆角露出图。
  *
  * 信息层级（自上而下）：
  * 1. 顶栏（分享 / 皮肤）+ 头像昵称 + 会员状态；
@@ -88,6 +98,7 @@ fun UserCenterScreen(
         snackbar = snackbarHostState,
         onTopAction = { action ->
             when (action) {
+                UserCenterTopAction.Messages -> actions.onOpenMessages()
                 UserCenterTopAction.Skin -> showSkinPicker = true
                 UserCenterTopAction.Share -> viewModel.share()
             }
@@ -168,8 +179,8 @@ private fun UserShareLauncher(viewModel: UserCenterViewModel) {
     }
 }
 
-/** 顶栏两个入口：换主题皮肤 / 分享海报。合成一个回调，必填参数才降得下来。 */
-private enum class UserCenterTopAction { Skin, Share }
+/** 顶栏三个入口：消息 / 换主题皮肤 / 分享海报。合成一个回调，必填参数才降得下来。 */
+private enum class UserCenterTopAction { Messages, Skin, Share }
 
 /** 主体：加载态 / 英雄区 + 内容面板 / 底部提示。 */
 @Composable
@@ -188,10 +199,19 @@ private fun UserCenterContent(
         if (state.isLoading) {
             StarveilLoadingScreen()
         } else {
+            val scrollState = rememberScrollState()
+            // 0 = 还没滚，状态栏下面是插图；1 = 标题已经顶到状态栏，需要一层底色压住。
+            // 距离取标题行高：滚过一行就压满，再滚只是内容从底下走。
+            val density = LocalDensity.current
+            val scrimProgress by remember {
+                derivedStateOf {
+                    (scrollState.value / with(density) { Spacing.rowHeight.toPx() }).coerceIn(0f, 1f)
+                }
+            }
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(scrollState),
             ) {
                 UserCenterHero(
                     state = state,
@@ -206,6 +226,9 @@ private fun UserCenterContent(
                 // dock 铺在页面之上：整页铺到屏幕底，末尾补一段让内容滚得出来。
                 Spacer(Modifier.height(LocalDockInset.current))
             }
+            // 状态栏那一条的渐变遮罩：标题和系统时间不会再糊在一起，
+            // 插图仍然从它底下滚过去（用户选的是"标题随滚动 + 状态栏渐变"）。
+            UserCenterStatusScrim(progress = scrimProgress)
         }
         SnackbarHost(
             hostState = snackbar,
@@ -214,6 +237,28 @@ private fun UserCenterContent(
     }
 }
 
+/**
+ * 状态栏那一条的渐变遮罩。
+ *
+ * 标题随内容滚动，滚到顶会压到系统时间上；这层从页面底色渐到透明，只压在状态栏那一条，
+ * 插图仍从它下面滚过去。透明度由滚动量线性驱动，本身就是连续量，不加额外动画。
+ */
+@Composable
+private fun UserCenterStatusScrim(progress: Float) {
+    if (progress <= 0f) return
+    val density = LocalDensity.current
+    val barHeight = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
+    val veil = MaterialTheme.colorScheme.background.copy(alpha = STATUS_SCRIM_ALPHA * progress)
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(barHeight + Spacing.sm)
+            .background(Brush.verticalGradient(0f to veil, 1f to Color.Transparent)),
+    )
+}
+
+/** 遮罩最深处的不透明度：再多就把插图那条边也压掉了。 */
+private const val STATUS_SCRIM_ALPHA = 0.92f
 @Composable
 private fun UserCenterHero(
     state: UserCenterUiState,
@@ -228,7 +273,7 @@ private fun UserCenterHero(
                 .padding(top = Spacing.xs),
             verticalArrangement = Arrangement.spacedBy(Spacing.sm),
         ) {
-            UserCenterTitleBar(onAction = onTopAction)
+            UserCenterTitleBar(unread = state.unreadMessages, onAction = onTopAction)
             UserProfileBlock(
                 state = state,
                 onLoginClick = actions.onLoginClick,
@@ -242,7 +287,6 @@ private fun UserCenterHero(
         }
     }
 }
-
 @Composable
 private fun UserCenterPanel(
     state: UserCenterUiState,
@@ -295,6 +339,7 @@ private fun UserCenterPanel(
 
 @Composable
 private fun UserCenterTitleBar(
+    unread: Int,
     onAction: (UserCenterTopAction) -> Unit,
 ) {
     Row(
@@ -311,6 +356,7 @@ private fun UserCenterTitleBar(
             color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(WEIGHT_FULL),
         )
+        BellAction(unread = unread, onClick = { onAction(UserCenterTopAction.Messages) })
         IconButton(onClick = { onAction(UserCenterTopAction.Share) }) {
             Icon(
                 imageVector = PhosphorIcons.Regular.ShareNetwork,
@@ -325,6 +371,39 @@ private fun UserCenterTitleBar(
                 contentDescription = ACTION_THEME,
                 tint = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.size(IconSize.md),
+            )
+        }
+    }
+}
+
+/**
+ * 铃铛：放在标题栏右侧、分享与主题之前。
+ *
+ * 有未读才在右上角点一颗红点；没未读时只有图标本身，不占额外空间，
+ * 也不会像常驻角标那样把标题栏撑乱。
+ */
+@Composable
+private fun BellAction(unread: Int, onClick: () -> Unit) {
+    Box {
+        IconButton(onClick = onClick) {
+            Icon(
+                imageVector = PhosphorIcons.Regular.Bell,
+                contentDescription = ACTION_MESSAGES,
+                tint = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(IconSize.md),
+            )
+        }
+        if (unread > 0) {
+            // 红点贴图标右上角，不是贴按钮盒的右上角：
+            // 图标 24dp 居中在 48dp 触控盒里，右上角距盒顶/右各 12dp，
+            // 所以红点要按「顶 8dp、右 12dp」摆，才落在图标肩上一个点的距离
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = Spacing.sm, end = Spacing.md)
+                    .size(Spacing.xs)
+                    .clip(AppShape.full)
+                    .background(MaterialTheme.colorScheme.error),
             )
         }
     }
@@ -356,6 +435,7 @@ private val SHEET_RADIUS = Spacing.xxl
 private val MEMBER_FLOAT = Spacing.xxl + Spacing.md
 private const val TITLE = "我的"
 private const val ACTION_SHARE = "分享"
+private const val ACTION_MESSAGES = "消息"
 private const val ACTION_THEME = "主题"
 private const val WEIGHT_FULL = 1f
 private const val SECTION_TOOLS = "常用工具"

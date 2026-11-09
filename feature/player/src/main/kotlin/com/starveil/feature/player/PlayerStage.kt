@@ -1,6 +1,5 @@
 package com.starveil.feature.player
 
-import android.content.res.Configuration
 import androidx.annotation.OptIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -14,7 +13,6 @@ import androidx.compose.runtime.State
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -183,16 +181,9 @@ private fun VideoSurface(engine: Media3Player, modifier: Modifier = Modifier) {
 }
 
 /**
- * 是否真沉浸：全屏且横屏，且按"系统真的转完屏"之后的状态算。
+ * 全屏且横屏才算沉浸（纯函数，便于测试与调用方共用一条口径）。
  *
  * 退出全屏时窗口还有 200~400ms 停在横屏，这期间若先按竖屏排一遍，视频会先在横向
  * 窗口里被拉伸一下再跳回正常比例。竖屏全屏也不收起系统栏，避免画面被拉成两截。
  */
-@Composable
-internal fun rememberImmersive(fullscreen: Boolean): Boolean {
-    val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
-    return isImmersive(rememberSettledFullscreen(fullscreen, landscape), landscape)
-}
-
-/** 全屏且横屏才算沉浸（纯函数，便于 [rememberImmersive] 与测试共用一条口径）。 */
 internal fun isImmersive(fullscreen: Boolean, landscape: Boolean): Boolean = fullscreen && landscape

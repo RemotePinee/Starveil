@@ -20,8 +20,25 @@ namespace Starveil\Api\Support;
 
 final class Media
 {
+    /**
+     * 插件统一的上传子目录：后台所有图片都落这一个文件夹。
+     *
+     * 之前每个页面各用一个 flag（links / ad / message），同一批运营图散在三处，
+     * "从已上传的图里挑一张"就得同时翻三个目录。现在只有一个入口，选图列表也只扫这里。
+     *
+     * 注意：历史数据里仍留着旧 flag 的相对路径，[url] 按原路径拼，不影响老图显示。
+     */
+    public const DIR = 'starveil';
+
     /** 图片长边上限：运营图最大用到 480×270 的 3 倍屏，1600 已经有余量。 */
     private const MAX_EDGE = 1600;
+
+    /**
+     * 图库遍历的条目上限：`upload/` 攒了几年可能上万张，一次后台渲染不能无限扫。
+     *
+     * 2 万条足够覆盖正常站点，超了只是"最近上传里少几张小图"，不影响可用性。
+     */
+    private const MAX_SCAN = 20000;
 
     /** JPEG 重编码质量。低于 80 开始能看出糊，85 在视觉无损与体积之间。 */
     private const JPEG_QUALITY = 85;
@@ -243,12 +260,11 @@ final class Media
      *   （防符号链接/大小写差异把它带到 web 根之外）。
      *
      * 任何一步不过都返回 null：调用方保持旧值不动，运营重试即可，与图片上传同一口径。
-     * 返回的是站内相对路径（`/upload/ad/xxx.mp4`），[url] 会再拼成绝对地址。
      */
     public static function uploadVideo(string $input, string $flag): ?string
     {
         $file = $_FILES[$input] ?? null;
-        if (!is_array($file) || (int)($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        if (!is_array($file) || (int)($file['error'] ?? 0) !== 0) {
             return null;
         }
         if ((int)($file['size'] ?? 0) > self::VIDEO_MAX_BYTES) {
@@ -301,5 +317,51 @@ final class Media
             return null;
         }
         return '/upload/' . $flag . '/' . basename($target);
+    }
+
+    /**
+     * 后台「从已上传里选一张」的图库：扫**整个 `upload/`**，按修改时间倒序。
+     *
+     * 为什么扫全站而不是只扫 [DIR]：运营在影片、专题、广告位上传过的图同样是可用素材，
+     * 只扫自己这一小块，图库里就只有"今天新传的那几张"，等于让运营重传一遍。
+     *
+     * `upload/` 在跑久了的站上可能有好几万张图，所以有三道保护：
+     * 遍历上限 [MAX_SCAN] 个条目（超了就按已收集的结果排序）、只认图片扩展名、
+     * 只回相对路径并由 `Media::url` 拼地址——不在遍历里做任何 IO 之外的判断。
+     *
+     * @return array<int,string>
+     */
+    public static function recentImages(int $limit = 24): array
+    {
+        $root = realpath(ROOT_PATH . 'upload');
+        if ($root === false) {
+            return [];
+        }
+        $files = [];
+        $seen = 0;
+        $iterator = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($root, \FilesystemIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::SELF_FIRST
+        );
+        foreach ($iterator as $file) {
+            $seen += 1;
+            if ($seen > self::MAX_SCAN) {
+                break;
+            }
+            if (!$file instanceof \SplFileInfo || !$file->isFile()) {
+                continue;
+            }
+            if (preg_match('/\.(jpe?g|png|gif|webp)$/i', $file->getFilename()) !== 1) {
+                continue;
+            }
+            $path = str_replace('\\', '/', $file->getPathname());
+            $pos = strpos($path, '/upload/');
+            if ($pos === false) {
+                continue;
+            }
+            $files[] = ['path' => substr($path, $pos + 1), 'mtime' => (int)$file->getMTime()];
+        }
+        usort($files, static fn(array $a, array $b): int => $b['mtime'] <=> $a['mtime']);
+        return array_slice(array_column($files, 'path'), 0, $limit);
     }
 }

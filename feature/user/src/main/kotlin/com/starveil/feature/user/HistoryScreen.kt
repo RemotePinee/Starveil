@@ -12,8 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Icon
@@ -31,7 +31,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
+import com.starveil.core.designsystem.component.PosterImage
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.ArrowLeft
@@ -56,8 +56,13 @@ fun HistoryScreen(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    Column(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding(),
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             SubPageTopBar(title = TITLE, onBack = onBack)
             when {
                 state.isLoading -> StarveilLoadingScreen()
@@ -100,23 +105,14 @@ private fun HistoryRow(item: ContinueWatching, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
-            Box(
+            PosterImage(
+                url = item.vodPic,
+                contentDescription = item.vodName,
                 modifier = Modifier
                     .width(POSTER_WIDTH)
-                    .height(POSTER_HEIGHT)
-                    .clip(AppShape.small)
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
-            ) {
-                val pic = item.vodPic
-                if (!pic.isNullOrBlank()) {
-                    AsyncImage(
-                        model = pic,
-                        contentDescription = item.vodName,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
+                    .height(POSTER_HEIGHT),
+                shape = AppShape.small,
+            )
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Spacing.xxs)) {
                 Text(
                     text = item.vodName,

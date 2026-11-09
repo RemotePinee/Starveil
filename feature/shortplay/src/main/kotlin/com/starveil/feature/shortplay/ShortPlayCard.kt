@@ -12,10 +12,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.layout.ContentScale
+import com.starveil.core.designsystem.component.PosterImage
 import androidx.compose.ui.text.style.TextOverflow
 import coil3.compose.AsyncImage
 import com.starveil.core.designsystem.component.BlurredCoverBackdrop
+import com.starveil.core.designsystem.component.imagePlate
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.ShortPlay
@@ -46,14 +47,13 @@ internal fun ShortPlayPosterCard(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.clickable(onClick = onClick)) {
-        AsyncImage(
-            model = play.cover,
+        PosterImage(
+            url = play.cover,
             contentDescription = play.title,
-            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(POSTER_RATIO)
-                .clip(AppShape.small),
+                .aspectRatio(POSTER_RATIO),
+            shape = AppShape.small,
         )
         Spacer(Modifier.height(Spacing.xs))
         Text(

@@ -45,6 +45,12 @@ data class UserCenterUiState(
      * 权益本身仍由服务端按老规则继续放行。
      */
     val memberEnabled: Boolean = true,
+    /**
+     * 未读消息数：铃铛红点用。
+     *
+     * 拉取失败或未登录时为 0——红点宁可少亮一次，也不要因为一次网络错误挂在那里。
+     */
+    val unreadMessages: Int = 0,
     /** 接口域名：头像存的是站内相对路径，拼上它才能请求。 */
     val apiHost: String = "",
 ) {

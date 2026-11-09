@@ -62,6 +62,7 @@ internal fun PlayerChromeOverlay(
                 position = position,
                 applyInsets = config.immersive,
                 danmuEnabled = config.danmuEnabled,
+                fullscreen = config.fullscreen,
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
         }

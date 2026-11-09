@@ -9,7 +9,6 @@ import com.starveil.core.common.AppError
 import com.starveil.core.common.AppResult
 import com.starveil.core.data.ContinueWatchingRepository
 import com.starveil.core.data.HomeSnapshotStore
-import com.starveil.core.data.LivePage
 import com.starveil.core.data.LiveRepository
 import com.starveil.core.data.StartupRepository
 import com.starveil.core.data.TopicRepository
@@ -26,7 +25,6 @@ import com.starveil.core.model.SkinId
 import com.starveil.core.model.Skins
 import com.starveil.core.model.StartupConfig
 import com.starveil.core.model.Topic
-import com.starveil.core.model.TopicDetail
 import com.starveil.core.model.VodType
 import com.starveil.core.model.Vod
 import kotlinx.coroutines.CoroutineScope
@@ -38,6 +36,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * 首页状态持有者。只调仓库，不发 HTTP（AGENTS.md 第 3 节）。
@@ -61,6 +60,8 @@ class HomeViewModel(
     private val snapshot: HomeSnapshotStore? = repository.homeSnapshot(),
     /** 首页第一个 Content 落地时回调：系统启动屏靠它放行，只表示首页。 */
     private val onReady: () -> Unit = {},
+    /** 首屏封面预解：启动屏等这一页连图带数据都在才放行。 */
+    private val warmFirstPage: suspend (List<String>) -> Unit = {},
 ) : ViewModel() {
 
     // 启动配置已预取过：首帧骨架直接用缓存的模块顺序，避免进来后重排（快捷入口、热度榜"晚一步出现"）
@@ -79,10 +80,18 @@ class HomeViewModel(
     private var featured: HomeSpotlight = HomeSpotlight()
     private var hot: HomeSpotlight = HomeSpotlight()
     private var guess: HomeSpotlight = HomeSpotlight()
+    /** 封面预热队列：分类数据和卡片位一落地就把海报排进去，切 Tab 时不用再从网络取。 */
+    private val coverWarmup = HomeCoverWarmup()
+
+    /** 待预热的封面 URL；真正下载在页面层（[PrefetchHomeCovers]），这里只负责排队。 */
+    val warmCovers: StateFlow<List<String>> = coverWarmup.urls
+
     /** 分类 → (热度榜, 猜你喜欢)；每分类只请求一次，切回直接用。 */
-    private val spotlightsByType = mutableMapOf<Int, Pair<HomeSpotlight, HomeSpotlight>>()
+    private val spotlights = HomeSpotlightCache(viewModelScope, repository, coverWarmup::add)
     /** 列表缓存：预热、在飞去重、切分类时瞬间取用。 */
-    private val feedCache = HomeFeedCache(viewModelScope) { typeId -> repository.list(type = typeId) }
+    private val feedCache = HomeFeedCache(viewModelScope, coverWarmup::add) { typeId ->
+        repository.list(type = typeId)
+    }
     /** 等当前分类结果的句柄：切换时取消的是"等待"，在飞的请求留给缓存用。 */
     private var itemsJob: Job? = null
     private var topics: List<Topic> = emptyList()
@@ -92,6 +101,9 @@ class HomeViewModel(
     private var searchHot: List<String> = emptyList()
     private var modules: List<HomeModule> = cachedStartup.moduleOrder()
     private var continueWatching: List<ContinueWatching> = emptyList()
+
+    /** 首屏的放行信号：数据落地 + 封面解好才回调一次。 */
+    private val firstPage = FirstPageReady(warmFirstPage, onReady)
 
     init {
         load(refreshing = false)
@@ -121,7 +133,7 @@ class HomeViewModel(
     private fun switchTo(current: HomeUiState.Content, typeId: Int) {
         itemsJob?.cancel()
         val cached = feedCache.cached(typeId)
-        val spots = spotlightsByType[typeId]
+        val spots = spotlights[typeId]
         if (cached != null && spots != null) {
             hot = spots.first
             guess = spots.second
@@ -172,7 +184,7 @@ class HomeViewModel(
     private fun prefetchRest() {
         val others = types.map { it.id }.filter { it != selectedTypeId }
         feedCache.prefetch(others)
-        prefetchSpotlights(others, spotlightsByType, repository, viewModelScope)
+        spotlights.prefetch(others)
     }
 
     /** 启动配置失败时保持默认皮肤，不把错误抛给 UI。 */
@@ -207,7 +219,7 @@ class HomeViewModel(
         guess = (repository.guess() as? AppResult.Success)?.value ?: HomeSpotlight()
         pushCount = repository.homePushCount(pushEnabled)
         // 首页这一套也进缓存：从分类切回 0 时不重复请求
-        spotlightsByType[0] = hot to guess
+        spotlights[0] = hot to guess
         topics = topicRepository.homeTopics(modules)
         lives = liveRepository.homeLives(modules)
         continueWatching = continueWatchingRepository.homeContinueWatching(modules)
@@ -228,7 +240,7 @@ class HomeViewModel(
      */
     private suspend fun loadCategory(typeId: Int) = coroutineScope {
         val items = async { feedCache.load(typeId) }
-        val spots = async { spotlightsOf(typeId, spotlightsByType, repository) }
+        val spots = async { spotlights.load(typeId) }
         val list = items.await()
         val pair = spots.await()
         if (typeId != selectedTypeId) return@coroutineScope
@@ -266,7 +278,7 @@ class HomeViewModel(
         }
         // 首页已经画出最终画面：Content / Empty 都算放行条件。
         // 只认 Content 的话，后台把视频清空后首页停在 Empty，启动层永远等不到信号。
-        if (_state.value !is HomeUiState.Loading) onReady()
+        if (_state.value !is HomeUiState.Loading) firstPage.signal(viewModelScope, list)
     }
 
     /** 请求失败：骨架要退掉，否则用户停在骨架上看不到"失败了"。 */
@@ -298,72 +310,34 @@ class HomeViewModel(
         pushEnabled = pushEnabled,
         searchHot = searchHot,
     )
-
-    companion object {
-
-        fun factory(
-            repository: VodRepository,
-            startupRepository: StartupRepository,
-            continueWatchingRepository: ContinueWatchingRepository,
-            topicRepository: TopicRepository = EmptyTopicRepository,
-            liveRepository: LiveRepository = EmptyLiveRepository,
-            /** 首页首个 Content 落地时回调：启动屏靠它放行。 */
-            onReady: () -> Unit = {},
-        ): ViewModelProvider.Factory = viewModelFactory {
-            initializer {
-                HomeViewModel(
-                    repository = repository,
-                    startupRepository = startupRepository,
-                    continueWatchingRepository = continueWatchingRepository,
-                    topicRepository = topicRepository,
-                    liveRepository = liveRepository,
-                    onReady = onReady,
-                )
-            }
-        }
-    }
 }
 
-private suspend fun spotlightsOf(
-    typeId: Int,
-    cache: MutableMap<Int, Pair<HomeSpotlight, HomeSpotlight>>,
+/**
+ * 首页 ViewModel 的工厂。
+ *
+ * 从 `HomeViewModel.companion` 搬出来：类已经贴着 detekt 的 `LargeClass` 阈值，
+ * 工厂只是装配参数，放在类外更好读。
+ */
+fun homeViewModelFactory(
     repository: VodRepository,
-): Pair<HomeSpotlight, HomeSpotlight> {
-    cache[typeId]?.let { return it }
-    val hotSpot = (repository.hotByType(typeId) as? AppResult.Success)?.value ?: HomeSpotlight()
-    val guessSpot = (repository.guessByType(typeId) as? AppResult.Success)?.value ?: HomeSpotlight()
-    return (hotSpot to guessSpot).also { cache[typeId] = it }
-}
-
-private fun prefetchSpotlights(
-    typeIds: List<Int>,
-    cache: MutableMap<Int, Pair<HomeSpotlight, HomeSpotlight>>,
-    repository: VodRepository,
-    scope: CoroutineScope,
-) {
-    scope.launch {
-        typeIds.forEach { typeId ->
-            cache[typeId] = spotlightsOf(typeId, cache, repository)
-        }
-    }
-}
-
-/** 没有专题数据源时的兜底：首页只少一块横滑，不影响正文。 */
-private object EmptyTopicRepository : TopicRepository {
-
-    override suspend fun list(): AppResult<List<Topic>> = AppResult.Success(emptyList())
-
-    override suspend fun detail(topicId: String): AppResult<TopicDetail> =
-        AppResult.Failure(AppError.Unknown(null))
-}
-
-/** 没有直播数据源时的兜底。 */
-private object EmptyLiveRepository : LiveRepository {
-
-    override suspend fun list(page: Int, limit: Int, group: String): AppResult<LivePage> =
-        AppResult.Success(
-            LivePage(items = emptyList(), total = 0, groups = emptyList(), hasMore = false),
+    startupRepository: StartupRepository,
+    continueWatchingRepository: ContinueWatchingRepository,
+    topicRepository: TopicRepository = EmptyTopicRepository,
+    liveRepository: LiveRepository = EmptyLiveRepository,
+    onReady: () -> Unit = {},
+    warmFirstPage: suspend (List<String>) -> Unit = {},
+): ViewModelProvider.Factory = viewModelFactory {
+    initializer {
+        HomeViewModel(
+            repository = repository,
+            startupRepository = startupRepository,
+            continueWatchingRepository = continueWatchingRepository,
+            topicRepository = topicRepository,
+            liveRepository = liveRepository,
+            onReady = onReady,
+            warmFirstPage = warmFirstPage,
         )
+    }
 }
 
 /** 后台模块顺序；缓存缺失或后台没配时退回全部模块。 */

@@ -94,32 +94,44 @@ fun ProfileScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding(),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.pageHorizontal),
             verticalArrangement = Arrangement.spacedBy(Spacing.md),
         ) {
             ProfileTopBar(onBack = onBack)
-            ProfileBody(
-                state = state,
-                actions = ProfileActions(
-                    onLoginClick = onLoginClick,
-                    onEditNick = { editingNick = true },
-                    onPickAvatar = {
-                        picker.launch(
-                            PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageOnly,
-                            ),
-                        )
-                    },
-                ),
-                onRetry = viewModel::retry,
+            val actions = ProfileActions(
+                onLoginClick = onLoginClick,
+                onEditNick = { editingNick = true },
+                onPickAvatar = {
+                    picker.launch(
+                        PickVisualMediaRequest(
+                            ActivityResultContracts.PickVisualMedia.ImageOnly,
+                        ),
+                    )
+                },
             )
+            // 全页占位（未登录 / 加载 / 失败）不能塞进可滚动列：滚动列高度不受限，
+            // fillMaxSize 会被压成内容高，占位就贴在标题下面——"没垂直居中"就是这么来的。
+            if (state.isFullPagePlaceholder) {
+                Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    ProfileBody(state = state, actions = actions, onRetry = viewModel::retry)
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(Spacing.md),
+                ) {
+                    ProfileBody(state = state, actions = actions, onRetry = viewModel::retry)
+                }
+            }
         }
         SnackbarHost(
             hostState = snackbarHostState,
@@ -253,3 +265,7 @@ private const val NICK_MAX = 20
 private const val AVATAR_MAX_BYTES = 2 * 1024 * 1024
 private const val AVATAR_FALLBACK_MIME = "image/jpeg"
 private const val AVATAR_FALLBACK_NAME = "avatar.jpg"
+
+/** 整页占位（未登录 / 加载 / 失败）：这些状态要铺满，不该塞进可滚动列。 */
+private val ProfileUiState.isFullPagePlaceholder: Boolean
+    get() = needsLogin || isLoading || errorMessage != null

@@ -12,6 +12,7 @@ import androidx.media3.datasource.okhttp.OkHttpDataSource
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -83,12 +84,15 @@ internal class VideoHttp(private val context: Context) {
         if (!isHls(url)) return
         job?.cancel()
         job = scope.launch {
-            try {
-                firstSegments(url, headers).forEach { cacheByWriter(it, headers) }
-                primedUrl = url
-            } catch (e: IOException) {
-                PlayerLog.warn { "预取失败（不影响播放）：$url ${e.message}" }
-            }
+            // 预取只是提速：任何失败（含 URI 解析这类 RuntimeException）都只记一条日志，
+            // 绝不能让后台线程把进程带走——首页进播放的闪退就是这么来的。
+            // 取消必须穿透：吞掉会被当成"这一轮干完了"，也会让结构化并发失效。
+            runCatching { firstSegments(url, headers).forEach { cacheByWriter(it, headers) } }
+                .onSuccess { primedUrl = url }
+                .onFailure { error ->
+                    if (error is CancellationException) throw error
+                    PlayerLog.warn { "预取失败（不影响播放）：$url ${error.message}" }
+                }
         }
     }
 
@@ -129,12 +133,7 @@ internal class VideoHttp(private val context: Context) {
     /** 拉清单并返回前几个分片的绝对地址。 */
     private fun firstSegments(playlistUrl: String, headers: Map<String, String>): List<String> {
         val text = fetch(playlistUrl, headers) ?: return emptyList()
-        return text.lineSequence()
-            .map { it.trim() }
-            .filter { it.isNotEmpty() && !it.startsWith("#") }
-            .take(SEGMENT_PREFETCH)
-            .mapNotNull { segment -> java.net.URI(playlistUrl).resolve(segment)?.toString() }
-            .toList()
+        return segmentsFrom(playlistUrl, text, SEGMENT_PREFETCH)
     }
 
     /**
@@ -201,3 +200,32 @@ private object SharedVideoClient {
         .retryOnConnectionFailure(false)
         .build()
 }
+
+/**
+ * 清单正文 → 前 [limit] 个分片的绝对地址。
+ *
+ * 两条防御都是真机事故换来的（首页点进播放闪退）：
+ * - **不是 m3u8 就不解析**：上游出错时会回 `{"ok":false,"error":…}` 这种 JSON，
+ *   当成清单硬解，第一行就是 JSON，`URI.resolve` 抛 `IllegalArgumentException`，
+ *   在 IO 线程上把整个进程带走。
+ * - **逐行容错**：单行非法只跳过这一行，一条脏数据不该让整次预取失败。
+ *
+ * 纯函数，不碰网络，单测直接喂正文。
+ */
+internal fun segmentsFrom(playlistUrl: String, body: String, limit: Int): List<String> {
+    // 不是清单（例如上游回的 JSON 错误体）就没有底址可解析，直接不预取
+    val base = if (body.trimStart().startsWith(PLAYLIST_HEADER)) {
+        runCatching { java.net.URI(playlistUrl) }.getOrNull()
+    } else {
+        null
+    } ?: return emptyList()
+    return body.lineSequence()
+        .map(String::trim)
+        .filter { it.isNotEmpty() && !it.startsWith("#") }
+        .mapNotNull { segment -> runCatching { base.resolve(segment)?.toString() }.getOrNull() }
+        .take(limit)
+        .toList()
+}
+
+/** HLS 清单必须以它开头；没有它就不是清单，不猜。 */
+private const val PLAYLIST_HEADER = "#EXTM3U"

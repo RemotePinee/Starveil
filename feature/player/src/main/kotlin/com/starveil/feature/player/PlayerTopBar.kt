@@ -25,10 +25,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import com.adamglin.PhosphorIcons
-import com.adamglin.phosphoricons.Regular
-import com.adamglin.phosphoricons.regular.ArrowLeft
-import com.adamglin.phosphoricons.regular.Subtitles
-import com.adamglin.phosphoricons.regular.SubtitlesSlash
+import com.adamglin.phosphoricons.Bold
+import com.adamglin.phosphoricons.bold.ArrowLeft
+import com.adamglin.phosphoricons.bold.Subtitles
+import com.adamglin.phosphoricons.bold.SubtitlesSlash
 import com.starveil.core.designsystem.mirrorIconInRtl
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
@@ -93,7 +93,7 @@ internal fun PlayerTopBar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ChromeIconButton(
-                icon = PhosphorIcons.Regular.ArrowLeft,
+                icon = PhosphorIcons.Bold.ArrowLeft,
                 mirrorRtl = true,
                 description = "返回",
                 onClick = onBack,
@@ -117,7 +117,8 @@ private fun TitleBlock(title: String, subtitle: String, modifier: Modifier = Mod
     Column(modifier = modifier) {
         Text(
             text = title,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            // 集名是顶栏的唯一读数：比正文标题再大一档、加粗，一眼看清在第几集
+            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
             color = MaterialTheme.colorScheme.onBackground,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
@@ -125,7 +126,7 @@ private fun TitleBlock(title: String, subtitle: String, modifier: Modifier = Mod
         if (subtitle.isNotBlank()) {
             Text(
                 text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium),
                 color = starveilExtraColors.textMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -153,18 +154,18 @@ private fun DanmuToggleChip(actions: TopActions, modifier: Modifier = Modifier) 
     ) {
         Icon(
             imageVector = if (actions.danmuEnabled) {
-                PhosphorIcons.Regular.Subtitles
+                PhosphorIcons.Bold.Subtitles
             } else {
-                PhosphorIcons.Regular.SubtitlesSlash
+                PhosphorIcons.Bold.SubtitlesSlash
             },
             contentDescription = null,
             tint = tint,
-            modifier = Modifier.size(IconSize.sm),
+            modifier = Modifier.size(IconSize.item),
         )
         Spacer(Modifier.width(Spacing.xs))
         Text(
             text = if (actions.danmuEnabled) "弹幕开" else "弹幕关",
-            style = MaterialTheme.typography.labelMedium,
+            style = playerChromeLabelStyle(),
             color = tint,
             maxLines = 1,
         )

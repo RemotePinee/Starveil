@@ -23,6 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.graphics.Brush
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
+import com.starveil.core.designsystem.token.IconSize
 import com.starveil.core.designsystem.token.Spacing
 
 /**
@@ -71,7 +72,7 @@ internal fun MemberCard(
             Image(
                 painter = painterResource(R.drawable.ic_member_unlock),
                 contentDescription = null,
-                modifier = Modifier.size(Spacing.xxl),
+                modifier = Modifier.size(IconSize.lg),
             )
             MemberCardTexts(
                 state = state,
@@ -142,7 +143,7 @@ private fun MemberEntryButton(
         contentDescription = label,
         modifier = Modifier
             // 比卡片左侧图标再大一号：它是这张卡唯一的可点目标，小了不好点
-            .size(Spacing.xxl + Spacing.md)
+            .size(IconSize.cardAction)
             .clickable { onEntryClick(MEMBER_ENTRY_LABEL) },
     )
 }

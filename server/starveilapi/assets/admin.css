@@ -261,3 +261,19 @@ body{margin:0;background:#f6f7f9;color:#1f2329;
 .sv-disabled-group{border:0;margin:0;padding:0;opacity:.45}
 /* 右对齐的操作行（分页条） */
 .sv-actions-end{justify-content:flex-end}
+/* 图库选图：一排可点的缩略图，选中描绿边。横向滚动，不撑高表单 */
+.sv-pick-row{display:flex;flex-direction:column;gap:6px;margin-top:4px}
+.sv-pick-row>span{font-size:11px;color:#a0a6b0}
+.sv-pick-list{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.sv-pick{padding:0;border:1px solid #e5e7eb;border-radius:8px;background:#fff;
+ cursor:pointer;flex:0 0 auto;line-height:0;overflow:hidden}
+.sv-pick img{width:96px;height:54px;object-fit:cover;display:block}
+.sv-pick-on{border-color:#18a058;box-shadow:0 0 0 2px rgba(24,160,88,.18)}
+/* 卡片模板专属字段：按「模板」选择显隐。
+   用 max-height + opacity + margin 三个一起过渡，而不是 display:none——
+   display 不能做动画，切模板时字段会"啪"地跳出来。收起时 max-height 归零，
+   网格里的这一格跟着塌陷，后面的字段平滑回流。 */
+.sv-card-only{transition:max-height .24s ease,opacity .18s ease,margin .24s ease,
+ padding .24s ease;max-height:520px;opacity:1;overflow:hidden}
+.sv-card-only.sv-collapsed{max-height:0;opacity:0;margin:0;padding:0;pointer-events:none;
+ border:0}

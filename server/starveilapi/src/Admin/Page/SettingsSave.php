@@ -110,7 +110,7 @@ final class SettingsSave extends BasePage
         foreach (SettingsSchema::IMAGE as $key => $input) {
             // 统一走 Media::upload：源要求传的 imgdata、按入口解析上传模型、
             // 落盘后的等比瘦身都在那里实现，这里只负责写值
-            $file = Media::upload($input, 'ad');
+            $file = Media::upload($input, Media::DIR);
             if ($file === null) {
                 continue;
             }

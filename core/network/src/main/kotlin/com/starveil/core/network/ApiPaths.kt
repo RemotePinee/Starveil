@@ -27,8 +27,14 @@ object ApiPaths {
     const val HOT = "v1.main/hot"
     /** 首页「猜你喜欢」：同上。 */
     const val GUESS = "v1.main/guess"
-    /** 每日推荐条数：只回 `{count}`，用于消息入口红点。 */
+    /** 未读消息条数：只回 `{count}`，用于铃铛红点。语义是"当前用户未读"，不是"今天发了几条"。 */
     const val PUSH = "v1.main/push"
+    /** 消息中心列表（公告与推送共用，靠 `kind` 区分）。 */
+    const val MESSAGES = "v1.main/messages"
+    /** 批量标记已读。 */
+    const val MESSAGE_READ = "v1.main/messageRead"
+    /** 在线更新：下发最新版本与下载地址。 */
+    const val VERSION = "v1.main/version"
 
     // ---- 影片列表 / 详情 ----------------------------------------------------
     /** banner、榜单、分类列表、搜索共用；靠 query 参数区分语义。 */

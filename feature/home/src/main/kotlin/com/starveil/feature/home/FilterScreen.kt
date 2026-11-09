@@ -109,9 +109,10 @@ fun FilterScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding(),
     ) {
-        Column(modifier = Modifier.statusBarsPadding()) {
+        Column {
             FilterTopBar(onBack = actions.onBack, onSearch = actions.onSearch)
             FilterRows(rows = state.rows, onSelect = actions.onSelect)
         }

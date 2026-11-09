@@ -22,7 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
-import coil3.compose.AsyncImage
+import com.starveil.core.designsystem.component.PosterImage
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.Spacing
@@ -79,11 +79,11 @@ private fun ContinueWatchingCard(
                 .aspectRatio(CONTINUE_RATIO)
                 .clip(AppShape.small),
         ) {
-            AsyncImage(
-                model = item.vodPic,
+            PosterImage(
+                url = item.vodPic,
                 contentDescription = item.vodName,
-                contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize(),
+                shape = AppShape.small,
             )
             Box(
                 modifier = Modifier

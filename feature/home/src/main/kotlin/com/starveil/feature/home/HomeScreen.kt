@@ -16,7 +16,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -30,9 +30,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.composed
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.starveil.core.common.ad.AdPlacement
@@ -43,6 +40,7 @@ import com.starveil.core.designsystem.component.LocalAdPlacements
 import com.starveil.core.designsystem.component.SkeletonBlock
 import com.starveil.core.designsystem.component.StarveilLoadingScreen
 import com.starveil.core.designsystem.LocalDockInset
+import com.starveil.core.designsystem.LocalSplashCovering
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.Motion
@@ -50,6 +48,7 @@ import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.model.HomeModule
 import com.starveil.core.model.VodType
 import com.starveil.core.model.Vod
+import com.starveil.core.model.StartupConfig
 
 /**
  * 首页入口。
@@ -66,6 +65,11 @@ fun HomeRoute(
     modifier: Modifier = Modifier,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    // 其它分类的封面提前解好：切 Tab 那一刻图就在，不用等网络也不用重新解码
+    val posterWidthPx = rememberPosterWidthPx(
+        (state as? HomeUiState.Content)?.columns ?: StartupConfig.DEFAULT_HOME_COLUMNS,
+    )
+    PrefetchHomeCovers(viewModel.warmCovers, posterWidthPx)
     HomeScreen(
         state = state,
         actions = actions.copy(
@@ -90,12 +94,26 @@ fun HomeScreen(
     // 轮播 pager 提到外层：切页时列表与顶部栏共用同一个状态。
     val banners = (state as? HomeUiState.Content)?.banners.orEmpty()
     val bannerPager = rememberPagerState(pageCount = { banners.size.coerceAtLeast(1) })
+    val listState = rememberLazyListState()
+    // 模糊底与轮播卡同速上移：一个走一个钉着，抠开的位置就会错开
+    val bannerScrollPx = rememberBannerScrollPx(listState)
+    // 顶栏压在轮播图上（白字）到落在页面底色上（深字）的过渡进度，跟着滚动走
+    val topBarCover = rememberTopBarCoverProgress(listState, bannerScrollPx)
+    // 状态栏图标与顶栏同进同退：压在剧照上是浅色，落到页面底色上换深色。
+    // 开屏还盖着的时候不插嘴——那一屏的底色归开屏，图标由它自己设。
+    if (!LocalSplashCovering.current) SyncStatusBarIcons(topBarCover)
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background),
     ) {
-        HomeBannerBackdrop(banners = banners, pager = bannerPager)
+        HomeBannerBackdrop(
+            banners = banners,
+            pager = bannerPager,
+            scrollOffsetPx = bannerScrollPx,
+        )
+        // 状态栏那一条与顶栏用同一档压暗：两个区域连成一片，不出现"上面亮、下面暗"
+        StatusBarScrim(coverProgress = topBarCover)
         CompositionLocalProvider(LocalHomeBannerPager provides bannerPager) {
             Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
                     when (state) {
@@ -115,7 +133,12 @@ fun HomeScreen(
 
                         is HomeUiState.Empty -> EmptyFeed(state = state, actions = actions)
 
-                        is HomeUiState.Content -> HomeFeed(state = state, actions = actions)
+                        is HomeUiState.Content -> HomeFeed(
+                            state = state,
+                            actions = actions,
+                            listState = listState,
+                            coverProgress = topBarCover,
+                        )
                     }
             }
         }
@@ -124,22 +147,31 @@ fun HomeScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HomeFeed(state: HomeUiState.Content, actions: HomeActions) {
+private fun HomeFeed(
+    state: HomeUiState.Content,
+    actions: HomeActions,
+    listState: LazyListState,
+    coverProgress: Float,
+) {
+    val categorySwitch = rememberCategorySwitch(state.selectedTypeId, actions.onSelectType)
+    // 顶栏与横滑手势都走这个带淡入淡出的动作，两条路径的过渡才一致
+    val feedActions = actions.copy(onSelectType = categorySwitch.select)
     Column(modifier = Modifier.fillMaxSize()) {
         HomeTopBar(
             hotWord = state.searchHot.firstOrNull().orEmpty(),
-            pushCount = state.pushCount,
-            actions = actions,
+            actions = feedActions,
             types = state.types,
             selectedTypeId = state.selectedTypeId,
+            coverProgress = coverProgress,
         )
-        // 分类不再顶在搜索栏下：放到轮播图下面，替换原来的快捷入口那一排
         PullToRefreshBox(
             isRefreshing = state.isRefreshing,
             onRefresh = actions.onRefresh,
             modifier = Modifier.weight(1f),
         ) {
-            HomeFeedList(state = state, actions = actions)
+            Box(modifier = Modifier.fillMaxSize().then(categorySwitch.contentModifier())) {
+                HomeFeedList(state = state, actions = feedActions, listState = listState)
+            }
         }
     }
 }
@@ -150,9 +182,12 @@ private fun HomeFeed(state: HomeUiState.Content, actions: HomeActions) {
  * 运营位为空（或模块开关关掉）时回退到内置区块，保证老后台配置下页面不空。
  */
 @Composable
-private fun HomeFeedList(state: HomeUiState.Content, actions: HomeActions) {
+private fun HomeFeedList(
+    state: HomeUiState.Content,
+    actions: HomeActions,
+    listState: LazyListState,
+) {
     val banner = LocalAdPlacements.current.banner
-    val listState = rememberLazyListState()
     val categoryIds = remember(state.types) { listOf(0) + state.types.map { it.id } }
     LaunchedEffect(state.selectedTypeId) { listState.scrollToItem(0) }
     if (state.isSwitching) {
@@ -172,37 +207,6 @@ private fun HomeFeedList(state: HomeUiState.Content, actions: HomeActions) {
     }
 }
 
-private fun Modifier.categorySwipe(
-    categoryIds: List<Int>,
-    selectedTypeId: Int,
-    onSelect: (Int) -> Unit,
-): Modifier = composed {
-    val swipeDistancePx = LocalViewConfiguration.current.touchSlop * SWIPE_SLOP_MULTIPLIER
-    pointerInput(categoryIds, selectedTypeId, swipeDistancePx) {
-        var horizontalDragDistance = 0f
-        detectHorizontalDragGestures(
-            onHorizontalDrag = { change, dragAmount ->
-                change.consume()
-                horizontalDragDistance += dragAmount
-            },
-            onDragEnd = {
-                val currentIndex = categoryIds.indexOf(selectedTypeId)
-                if (currentIndex >= 0) {
-                    val nextIndex = when {
-                        horizontalDragDistance > swipeDistancePx -> currentIndex - 1
-                        horizontalDragDistance < -swipeDistancePx -> currentIndex + 1
-                        else -> currentIndex
-                    }
-                    categoryIds.getOrNull(nextIndex)?.let(onSelect)
-                }
-                horizontalDragDistance = 0f
-            },
-            onDragCancel = { horizontalDragDistance = 0f },
-        )
-    }
-}
-
-private const val SWIPE_SLOP_MULTIPLIER = 2.5f
 
 /** 切分类时的骨架：轮播 + 两组「标题 + 三张竖卡」，形状与真实首页对齐。 */
 @Composable
@@ -361,6 +365,8 @@ private fun EmptyFeed(state: HomeUiState.Empty, actions: HomeActions) {
             actions = actions,
             types = state.types,
             selectedTypeId = state.selectedTypeId,
+            // 空分类没有轮播图，顶栏底下就是页面底色：直接按"落地"态配色
+            coverProgress = 1f,
         )
         // 空分类也不整页黑：先轮播占位，最后一句提示。
         Spacer(Modifier.height(Spacing.md))

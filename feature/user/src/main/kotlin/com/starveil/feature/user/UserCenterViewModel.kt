@@ -9,6 +9,7 @@ import com.starveil.core.common.AppError
 import com.starveil.core.common.AppResult
 import com.starveil.core.data.AuthRepository
 import com.starveil.core.data.ContinueWatchingRepository
+import com.starveil.core.data.MessageRepository
 import com.starveil.core.data.PointsRepository
 import com.starveil.core.data.UserRepository
 import com.starveil.core.model.ContinueWatching
@@ -51,6 +52,8 @@ class UserCenterViewModel(
     private val pointsRepository: PointsRepository? = null,
     /** 观看记录的来源：与历史页、首页「继续观看」同一份，不另建接口。 */
     private val historyRepository: ContinueWatchingRepository? = null,
+    /** 消息中心：这里只用来取未读数，消息页自己持有仓库。 */
+    private val messageRepository: MessageRepository? = null,
     private val variant: UserCenterVariant = UserCenterVariant.A,
     private val memberEnabled: Boolean = true,
     /** 冷启动进页时 cookie 里已有的会话：首帧就按登录态渲染，不会先闪一下"未登录"。 */
@@ -160,6 +163,8 @@ class UserCenterViewModel(
 
     private fun load() {
         viewModelScope.launch {
+            // 未读数与登录态无关：游客也要能看到公告，所以先拉再判会话。
+            refreshUnread()
             val session = authRepository.restore()
             if (session == null) {
                 _state.update {
@@ -170,6 +175,19 @@ class UserCenterViewModel(
             _state.update { it.copy(session = session, isLoading = false) }
             fetchProfile()
             refreshHistory()
+        }
+    }
+
+    /**
+     * 未读消息数：只影响铃铛上的红点，失败就保持原值。
+     *
+     * 不为它弹错误、不把它并进整页的错误态——红点少亮一次远好过整页报错。
+     */
+    private suspend fun refreshUnread() {
+        val repository = messageRepository ?: return
+        val result = repository.unreadCount()
+        if (result is AppResult.Success<Int>) {
+            _state.update { it.copy(unreadMessages = result.value) }
         }
     }
 
@@ -272,6 +290,7 @@ class UserCenterViewModel(
             userRepository: UserRepository? = null,
             pointsRepository: PointsRepository? = null,
             historyRepository: ContinueWatchingRepository? = null,
+            messageRepository: MessageRepository? = null,
             /** 会员体系开关；关闭时会员卡只不出开通按钮。 */
             memberEnabled: Boolean = true,
             initialSession: Session? = null,
@@ -284,6 +303,7 @@ class UserCenterViewModel(
                     userRepository = userRepository,
                     pointsRepository = pointsRepository,
                     historyRepository = historyRepository,
+                    messageRepository = messageRepository,
                     variant = variant,
                     memberEnabled = memberEnabled,
                     initialSession = initialSession,

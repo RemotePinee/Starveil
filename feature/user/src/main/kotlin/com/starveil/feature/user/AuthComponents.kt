@@ -44,6 +44,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.input.KeyboardType
@@ -71,14 +72,24 @@ import com.starveil.core.designsystem.token.Spacing
 private const val FOCUS_OUTLINE_ALPHA = 0.45f
 
 /**
- * 输入框底色：半透明白，不用 surfaceCard / chipBackground。
+ * 输入框底色。
  *
- * 这两个令牌是"给纯色底叠一档"的暗色台阶，而登录页背景是 surface + 16% 品牌色渐变，
- * 台阶叠在同亮度上等于没叠——实测框内和框外都是 (54,40,49)，聚焦后只是描边多了圈粉。
- * 半透明白压在任何底色上都能往亮里走，换皮肤也不会跟背景融成一整块。
+ * 深色：半透明白压在暗底上往亮里推，换皮肤也不会和背景融成一块。
+ * 浅色：白框压白底就是"融色"（真机提过），换成实色容器台阶——不加边框，只靠底色分层。
  */
 private const val FIELD_ALPHA = 0.05f
 private const val FIELD_FOCUSED_ALPHA = 0.10f
+
+/** 背景亮度低于它算深色，与首页顶栏同一判据。 */
+private const val DARK_LUMINANCE = 0.5f
+
+@Composable
+private fun fieldBackground(focused: Boolean) =
+    if (MaterialTheme.colorScheme.background.luminance() < DARK_LUMINANCE) {
+        starveilExtraColors.onImage.copy(alpha = if (focused) FIELD_FOCUSED_ALPHA else FIELD_ALPHA)
+    } else {
+        starveilExtraColors.chipBackground
+    }
 
 /**
  * 三页共用的骨架：左上返回、右上文字动作、品牌标记、标题与一句副标题，下面接表单。
@@ -183,11 +194,7 @@ internal fun AuthTextField(
                 .fillMaxWidth()
                 .height(Spacing.control)
                 .clip(AppShape.extraLarge)
-                .background(
-                    starveilExtraColors.onImage.copy(
-                        alpha = if (focused) FIELD_FOCUSED_ALPHA else FIELD_ALPHA,
-                    ),
-                )
+                .background(fieldBackground(focused))
                 .border(
                     width = Spacing.hairline,
                     color = if (focused) focusOutline else Color.Transparent,

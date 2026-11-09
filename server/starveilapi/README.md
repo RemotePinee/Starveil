@@ -157,8 +157,10 @@ HLS 片源额外注意：签名只挂在 m3u8 上，`ts` 分片是相对地址�
 | `GET v1.main/links` | 快捷入口（最多 12 条） |
 | `GET v1.main/hot` | 首页热度榜（`position='hot'`） |
 | `GET v1.main/guess` | 首页猜你喜欢（`position='guess'`） |
-| `GET v1.main/push` | 推送条数（`{count:N}`），客户端按 `>0` 冒红点 |
-| `GET v1.main/version` | 版本检查（无更新时 data 为 null） |
+| `GET v1.main/push` | 未读条数（`{count:N}`，按当前用户算；未登录回全站广播总数） |
+| `GET v1.main/messages` | 消息中心：公告 / 推送列表 `{list,total,unread}`，`page`/`size`（≤50），置顶在前 |
+| `POST v1.main/messageRead` | 批量标记已读（`{"ids":[1,2,3]}`），未登录回 `code=401` |
+| `GET v1.main/version` | 在线更新：`{code,name,url,sha256,force,changelog}`，`code=0` 表示没配 |
 | `POST v1.auth/login` | 登录，下发 7 个 cookie |
 | `POST v1.auth/register` | 注册 |
 | `GET v1.auth/registerSms` · `findpassSms` · `findpass` | 验证码与找回密码 |
@@ -291,7 +293,7 @@ v2.2.0 起，首页的轮播、编辑精选、专区、快捷入口不再依赖 
 | `ads.sdk_excitation` | 关 | 激励视频：`ad_enabled=1` **且** `ad_slot_reward` 非空才下发 `status=1` |
 | `player_ad` | 空结构 | 播放器广告，`PlayerAd::payload()`；后台「播放器广告」 |
 | `detail_sections` | 全开 | `{recommend,score,comment}`，取后台「运营设置 → 详情页」三个开关 |
-| `push` | `0` | 推送条数，客户端按 `>0` 冒红点 |
+| `push` | `0` | 未读条数，与 `v1.main/push` 同口径（按当前用户；未登录=全站广播总数） |
 | `push_enabled` | `1` | 为 `0` 时客户端不展示推送入口 |
 
 ### 短剧广告解锁（SSV）
@@ -538,8 +540,8 @@ php addons/starveilapi/tools/install.php
 | 专题 | 新建、删除、绑定影片 |
 | 直播 | 新增、删除 |
 | 播放器广告 | 广告位选择、HTML 代码与超时、角标地址/点击跳转、暂停图/跳转、历史入口（`?a=playerad`） |
-| 推送 | 发布推送（标题 + 内容）并查看条数（`?a=push`） |
-| 版本 | 维护 `v1.main/version` 返回的版本信息（`?a=version`） |
+| 消息推送 | 发公告 / 推送：类型、模板、封面、角标、按钮文案、跳转、置顶、强制（`?a=push`） |
+| 版本更新 | 维护 `v1.main/version` 的版本号、APK 地址、sha256、强制更新（`?a=version`） |
 | 游戏位 | 维护 `v1.youxi/index` 的游戏位配置（`?a=youxi`） |
 | 支付 | 通道增删改（易支付）、启用/停用、回调地址一键复制 |
 | 提现审核 | 通过 / 拒绝（拒绝自动退回金币） |

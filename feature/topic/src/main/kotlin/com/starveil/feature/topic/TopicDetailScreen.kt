@@ -29,7 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
+import com.starveil.core.designsystem.component.PosterImage
 import com.starveil.core.designsystem.component.StarveilLoadingScreen
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
@@ -81,8 +81,8 @@ fun TopicDetailScreen(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+    Box(modifier = modifier.fillMaxSize().statusBarsPadding()) {
+        Box(modifier = Modifier.fillMaxSize()) {
             when (state) {
                 is TopicDetailUiState.Loading -> StarveilLoadingScreen()
 
@@ -146,14 +146,13 @@ private fun TopicHeader(detail: TopicDetail) {
 
 @Composable
 private fun TopicHeaderContent(detail: TopicDetail) {
-    AsyncImage(
-        model = detail.poster,
+    PosterImage(
+        url = detail.poster,
         contentDescription = detail.name,
-        contentScale = ContentScale.Crop,
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(TOPIC_COVER_ASPECT)
-            .clip(AppShape.medium),
+            .aspectRatio(TOPIC_COVER_ASPECT),
+        shape = AppShape.medium,
     )
     Text(
         text = detail.name,
@@ -194,14 +193,13 @@ private fun VodCard(vod: Vod, onClick: () -> Unit) {
 
 @Composable
 private fun VodCardContent(vod: Vod) {
-    AsyncImage(
-        model = vod.poster,
+    PosterImage(
+        url = vod.poster,
         contentDescription = vod.name,
-        contentScale = ContentScale.Crop,
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(VOD_POSTER_ASPECT)
-            .clip(AppShape.medium),
+            .aspectRatio(VOD_POSTER_ASPECT),
+        shape = AppShape.medium,
     )
     Text(
         text = vod.name,

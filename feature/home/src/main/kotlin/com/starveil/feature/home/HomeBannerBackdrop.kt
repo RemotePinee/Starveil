@@ -7,22 +7,26 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntOffset
 import coil3.compose.AsyncImage
 import com.starveil.core.designsystem.component.blurredImageRequest
-import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.Motion
 import com.starveil.core.model.HomeBanner
+import kotlin.math.roundToInt
 
 /**
  * 轮播 pager 由首页宿主创建，背景层与轮播卡片共用同一个。
@@ -43,45 +47,59 @@ private const val BACKDROP_HEIGHT_FRACTION = 0.40f
 /** 往下到这里开始收回页面底色，保证任何设备上都不会在卡底边之外露出模糊图。 */
 private const val BACKDROP_TAIL_START = 0.86f
 
-/** 顶部压暗：深色要压得住状态栏白图标。 */
-private const val BACKDROP_TOP_ALPHA = 0.72f
 
-/** 浅色压得浅一档：压深了整块顶部发灰，压浅了白字读不出来。 */
-private const val BACKDROP_TOP_ALPHA_LIGHT = 0.45f
+/** 首页第一项：轮播所在的位置。 */
+private const val BANNER_ITEM_INDEX = 0
 
-/** 背景亮度低于它就算深色。 */
-private const val DARK_LUMINANCE = 0.5f
-
+/**
+ * 轮播这一项已经滚出视口多少像素。
+ *
+ * 抠洞钉在列表顶部、露出的就是模糊底；模糊底如果不跟着走，同一块屏幕位置每帧透出
+ * 不同的像素，看着就是"底下漏出一块糊色"。
+ */
+@Composable
+internal fun rememberBannerScrollPx(listState: LazyListState): Float {
+    val scroll by remember(listState) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val banner = info.visibleItemsInfo.firstOrNull { it.index == BANNER_ITEM_INDEX }
+            when {
+                banner != null -> -banner.offset.toFloat()
+                info.visibleItemsInfo.isNotEmpty() -> info.viewportSize.height.toFloat()
+                else -> 0f
+            }.coerceAtLeast(0f)
+        }
+    }
+    return scroll
+}
 
 /**
  * 首页顶部轮播的同图底色。
  *
  * 取当前页那一张图，走 [blurredImageRequest] 拿小尺寸模糊图铺满顶部，切页淡入，
- * 顶部的颜色于是跟着轮播走。明暗两种模式的差别只在"压暗还是压白"：
- * - 深色：压一层黑，状态栏白图标读得出来，往下收到透明；
- * - 浅色：压一层页面底色，把剧照调成淡彩，深色文字读得出来。
+ * 顶部的颜色于是跟着轮播走。顶部的压暗不在这里：它由状态栏与顶栏那两层固定渐隐负责，
+ * 这一层只负责"图后面那层颜色"，并跟着轮播卡一起上移。
  *
- * 收尾一律收到**透明**而不是纯色：轮播卡顶部用同一个 alpha 接上，接缝两侧亮度一致，
- * 才不会在卡顶边说出现一条线。
+ * @param scrollOffsetPx 轮播已经滚出的像素：整层按它上移，和轮播卡保持同步
  */
 @Composable
 internal fun HomeBannerBackdrop(
     banners: List<HomeBanner>,
     pager: PagerState,
     modifier: Modifier = Modifier,
+    scrollOffsetPx: Float = 0f,
 ) {
     val context = LocalContext.current
     val pic = banners.getOrNull(pager.currentPage)?.pic.orEmpty()
     val request = remember(context, pic) {
-        pic.takeIf(String::isNotBlank)?.let { blurredImageRequest(context, it) }
+        pic.takeIf { it.isNotBlank() }?.let { blurredImageRequest(context, it) }
     }
-    // 模糊两种模式都铺：这是首页的主角，切轮播顶部要跟着换色。
-    // 明暗用背景色亮度判断，和下面 Card 的口径一致——读 LocalIsDarkTheme 曾拿到过旧值，
-    // 结果背景是深色、分支却走浅色，压暗整层失效。
     Box(
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight(BACKDROP_HEIGHT_FRACTION)
+            // 跟轮播卡同速退场：卡片是 LazyColumn 第一项，位移就是滚动像素
+            .offset { IntOffset(0, -scrollOffsetPx.roundToInt()) }
             .background(MaterialTheme.colorScheme.background),
     ) {
         Crossfade(
@@ -107,18 +125,10 @@ internal fun HomeBannerBackdrop(
             modifier = Modifier
                 .fillMaxSize()
                 .background(
-                    // 顶部压暗到底、过渡全部交给图片自己的 alpha（卡片顶部有抠洞）。
-                    // 压多深只跟明暗有关：深色底要压得住状态栏白图标，浅色底压太深就灰了。
+                    // 末段收回页面底色：底色一定在卡底边之前盖住，
+                    // 任何屏高上都不会露出模糊图的暗部。
                     Brush.verticalGradient(
-                        0f to starveilExtraColors.scrimStrong.copy(
-                            alpha = if (MaterialTheme.colorScheme.background.luminance() < DARK_LUMINANCE) {
-                                BACKDROP_TOP_ALPHA
-                            } else {
-                                BACKDROP_TOP_ALPHA_LIGHT
-                            },
-                        ),
-                        // 中段完全交给模糊图，末段收回页面底色：
-                        // 底色一定在卡底边之前盖住，任何屏高上都不会露出模糊图的暗部。
+                        0f to Color.Transparent,
                         BACKDROP_TAIL_START to Color.Transparent,
                         1f to MaterialTheme.colorScheme.background,
                     ),

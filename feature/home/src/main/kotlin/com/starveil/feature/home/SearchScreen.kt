@@ -39,7 +39,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import coil3.compose.AsyncImage
+import com.starveil.core.designsystem.component.PosterImage
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -92,9 +92,10 @@ fun SearchScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding(),
     ) {
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+        Column(modifier = Modifier.fillMaxSize()) {
             SearchHeader(query = state.query, onQueryChange = actions.onQueryChange, onBack = actions.onBack)
             when {
                 state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -309,14 +310,13 @@ private fun SearchRow(vod: Vod, onClick: () -> Unit) {
             .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AsyncImage(
-            model = vod.poster,
+        PosterImage(
+            url = vod.poster,
             contentDescription = vod.name,
-            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .width(Spacing.xxl + Spacing.lg)
-                .height(Spacing.xxl + Spacing.xxl + Spacing.lg)
-                .clip(AppShape.small),
+                .height(Spacing.xxl + Spacing.xxl + Spacing.lg),
+            shape = AppShape.small,
         )
         Column(
             modifier = Modifier

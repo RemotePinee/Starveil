@@ -43,6 +43,13 @@ internal data class BottomTabSpec(
     val selectedRoute: String,
     val label: String,
     val icon: String,
+    /**
+     * 点进去必须已有账号（会员售卖 / 卡密）。
+     *
+     * 以前在点击处拿 route 跟 `PAY_ROUTE_PATTERN` 比字符串；后台能把任意栏位改成
+     * `mode = vip`，那种栏位也得拦，所以标记在生成 spec 时一次算好，点击处只管用。
+     */
+    val requiresAccount: Boolean = false,
 )
 
 /**
@@ -80,18 +87,20 @@ private fun defaultBottomTabSpecs(secondTab: SecondTab): List<BottomTabSpec> = l
         icon = if (secondTab == SecondTab.TOPIC) "topic" else "live",
     ),
     BottomTabSpec(RANK_TAB, RANK_ROUTE, RANK_ROUTE, "榜单", "rank"),
-    BottomTabSpec(MEMBER_TAB, payRoute(), PAY_ROUTE_PATTERN, "会员", "vip"),
+    BottomTabSpec(MEMBER_TAB, payRoute(), PAY_ROUTE_PATTERN, "会员", "vip", requiresAccount = true),
     BottomTabSpec(MINE_TAB, UserNavigation.USER_CENTER_ROUTE, UserNavigation.USER_CENTER_ROUTE, "我的", "user"),
 )
-
 private fun BottomTab.toSpec(): BottomTabSpec? {
     val route = routeOf(this) ?: return null
+    val mode = mode.ifBlank { defaultModeOf(id) }
     return BottomTabSpec(
         id = id,
         route = route,
-        selectedRoute = if (id == MEMBER_TAB) PAY_ROUTE_PATTERN else route,
+        selectedRoute = if (mode == "vip") PAY_ROUTE_PATTERN else route,
         label = label.ifBlank { defaultLabel(id, mode) },
         icon = icon.ifBlank { id },
+        // 任意栏位被后台改成 vip 都要按会员售卖拦，不再只认 id
+        requiresAccount = mode == "vip",
     )
 }
 

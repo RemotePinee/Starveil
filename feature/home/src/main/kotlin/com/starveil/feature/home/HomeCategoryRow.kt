@@ -25,6 +25,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Modifier
@@ -62,6 +63,8 @@ fun CategoryChips(
     modifier: Modifier = Modifier,
     /** 首尾留白；并排在搜索框右边时收窄，避免和搜索框之间空一条。 */
     leadingPadding: Dp = Spacing.lg,
+    /** 0 = 压在轮播图上（白字），1 = 落在页面底色上（深色字）。 */
+    coverProgress: Float = 0f,
 ) {
     val entries = remember(types) { listOf(VodType(id = 0, name = "首页")) + types }
     val scrollState = rememberScrollState()
@@ -126,6 +129,7 @@ fun CategoryChips(
                 CategoryChip(
                     label = type.name,
                     selected = type.id == selectedTypeId,
+                    coverProgress = coverProgress,
                     onClick = { onSelect(type.id) },
                 )
             }
@@ -163,7 +167,12 @@ internal fun BoxScope.CategoryEdgeFade(visible: Boolean, fromStart: Boolean) {
  * 未选中项缩回原尺寸并压暗。点击不带水波纹——这里不是按钮，留个方框很难看。
  */
 @Composable
-private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun CategoryChip(
+    label: String,
+    selected: Boolean,
+    coverProgress: Float,
+    onClick: () -> Unit,
+) {
     val scale by animateFloatAsState(
         targetValue = if (selected) SELECTED_SCALE else 1f,
         animationSpec = spring(
@@ -172,12 +181,13 @@ private fun CategoryChip(label: String, selected: Boolean, onClick: () -> Unit) 
         ),
         label = "category-chip-scale",
     )
-    // 顶部压着剧照模糊（两套一样），文字统一用白系。
+    // 压在剧照模糊上是白系；轮播滚走、底下变成页面底色后换成正文色。
+    // 两套按 coverProgress 插值：浅色模式下不会白字压浅底，深色模式两头都是浅色，看不出变化。
     val textColor by animateColorAsState(
         targetValue = if (selected) {
-            starveilExtraColors.onImage
+            lerp(starveilExtraColors.onImage, MaterialTheme.colorScheme.onBackground, coverProgress)
         } else {
-            starveilExtraColors.onImageFaint
+            lerp(starveilExtraColors.onImageFaint, starveilExtraColors.textMuted, coverProgress)
         },
         animationSpec = tween(Motion.MediumMs),
         label = "category-chip-text",

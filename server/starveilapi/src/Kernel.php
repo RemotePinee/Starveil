@@ -45,7 +45,10 @@ final class Kernel
             'getGuess',
             'getCategory',
             'getLinks',
+            // 消息中心：列表对游客开放（公告），标记已读只对登录用户生效（见 MainController）
             'getPush',
+            'getMessages',
+            'postMessageRead',
         ],
         'auth' => [
             'postLogin',

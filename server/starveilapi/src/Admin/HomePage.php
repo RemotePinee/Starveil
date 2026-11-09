@@ -430,7 +430,7 @@ final class HomePage extends BasePage
      */
     private function uploadLinkBg(): ?string
     {
-        $file = Media::upload('bg_file', 'links');
+        $file = Media::upload('bg_file', Media::DIR);
         if ($file === null && !$this->isCli && !empty($_FILES['bg_file']['name'])) {
             session('sv_link_error', '图片上传失败');
         }

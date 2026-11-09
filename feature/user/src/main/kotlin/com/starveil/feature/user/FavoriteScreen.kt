@@ -1,6 +1,7 @@
 package com.starveil.feature.user
 
 import android.widget.Toast
+import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -99,34 +100,39 @@ private fun FavoriteContent(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding(),
     ) {
-        Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-            when {
-                state.needsLogin -> PagePlaceholder(
-                    title = "登录后查看收藏",
-                    detail = "收藏需要登录后才能同步到账号",
-                    actionLabel = "去登录",
-                    onAction = actions.onLoginClick,
-                )
+        Box(modifier = Modifier.fillMaxSize()) {
+            // 状态之间交叉淡入：硬切时加载环消失、占位文案出现是同一帧完成的，
+            // 视觉上像内容跳了一下。淡入把这一下摊开，重心变化不再突兀。
+            Crossfade(targetState = state.phase(), label = "favorite-phase") { phase ->
+                when (phase) {
+                    FavoritePhase.Login -> PagePlaceholder(
+                        title = "登录后查看收藏",
+                        detail = "收藏需要登录后才能同步到账号",
+                        actionLabel = "去登录",
+                        onAction = actions.onLoginClick,
+                    )
 
-                state.isInitialLoading -> StarveilLoadingScreen()
+                    FavoritePhase.Loading -> StarveilLoadingScreen()
 
-                state.isError -> PagePlaceholder(
-                    title = "收藏加载失败",
-                    detail = state.errorMessage.orEmpty(),
-                    actionLabel = "重试",
-                    onAction = actions.onRetry,
-                )
+                    FavoritePhase.Error -> PagePlaceholder(
+                        title = "收藏加载失败",
+                        detail = state.errorMessage.orEmpty(),
+                        actionLabel = "重试",
+                        onAction = actions.onRetry,
+                    )
 
-                state.isEmpty -> PagePlaceholder(
-                    title = "还没有收藏",
-                    detail = "在详情页点收藏，影片就会出现在这里",
-                    actionLabel = "返回",
-                    onAction = actions.onBack,
-                )
+                    FavoritePhase.Empty -> PagePlaceholder(
+                        title = "还没有收藏",
+                        detail = "在详情页点收藏，影片就会出现在这里",
+                        actionLabel = "返回",
+                        onAction = actions.onBack,
+                    )
 
-                else -> FavoriteList(state = state, actions = actions)
+                    FavoritePhase.List -> FavoriteList(state = state, actions = actions)
+                }
             }
         }
     }
@@ -312,3 +318,19 @@ private const val FOOTER_KEY = "favorite_footer"
 private const val POSTER_WIDTH_FRACTION = 0.28f
 private const val POSTER_ASPECT_RATIO = 2f / 3f
 
+
+/**
+ * 页面当前处于哪一态。
+ *
+ * 只给 `Crossfade` 当动画 key 用——直接把整份 `FavoriteUiState` 交给 Crossfade，
+ * 每次列表刷新都会触发一次整页淡入，那比硬切更晃眼。
+ */
+internal enum class FavoritePhase { Login, Loading, Error, Empty, List }
+
+internal fun FavoriteUiState.phase(): FavoritePhase = when {
+    needsLogin -> FavoritePhase.Login
+    isInitialLoading -> FavoritePhase.Loading
+    isError -> FavoritePhase.Error
+    isEmpty -> FavoritePhase.Empty
+    else -> FavoritePhase.List
+}

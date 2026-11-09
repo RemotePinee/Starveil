@@ -58,6 +58,8 @@
       setActive(data.page);
       if (push !== false) { history.replaceState(null, '', '?a=' + data.page); }
       bindForms();
+      // 换页后表单是新的：通知卡片字段的显隐逻辑重新跑一次（监听器在文件末尾）
+      document.dispatchEvent(new Event('starveil:page'));
     }).catch(function () { busy(false); toast('网络错误，请重试', true); });
   }
 
@@ -372,4 +374,55 @@
     }
   });
   tabVisibleLimit();
+})();
+
+/* 图库选图：点缩略图把它的相对路径写进同表单的「背景图地址」输入框。
+   不另开字段——服务端只认一个来源，避免"选了图库、地址框里还是旧地址"这种二义。
+   输入框本身仍可手改，选图只是省掉手抄路径。 */
+(function () {
+  document.addEventListener('click', function (e) {
+    var pick = e.target.closest('[data-cover-pick]');
+    if (!pick) { return; }
+    var form = pick.closest('form');
+    var input = form && form.querySelector('input[name="cover"]');
+    if (!input) { return; }
+    input.value = pick.getAttribute('data-cover-pick') || '';
+    // 选中态：一排里只留一个高亮，避免以为能多选
+    var cells = form.querySelectorAll('[data-cover-pick]');
+    for (var i = 0; i < cells.length; i += 1) {
+      cells[i].classList.toggle('sv-pick-on', cells[i] === pick);
+    }
+  });
+})();
+
+/* 卡片模板专属字段：按「模板」下拉的当前值显隐。
+   用类切换（.sv-collapsed）而不是 hidden/display，是为了让 max-height 过渡跑起来，
+   切模板时字段是"收起 / 展开"而不是"啪一下消失"。页面内容是 AJAX 换进来的，
+   所以监听放在 document 上做事件委托，换页后不需要重新绑定。 */
+(function () {
+  function syncCardOnly(select) {
+    var form = select.closest('form');
+    if (!form) { return; }
+    var isCard = select.value === 'card';
+    var fields = form.querySelectorAll('[data-card-only]');
+    for (var i = 0; i < fields.length; i += 1) {
+      fields[i].classList.toggle('sv-collapsed', !isCard);
+    }
+  }
+  function initCardOnly() {
+    var selects = document.querySelectorAll('select[name="template"]');
+    for (var i = 0; i < selects.length; i += 1) {
+      if (selects[i].getAttribute('data-card-sync') === '1') { continue; }
+      selects[i].setAttribute('data-card-sync', '1');
+      syncCardOnly(selects[i]);
+    }
+  }
+  document.addEventListener('change', function (e) {
+    var sel = e.target;
+    if (!sel || sel.name !== 'template') { return; }
+    syncCardOnly(sel);
+  });
+  // 页面内容被 AJAX 换掉后，新表单里的 select 还没同步过，这里补跑一次
+  document.addEventListener('starveil:page', initCardOnly);
+  initCardOnly();
 })();

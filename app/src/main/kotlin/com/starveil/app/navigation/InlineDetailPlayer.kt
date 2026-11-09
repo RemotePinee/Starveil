@@ -255,7 +255,6 @@ private fun InlinePlayerRoute(
     }
     // 方向切换是 Activity 的事；"收起详情正文"要等真的横过来（fillStage 为真）再通知，
     // 由 LaunchedEffect 跟着转屏走，而不是只在点击那一刻判断一次
-    LaunchedEffect(state.isFullscreen) { context.applyPlayerFullscreen(state.isFullscreen) }
     LaunchedEffect(fillStage) { callbacks.onFullscreenChange(fillStage) }
     // 全屏由播放页报告，方向由宿主 Activity 切：这里只是转发给 Activity 与详情页顶栏
     DisposableEffect(Unit) {
@@ -264,8 +263,6 @@ private fun InlinePlayerRoute(
             callbacks.onFullscreenChange(false)
         }
     }
-    LaunchedEffect(state.isFullscreen) { context.applyPlayerFullscreen(state.isFullscreen) }
-    LaunchedEffect(fillStage) { callbacks.onFullscreenChange(fillStage) }
     // 播放器内部换集（含自动下一集）时通知详情页，选集条跟着切，不然两边显示对不上
     LaunchedEffect(state.episodeIndex) { callbacks.onEpisodeChanged(state.episodeIndex) }
     // 支付/积分买断回来重查一次权限：详情页内嵌播放器不会重建，闸门必须自己刷

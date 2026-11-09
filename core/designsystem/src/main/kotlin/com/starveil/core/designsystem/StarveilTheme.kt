@@ -59,6 +59,14 @@ fun StarveilTheme(
 val LocalIsDarkTheme = staticCompositionLocalOf { true }
 
 /**
+ * 启动层（开屏品牌层）是不是还盖在最上面。
+ *
+ * 它盖着时，整块屏幕属于开屏、不属于首页：状态栏图标要跟着开屏走，
+ * 首页滚动那套配色必须让位，否则"首页顶栏压着剧照用白图标"会把开屏的白底配成白图标。
+ */
+val LocalSplashCovering = staticCompositionLocalOf { false }
+
+/**
  * 默认皮肤的语义色映射。其它皮肤见 [SkinPalettes]，这里保留旧名字作为过渡入口。
  */
 internal val StarveilLightColors: ColorScheme
@@ -69,15 +77,15 @@ internal val StarveilLightColors: ColorScheme
  */
 private val StarveilTypography = Typography(
     // 海报叠字 / 页面主标题：字重要够，行高收紧，避免"网站感"
-    displaySmall = TextStyle(fontSize = 26.sp, lineHeight = 32.sp, fontWeight = FontWeight.Bold),
-    headlineMedium = TextStyle(fontSize = 22.sp, lineHeight = 28.sp, fontWeight = FontWeight.Bold),
-    headlineSmall = TextStyle(fontSize = 19.sp, lineHeight = 25.sp, fontWeight = FontWeight.SemiBold),
-    titleLarge = TextStyle(fontSize = 17.sp, lineHeight = 23.sp, fontWeight = FontWeight.SemiBold),
-    titleMedium = TextStyle(fontSize = 15.sp, lineHeight = 21.sp, fontWeight = FontWeight.Medium),
-    bodyMedium = TextStyle(fontSize = 13.sp, lineHeight = 19.sp),
-    bodySmall = TextStyle(fontSize = 11.5.sp, lineHeight = 16.sp),
-    labelMedium = TextStyle(fontSize = 11.sp, lineHeight = 15.sp),
-    labelSmall = TextStyle(fontSize = 10.sp, lineHeight = 13.sp),
+    displaySmall = TextStyle(fontSize = 27.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
+    headlineMedium = TextStyle(fontSize = 23.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
+    headlineSmall = TextStyle(fontSize = 20.sp, lineHeight = 27.sp, fontWeight = FontWeight.SemiBold),
+    titleLarge = TextStyle(fontSize = 18.sp, lineHeight = 25.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontSize = 16.sp, lineHeight = 22.sp, fontWeight = FontWeight.Medium),
+    bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 20.sp),
+    bodySmall = TextStyle(fontSize = 12.5.sp, lineHeight = 17.sp),
+    labelMedium = TextStyle(fontSize = 12.sp, lineHeight = 16.sp),
+    labelSmall = TextStyle(fontSize = 11.sp, lineHeight = 14.sp),
 )
 
 /** 扩展语义色访问入口。页面用它取品牌色，不直接引用 Palette。 */

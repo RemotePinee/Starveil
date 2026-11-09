@@ -38,4 +38,7 @@ object UserNavigation {
 
     /** 反馈（`v1.gbook` 留言板）。 */
     const val FEEDBACK_ROUTE = "feedback"
+
+    /** 消息中心：公告与推送混排，入口是「我的」顶栏铃铛。 */
+    const val MESSAGES_ROUTE = "messages"
 }

@@ -67,8 +67,10 @@ internal fun PlayerChromeIdle(state: PlayerUiState, page: PlayerPageState) {
 internal data class ChromeExtras(
     /** 播放位置：只在底栏的时间与进度条叶子里读。 */
     val position: State<Long>,
-    /** 全屏且横屏才算沉浸（见 [rememberImmersive]）。 */
+    /** 全屏且横屏才算沉浸（见 [isImmersive]）。 */
     val immersive: Boolean,
+    /** 已生效的全屏态：全屏图标与倍速胶囊跟它走（见 [rememberSettledFullscreen]）。 */
+    val fullscreen: Boolean,
 )
 
 /**
@@ -87,11 +89,20 @@ internal fun PlayerChrome(
     if (state.isBlocked) return
     val danmuPrefs = page.danmuPrefs
     val shown = chromeShownOf(page.chrome.visible, page.sheet)
-    val config = remember(shown, extras.immersive, danmuPrefs.enabled, actions, page.chrome, state.speed) {
+    val config = remember(
+        shown,
+        extras.immersive,
+        extras.fullscreen,
+        danmuPrefs.enabled,
+        actions,
+        page.chrome,
+        state.speed,
+    ) {
         ChromeConfig(
             visible = shown,
             danmuEnabled = danmuPrefs.enabled,
             immersive = extras.immersive,
+            fullscreen = extras.fullscreen,
             onInteract = { page.chrome.show() },
             onToggleDanmu = { danmuPrefs.enabled = !danmuPrefs.enabled },
             onOpenSheet = { page.sheet = it },

@@ -76,6 +76,15 @@ data class StarveilExtraColors(
      * 同样固定白系、不跟明暗——它压在海报 / 封面上，浅色主题下改成深色就糊进画面了。
      */
     val onImageFaint: Color = Palette.White70,
+
+    /**
+     * 压在图片上的**不透明深色底**：卡片式弹窗的文字区、图底渐变的收尾色都用它。
+     *
+     * 固定中性深灰、不跟明暗，也不用 `scrim`（那是 90% 透明的黑）：
+     * 浅色主题下换 Paper 底会让白字消失，纯黑又和海报的暖色画面撞成一块死色，
+     * 只有中性深灰压得住图，同时看得出是"卡片"而不是"黑洞"。
+     */
+    val onImageSurface: Color = Palette.Ink850,
     /** 视频上圆形播放控件的半透明底色；不随页面明暗改变。 */
     val playerControlBackground: Color = Palette.ScrimMid,
     /**

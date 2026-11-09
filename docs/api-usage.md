@@ -27,7 +27,10 @@
 | `v1.main/featured` | GET | `HomeContentApi` | 编辑精选 |
 | `v1.main/hot` | GET | `HomeContentApi` | 热度榜 |
 | `v1.main/guess` | GET | `HomeContentApi` | 猜你喜欢 |
-| `v1.main/push` | GET | `HomeContentApi` | 推送条数，只回 `{count}`，用于红点 |
+| `v1.main/push` | GET | `HomeContentApi` | 未读条数（按用户），只回 `{count}`，用于红点 |
+| `v1.main/messages` | GET | 待接入 | 消息中心 `{list,total,unread}`；DTO 见 `MessageDto.kt` |
+| `v1.main/messageRead` | POST | 待接入 | 批量标记已读 `{"ids":[...]}`，需登录 |
+| `v1.main/version` | GET | 待接入 | 在线更新 `{code,name,url,sha256,force,changelog}`；`code=0` 跳过 |
 
 ### 1.2 影片
 

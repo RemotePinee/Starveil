@@ -111,8 +111,8 @@ private fun FilterChip(
 private fun ChipLabel(label: String, selected: Boolean) {
     Text(
         text = label,
-        // 比正文小一档：一行六个维度叠起来，16sp 会显得压迫
-        style = MaterialTheme.typography.bodyLarge.copy(fontSize = 15.sp),
+        // 用正文档而不是 bodyLarge：一行六个维度叠起来，再大一档就压迫
+        style = MaterialTheme.typography.bodyMedium,
         fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
         color = if (selected) {
             MaterialTheme.colorScheme.onPrimary

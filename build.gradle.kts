@@ -193,6 +193,8 @@ val verifySecurityBaseline by tasks.registering {
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.WAKE_LOCK",
+        // 在线更新：下载完成后拉起系统安装器（用户还要在系统设置里再授权一次）
+        "android.permission.REQUEST_INSTALL_PACKAGES",
     )
 
     // 扫描范围：kt/java/xml/kts/properties/toml 之外还要算上 php —— 插件服务端在

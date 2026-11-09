@@ -63,6 +63,7 @@ private fun UserCenterRoute(nav: NavHostController, container: AppContainer) {
             variant = variant,
             userRepository = container.userRepository,
             pointsRepository = container.pointsRepository,
+            messageRepository = container.messageRepository,
             historyRepository = container.continueWatchingRepository,
             memberEnabled = memberEnabled,
             initialSession = container.sessionSnapshot(),
@@ -78,8 +79,16 @@ private fun UserCenterRoute(nav: NavHostController, container: AppContainer) {
         viewModel = userCenterViewModel,
         actions = UserCenterActions(
             onLoginClick = { nav.openUserCenterEntry(container, loginPrompt) },
-            onEntryClick = { label -> nav.handleUserEntry(label, memberEnabled, context) },
+            // 收藏 / 设置 / 积分 / 提现 / 会员：未登录直接弹登录层，不进页面再显示"去登录"
+            onEntryClick = { label ->
+                if (session?.isLoggedIn == true || !entryRequiresAccount(label)) {
+                    nav.handleUserEntry(label, memberEnabled, context)
+                } else {
+                    loginPrompt.show(LoginReason.GENERAL)
+                }
+            },
             onHistoryClick = { item -> nav.openContinueWatching(container, item, scope) },
+            onOpenMessages = { nav.navigate(UserNavigation.MESSAGES_ROUTE) },
             onLogoutClick = {
                 userCenterViewModel.logout()
                 container.onSignedOut()
@@ -88,6 +97,8 @@ private fun UserCenterRoute(nav: NavHostController, container: AppContainer) {
         ),
     )
 }
+
+
 
 /**
  * 「我的」页的登录入口：已登录进「个人资料」，未登录弹登录层。

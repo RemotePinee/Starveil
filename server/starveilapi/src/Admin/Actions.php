@@ -20,6 +20,7 @@ use Starveil\Api\Admin\Page\PayPage;
 use Starveil\Api\Admin\Page\SettingsPage;
 use Starveil\Api\Admin\Page\TopicsPage;
 use Starveil\Api\Admin\Page\UsersPage;
+use Starveil\Api\Admin\Page\VersionPage;
 use Starveil\Api\Admin\Page\WithdrawPage;
 
 final class Actions
@@ -68,6 +69,7 @@ final class Actions
             'topics' => new TopicsPage($this->csrf, $this->isCli),
             'live' => new LivePage($this->csrf, $this->isCli),
             'push' => new PushPage($this->csrf, $this->isCli),
+            'version' => new VersionPage($this->csrf, $this->isCli),
             'pay' => new PayPage($this->csrf, $this->isCli),
             'withdraw' => new WithdrawPage($this->csrf, $this->isCli),
             'orders' => new OrdersPage($this->csrf, $this->isCli),

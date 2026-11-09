@@ -5,13 +5,17 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.starveil.app.AppContainer
 import com.starveil.app.R
+import com.starveil.app.dialog.AppDialogKind
+import com.starveil.app.dialog.DialogRequest
 import com.starveil.core.model.StartupConfig
 
 /**
@@ -36,23 +40,33 @@ internal fun AdConsentGate(
     // 开屏还在时先不弹：Dialog 是独立 window，会直接压在开屏图上。
     val splashActive = LocalSplashActive.current
     var prompt by remember { mutableStateOf(AdConsentStore.needsPrompt(context)) }
-    if (!prompt || splashActive) return
+    if (!prompt) return
+
+    val request = remember { DialogRequest(AppDialogKind.Consent, CONSENT_KEY) }
+    val scheduler = container.dialogScheduler
+    val current by scheduler.current.collectAsStateWithLifecycle()
+
+    // 开屏退场后才入队：让调度器决定"现在是不是轮到我"，而不是自己抢窗口
+    LaunchedEffect(splashActive) {
+        if (!splashActive) scheduler.offer(request)
+    }
+    if (splashActive || current?.key != request.key) return
+
     val fallback = stringResource(R.string.ad_consent_body)
     AdConsentDialog(
         body = text.ifBlank { fallback },
         onOpenPolicy = privacyUrl.takeIf { it.isNotBlank() }?.let { url -> { context.openPolicy(url) } },
         onAgree = {
             AdConsentStore.grant(context)
-            prompt = false
-            container.refreshAdGateway()
-        },
-        onDecline = {
-            AdConsentStore.decline(context)
+            scheduler.complete(request)
             prompt = false
             container.refreshAdGateway()
         },
     )
 }
+
+/** 隐私同意的频控 key：全局唯一，标记过一次就永不再弹。 */
+private const val CONSENT_KEY = "consent"
 
 /**
  * 启动配置到位后才组合 [AdConsentGate]。

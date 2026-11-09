@@ -2,6 +2,7 @@ package com.starveil.app
 
 import android.app.Application
 import com.airbnb.lottie.LottieCompositionFactory
+import com.starveil.core.designsystem.token.Motion
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -9,6 +10,7 @@ import coil3.ImageLoader
 import coil3.PlatformContext
 import coil3.SingletonImageLoader
 import coil3.memory.MemoryCache
+import coil3.request.crossfade
 
 /**
  * 应用入口。刻意保持极薄：
@@ -77,6 +79,9 @@ class StarveilApplication : Application(), SingletonImageLoader.Factory {
                     .maxSizePercent(context, IMAGE_MEMORY_CACHE_PERCENT)
                     .build()
             }
+            // 图从空位"跳"出来是首页最扎眼的一处生硬：统一补一段淡入，
+            // 磁盘/网络回来的图都是渐出来的。命中内存缓存不会重放，滑动时不拖影。
+            .crossfade(Motion.ShortMs)
             .build()
 
     private companion object {

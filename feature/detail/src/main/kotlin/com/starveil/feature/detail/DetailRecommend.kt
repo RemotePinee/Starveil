@@ -19,7 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
-import coil3.compose.AsyncImage
+import com.starveil.core.designsystem.component.PosterImage
 import com.starveil.core.designsystem.component.SectionHeader
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
@@ -70,15 +70,13 @@ private fun RecommendCard(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.clickable(onClick = onClick)) {
-        AsyncImage(
-            model = vod.poster,
+        PosterImage(
+            url = vod.poster,
             contentDescription = vod.name,
-            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(POSTER_ASPECT_RATIO)
-                .clip(AppShape.medium)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .aspectRatio(POSTER_ASPECT_RATIO),
+            shape = AppShape.medium,
         )
         CardText(vod = vod)
     }

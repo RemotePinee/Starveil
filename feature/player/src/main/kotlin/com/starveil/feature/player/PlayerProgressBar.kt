@@ -25,11 +25,11 @@ import androidx.compose.ui.unit.Dp
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.Spacing
 
-/** 轨道粗细 3dp：比 4dp 栅格细一档，细轨浮在画面上更像现代播放器。 */
-private val TrackHeight: Dp = Spacing.xs - Spacing.xxs / 2
+/** 轨道粗细 5dp：3dp 在高分屏上偏细，加粗一档后已播段和底轨才分得开。 */
+private val TrackHeight: Dp = Spacing.xs + Spacing.hairline
 
-/** 圆点直径 12dp：比轨道大出三圈，手指能看清当前进度。 */
-private val ThumbSize: Dp = Spacing.md
+/** 圆点直径 16dp：跟着加粗的轨道一起放大，手指一眼能看到当前进度落在哪。 */
+private val ThumbSize: Dp = Spacing.lg
 
 /** 触摸区高度：24dp，比轨道大，横滑时不用瞄准。 */
 private val TouchHeight: Dp = Spacing.xl
@@ -40,11 +40,11 @@ private const val TRACK_ALPHA = 0.24f
 private data class ProgressStyle(
     val compact: Boolean,
     val trackHeight: Dp,
+    val thumbSize: Dp,
     val trackColor: Color,
     val progressColor: Color,
     val thumbColor: Color,
 )
-
 
 /**
  * 横滑时的预览位置。
@@ -54,12 +54,13 @@ private data class ProgressStyle(
  * `ControlRow`（私有）里，中间隔着三层。
  */
 internal val LocalSeekPreview = compositionLocalOf<Long?> { null }
+
 /**
  * 进度条：已播段主色、未播段是内容色降透明；原生播放器两端各让出一个圆点半径。
  *
  * Material 的 Slider 自带 48dp 高度与固定 thumb，压不进播放器底栏；
  * 自己画，拖动时只动本地预览值，抬手才真正 seek。
- * 原生播放器是 3dp 轨道 + 12dp 圆点；短剧竖屏 [compact] 走 4dp 轨道 / 12dp 圆点，
+ * 原生播放器是 5dp 轨道 + 16dp 圆点；短剧竖屏 [compact] 走 4dp 轨道 / 12dp 圆点，
  * 轨道铺满整条 viewport 且底边压在触摸区下沿（下方入口条顶边），未播段取视频上的次级色，
  * 圆点与轨道同心，只在横向端点内收；同心的下半会探进下方入口条，由调用方抬高层级绘制。
  */
@@ -79,28 +80,24 @@ internal fun PlayerProgressBar(
     val shown = dragging ?: LocalSeekPreview.current ?: positionMs
     val seek = rememberUpdatedState(onSeekTo)
     val span = rememberUpdatedState(if (enabled) durationMs else 1L)
-    // compact 只换轨道粗细、未播段颜色与端点口径：轨道提到 4dp（Spacing.xs），
-    // 未播段取视频上的次级色令牌，不在业务里现调 alpha；圆点与 24dp 触摸区不变。
-    // 原生非 compact 仍是 3dp 轨道 + 内容色 24% 底轨。
-    val style = ProgressStyle(
-        compact = compact,
-        trackHeight = if (compact) Spacing.xs else TrackHeight,
-        trackColor = if (compact) starveilExtraColors.textMuted else contentColor.copy(alpha = TRACK_ALPHA),
-        progressColor = MaterialTheme.colorScheme.primary,
-        thumbColor = contentColor,
-    )
+    // 尺寸与颜色的分档收进 progressStyle：主函数只留交互，圈复杂度不被那几个 if 顶满
+    val style = progressStyle(compact = compact, contentColor = contentColor)
     Canvas(
         modifier = modifier
             .fillMaxWidth()
             .height(TouchHeight)
             .pointerInput(enabled, compact) {
                 if (!enabled) return@pointerInput
-                detectTapGestures { offset -> seek.value(seekMsAt(offset.x, span.value, compact)) }
+                detectTapGestures { offset ->
+                    seek.value(seekMsAt(offset.x, span.value, compact, style.thumbSize))
+                }
             }
             .pointerInput(enabled, compact) {
                 if (!enabled) return@pointerInput
                 detectHorizontalDragGestures(
-                    onDragStart = { offset -> dragging = seekMsAt(offset.x, span.value, compact) },
+                    onDragStart = { offset ->
+                        dragging = seekMsAt(offset.x, span.value, compact, style.thumbSize)
+                    },
                     onDragEnd = {
                         dragging?.let { seek.value(it) }
                         dragging = null
@@ -108,13 +105,25 @@ internal fun PlayerProgressBar(
                     onDragCancel = { dragging = null },
                 ) { change, _ ->
                     change.consume()
-                    dragging = seekMsAt(change.position.x, span.value, compact)
+                    dragging = seekMsAt(change.position.x, span.value, compact, style.thumbSize)
                 }
             },
     ) {
         drawProgress(fraction = progressFraction(shown, span.value, enabled), style = style)
     }
 }
+
+/** 组装一条进度条的绘制参数：compact 只换粗细、圆点与未播段颜色，主函数不堆 if。 */
+@Composable
+private fun progressStyle(compact: Boolean, contentColor: Color): ProgressStyle = ProgressStyle(
+    compact = compact,
+    trackHeight = if (compact) Spacing.xs else TrackHeight,
+    // 短剧竖屏圆点的下半会探进下方入口条，尺寸不跟着长剧一起放大
+    thumbSize = if (compact) Spacing.md else ThumbSize,
+    trackColor = if (compact) starveilExtraColors.textMuted else contentColor.copy(alpha = TRACK_ALPHA),
+    progressColor = MaterialTheme.colorScheme.primary,
+    thumbColor = contentColor,
+)
 
 /**
  * 已播比例。时长还没回来时（prepare 后、duration 回调前）span 兜底是 1ms，
@@ -127,7 +136,7 @@ private fun progressFraction(positionMs: Long, durationMs: Long, enabled: Boolea
 /** 画底轨、已播段与圆点。端点与 [seekMsAt] 同口径，触点与画面才对得上。 */
 private fun DrawScope.drawProgress(fraction: Float, style: ProgressStyle) {
     val trackPx = style.trackHeight.toPx()
-    val thumbRadius = ThumbSize.toPx() / 2f
+    val thumbRadius = style.thumbSize.toPx() / 2f
     val trackHalf = trackPx / 2f
     val centerY = progressCenterLineY(style.compact, size.height, trackPx)
     // compact 的轨道铺满 viewport 两边：进度与触点都按 0..width 映射，
@@ -167,8 +176,13 @@ internal fun progressCenterLineY(compact: Boolean, height: Float, trackHeight: F
     if (compact) height - trackHeight / 2f else height / 2f
 
 /** 触点 → 毫秒：先按 compact 定两端让出的半径，再交给 [msAt] 换算。 */
-private fun PointerInputScope.seekMsAt(x: Float, durationMs: Long, compact: Boolean): Long {
-    val inset = if (compact) 0f else ThumbSize.toPx() / 2f
+private fun PointerInputScope.seekMsAt(
+    x: Float,
+    durationMs: Long,
+    compact: Boolean,
+    thumbSize: Dp,
+): Long {
+    val inset = if (compact) 0f else thumbSize.toPx() / 2f
     return msAt(x, size.width.toFloat(), inset, durationMs)
 }
 

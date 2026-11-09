@@ -196,7 +196,7 @@ private fun SearchField(
             contentDescription = "收起搜索",
             tint = colors.onSurfaceVariant,
             modifier = Modifier
-                .size(Spacing.lg)
+                .size(IconSize.sm)
                 .clickable(onClick = onCollapse),
         )
     }

@@ -37,7 +37,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
-import coil3.compose.AsyncImage
+import com.starveil.core.designsystem.component.PosterImage
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.CaretRight
@@ -190,11 +190,11 @@ private fun HistoryCard(item: ContinueWatching, onClick: () -> Unit) {
         ) {
             val pic = item.vodPic
             if (!pic.isNullOrBlank()) {
-                AsyncImage(
-                    model = pic,
+                PosterImage(
+                    url = pic,
                     contentDescription = item.vodName,
-                    contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
+                    shape = AppShape.small,
                 )
             }
             // 进度条贴在海报底边：底色留一条暗槽，亮色段按百分比铺满

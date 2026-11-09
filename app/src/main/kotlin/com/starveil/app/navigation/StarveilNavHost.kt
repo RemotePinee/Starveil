@@ -2,6 +2,9 @@ package com.starveil.app.navigation
 import android.content.Context
 import android.widget.Toast
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +42,8 @@ import com.starveil.app.ads.AdHost
 import com.starveil.app.ads.AdRuntime
 import com.starveil.app.ads.AdConsentGateWhenReady
 import com.starveil.app.ads.AdSplashGate
+import com.starveil.app.message.MessagePromptHost
+import com.starveil.app.update.UpdatePromptHost
 import com.starveil.core.common.AppResult
 import com.starveil.core.common.ad.AdPlacements
 import com.starveil.core.common.ad.AdPlacement
@@ -66,7 +71,6 @@ import com.starveil.feature.player.VERTICAL_PLAY_ROUTE_PATTERN
 import androidx.compose.material3.ScaffoldDefaults
 import com.starveil.feature.shortplay.SHORT_PLAY_ROUTE
 import com.starveil.feature.shortplay.defaultShortPlayTypeId
-import androidx.compose.foundation.layout.WindowInsets
 import com.starveil.core.designsystem.token.Motion
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.AnimatedVisibility
@@ -209,6 +213,8 @@ fun StarveilNavHost(container: AppContainer) {
         LocalFullscreenController provides fullscreen,
         LocalShortPlayPresentation provides shortPlayPresentation,
         LocalMemberEnabled provides memberEnabled,
+        // 底栏会员 tab 要在导航前判断登录态；AppShell 拿不到 container，从这个 local 读
+        LocalLoggedIn provides loggedIn,
         LocalForceLogin provides forceLogin,
         // 详情页三块开关：后台「设置 → 详情页」配，缺字段按全显示处理
         LocalDetailSections provides detailSectionsOf(startup),
@@ -225,19 +231,22 @@ fun StarveilNavHost(container: AppContainer) {
             context = context,
             runtime = AdRuntime(gateway = adGateway, unlock = container.adUnlockRepository),
         ) {
-                AppScaffold(
-                    navController = navController,
-                    state = shellState,
-                ) { padding ->
-                    val direction = LocalLayoutDirection.current
-                    // 短剧视频延伸到 dock 后方；系统栏占位只保留给前景控件。
-                    val contentPadding = shellState.contentPadding(padding, direction)
-                    // 登录弹层宿主包住整个 NavHost：任何页面都能唤起登录，不各自持有弹层状态
-                    LoginPromptHost(
-                        container = container,
-                        config = LoginPromptConfig(loginViewModel, loginChoices),
-                        onOpenAuthForm = openAuthForm,
-                    ) {
+                // 登录弹层宿主包住整个 Shell：底栏的会员 tab 也要能唤起它，
+                // 而底栏在 AppScaffold 的 bottomBar 槽里、不在内容区里。
+                LoginPromptHost(
+                    container = container,
+                    config = LoginPromptConfig(loginViewModel, loginChoices),
+                    onOpenAuthForm = openAuthForm,
+                ) {
+                    AppScaffold(
+                        navController = navController,
+                        state = shellState,
+                    ) { padding ->
+                        val direction = LocalLayoutDirection.current
+                        // 系统导航栏那一条：与 dock 的进出动画无关，二级页只吃这个
+                        val systemBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                        // 短剧视频延伸到 dock 后方；系统栏占位只保留给前景控件。
+                        val contentPadding = shellState.contentPadding(padding, direction, systemBottom)
                         CompositionLocalProvider(
                             LocalHostBottomInset provides contentPadding.calculateBottomPadding(),
                         ) {
@@ -254,6 +263,18 @@ fun StarveilNavHost(container: AppContainer) {
                         }
                     }
                 }
+                // 启动消息：进首页之后才入队，和隐私同意 / 版本更新共用一个调度器，
+                // 三者不会叠在一起。
+                MessagePromptHost(
+                    repository = container.messageRepository,
+                    scheduler = container.dialogScheduler,
+                    onHome = shellState.currentRoute == HOME_ROUTE,
+                    onAction = { message -> navController.openMessageAction(context, message) },
+                )
+                UpdatePromptHost(
+                    repository = container.updateRepository,
+                    scheduler = container.dialogScheduler,
+                )
                 // 锁屏退场用淡出：登录成功那一刻直接消失太硬，淡出 200ms 收得干净。
                 // 进场不做动画——冷启动时它本来就该当场就在。
                 AnimatedVisibility(

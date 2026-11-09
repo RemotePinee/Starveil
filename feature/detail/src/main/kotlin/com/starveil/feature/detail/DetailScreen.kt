@@ -32,7 +32,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.starveil.core.common.DetailSections
 import com.starveil.core.designsystem.component.SectionHeader
 import com.starveil.core.designsystem.LocalDetailSections
-import com.starveil.core.designsystem.component.StarveilLoadingScreen
 import com.starveil.core.designsystem.token.Spacing
 
 /**
@@ -140,7 +139,7 @@ fun DetailScreen(
     ) {
         Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
             when (state) {
-                is DetailUiState.Loading -> StarveilLoadingScreen()
+                is DetailUiState.Loading -> DetailSkeleton()
 
                 is DetailUiState.Empty -> DetailStateMessage(
                     title = "暂无播放资源",

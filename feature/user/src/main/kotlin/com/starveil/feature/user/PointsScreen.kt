@@ -66,8 +66,13 @@ fun PointsScreen(
             Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
         }
     }
-    Box(modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(MaterialTheme.colorScheme.background)
+            .statusBarsPadding(),
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
             PointsTopBar(onBack = onBack)
             LazyColumn(
                 modifier = Modifier.weight(WEIGHT_FULL),

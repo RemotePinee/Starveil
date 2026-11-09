@@ -17,6 +17,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,6 +34,7 @@ import com.starveil.core.designsystem.LocalSkinSelection
 import com.starveil.core.designsystem.AppearanceSelection
 import com.starveil.core.designsystem.LocalAppearanceSelection
 import com.starveil.core.designsystem.SkinSelection
+import com.starveil.core.designsystem.LocalSplashCovering
 import com.starveil.core.designsystem.StarveilTheme
 import com.starveil.feature.player.PlayerEngineWarmUp
 import coil3.SingletonImageLoader
@@ -140,9 +144,13 @@ class MainActivity : ComponentActivity() {
             ),
         ) {
             StarveilTheme(skinCode = skinCode, darkTheme = darkTheme) {
-                Box(modifier = Modifier.fillMaxSize()) {
-                    StarveilNavHost(container = container)
-                    SplashBrandOverlay()
+                // 开屏还盖着时状态栏归开屏管：首页那套"压着剧照用白图标"要暂时让位
+                var splashCovering by remember { mutableStateOf(!AdSplashGate.brandLayerGone()) }
+                CompositionLocalProvider(LocalSplashCovering provides splashCovering) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        StarveilNavHost(container = container)
+                        SplashBrandOverlay(onHidden = { splashCovering = false })
+                    }
                 }
             }
         }

@@ -70,6 +70,7 @@ const SNAPSHOT_PAGES = [
     'links',
     'tabs',
     'push',
+    'version',
 ];
 
 /**
