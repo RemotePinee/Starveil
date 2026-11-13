@@ -23,6 +23,8 @@ import com.starveil.core.data.DefaultAccessRepository
 import com.starveil.core.data.DefaultAdUnlockRepository
 import com.starveil.core.data.DefaultAuthRepository
 import com.starveil.core.data.DefaultCommentRepository
+import com.starveil.core.data.cast.CastRepository
+import com.starveil.core.data.cast.createCastRepository
 import com.starveil.core.data.DeviceCredentialStore
 import com.starveil.core.data.DefaultContinueWatchingRepository
 import com.starveil.core.data.DefaultDanmuRepository
@@ -75,6 +77,8 @@ import com.starveil.feature.player.ProgressSink
 import com.starveil.feature.player.VodDetailLoader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -265,6 +269,8 @@ class AppContainer(
 
     val startupRepository: StartupRepository = DefaultStartupRepository(api = apiClient.api)
 
+    private val appScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val castRepository: CastRepository = createCastRepository(context.applicationContext, appScope)
     /** 首帧快照目录：首页冷启动先铺上一次的内容，网络回来再原地覆盖。 */
     private val snapshotStore = SnapshotStore(File(context.filesDir, "snapshots"))
 
@@ -423,11 +429,13 @@ class AppContainer(
                 sourceIndex: Int,
                 episodeIndex: Int,
                 positionSec: Int,
+                vodName: String, vodPic: String,
             ): AppResult<Unit> = playbackRepository.saveProgress(
                 vodId = vodId,
                 sourceIndex = sourceIndex,
                 episodeIndex = episodeIndex,
                 positionSec = positionSec,
+                vodName = vodName, vodPic = vodPic,
             )
         },
         danmuSource = danmuSource,

@@ -1,6 +1,7 @@
 package com.starveil.feature.player
 
 import android.content.res.Configuration
+import com.starveil.core.data.cast.CastRepository
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.starveil.core.model.CastUiStatus
+import kotlinx.coroutines.flow.MutableStateFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -97,6 +101,8 @@ fun PlayerRoute(
      * **所有权**：谁传谁释放。传进来的实例这里不 release，否则外部还在用就被销毁了。
      */
     engine: Media3Player? = null,
+    /** 投屏会话；null 表示本页不提供投屏入口。 */
+    cast: CastRepository? = null,
 ) {
     val state = viewModel.state.collectAsStateWithLifecycle().value
     val danmu = viewModel.danmu.collectAsStateWithLifecycle().value
@@ -134,6 +140,9 @@ fun PlayerRoute(
         // 表现就是"退后台回来按钮还是暂停中，得点两下"
         media.pause()
         viewModel.pausePlayback()
+        // 退后台这一刻就把进度落盘：只靠离页保存的话，用户从多任务里划掉应用，
+        // 最后一段进度会丢，回来就从旧断点起播
+        viewModel.persistCurrentPosition()
     }
     // 页面恢复只由官方 ContentFrame 重新绑定视频输出；不 seek，也不重建 source。
     PlayerEngineEffects(engine = media, state = state, viewModel = viewModel)
@@ -148,6 +157,7 @@ fun PlayerRoute(
             engine = media,
             actions = actions,
             position = position,
+            cast = cast,
             danmu = danmu,
             isResumed = isResumed,
             modifier = modifier,
@@ -182,6 +192,13 @@ fun PlayerScreen(
     onWatchAd: () -> Unit = {},
     /** 贴片占屏时置 true：ViewModel 据此拦住"恢复播放"，倒计时才真的生效。 */
     onPauseAdHold: (Boolean) -> Unit = {},
+    /**
+     * 投屏会话。为 null 时不显示入口（例如将来复用本页做竖屏播出的场景）。
+     *
+     * 面板挂在下面那个 `Box` 里，因此天然只覆盖播放器区域：内嵌小窗就是小窗大小，
+     * 全屏跟着全屏，不会变成整页"遥控器"。
+     */
+    cast: CastRepository? = null,
 ) {
     // 页面级纯 UI 状态（弹层 / 弹幕偏好 / 控制层显隐 / 横滑预览 / 亮度）收进一个持有者：
     // 都是"换一下就要存一次盘没有意义"的东西，不进 ViewModel
@@ -201,6 +218,11 @@ fun PlayerScreen(
     BackHandler(enabled = page.sheet != null) { page.sheet = null }
     BackHandler(enabled = page.sheet == null && state.isFullscreen) { actions.onFullscreenToggle() }
     val stalled = rememberStalled(isBuffering = state.isBuffering, durationMs = state.durationMs)
+    // 投屏面板显隐：跟着控制层走（点开胶囊才出现），随播放器一同销毁
+    var castPanelOpen by rememberSaveable { mutableStateOf(false) }
+    val castTargetOfState = state.castTarget?.takeIf { it.canCast }
+    val castStatus by remember(cast) { cast?.status ?: MutableStateFlow<CastUiStatus?>(null) }
+        .collectAsStateWithLifecycle()
     // 手势回调以前在包体里 new：现在只在真正影响它的输入变化时重建（见 gestureCallbacks 的注释）
     val callbacks = remember(actions, page.chrome) {
         gestureCallbacks(
@@ -241,10 +263,22 @@ fun PlayerScreen(
                 position = position,
                 immersive = immersive,
                 fullscreen = chromeFullscreen,
+                castAvailable = castTargetOfState != null && cast != null,
+                castConnected = castStatus is CastUiStatus.Connected,
+                onCastClick = { castPanelOpen = !castPanelOpen },
             ),
         )
         // 弹层在这里调用：它要读 immersive 决定弹层窗口要不要隐藏系统栏
         PlayerSheets(state = state, actions = actions, page = page, immersive = immersive)
+        PlayerCastLayer(
+            PlayerCastContext(
+                state = state,
+                actions = actions,
+                cast = cast,
+                panelOpen = castPanelOpen,
+                onPanelChange = { castPanelOpen = it },
+            ),
+        )
     }
 }
 

@@ -1,5 +1,6 @@
 package com.starveil.feature.home
 
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 
@@ -45,6 +46,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -67,64 +70,111 @@ import com.starveil.core.designsystem.token.Motion
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.launch
 
-/** 顶栏压暗：深色压得住状态栏白图标，浅色压一档就够。 */
+/**
+ * 顶栏压暗的浓度。
+ *
+ * 不分明暗主题：这层压的是轮播剧照，跟页面底色无关。浅色主题早先用 0.45，
+ * 结果白字压在一张亮剧照上就融进图里——"浅色主题想空一点"和"白字要读得清"是两件事，
+ * 只能按后者定值。
+ */
 private const val TOP_SCRIM_ALPHA = 0.72f
-private const val TOP_SCRIM_ALPHA_LIGHT = 0.45f
+
+/** 渐隐开始的位置（占顶栏高度的比例）：搜索行压满，分类行已经在往下走。 */
+private const val TOP_SCRIM_HOLD = 0.72f
+
+/** 顶栏底边留下的浓度：剩下的渐隐交给轮播抠洞接着做。 */
+private const val TOP_SCRIM_HANDOFF = 0.30f
 
 /** 背景亮度低于它就算深色。 */
 private const val DARK_LUMINANCE = 0.5f
 
 /**
- * 顶栏渐隐的压暗色。
+ * 顶栏 / 状态栏那层压暗色。
  *
- * 钉在顶栏上、不随内容滚：轮播图滑到状态栏/搜索行这一段时被它压住。
- * 轮播滚走后换成页面底色本身——顶栏"坐实"成一条背景，深色字永远有底，
- * 不会出现深字压在深色模糊图上的情况。
+ * 分两层叠，不做单色插值：单色 lerp 的中段是"半透明灰"，压在剧照上就是一坨脏色。
+ * 层一 = 剧照上的深色遮罩（浓度随进度退），层二 = 落地色（随进度进）。
  */
 @Composable
-private fun topScrimBrush(coverProgress: Float): Brush {
-    val dark = MaterialTheme.colorScheme.background.luminance() < DARK_LUMINANCE
-    val base = if (dark) TOP_SCRIM_ALPHA else TOP_SCRIM_ALPHA_LIGHT
-    val scrim = lerp(
-        starveilExtraColors.scrimStrong.copy(alpha = base),
-        MaterialTheme.colorScheme.background,
-        coverProgress,
-    )
-    // 底边收成透明：顶栏和下面的内容之间不出现一条硬线
-    return Brush.verticalGradient(0f to scrim, 1f to Color.Transparent)
+private fun Modifier.topBarBackdrop(coverProgress: Float): Modifier {
+    val dim = 1f - coverProgress
+    val dark = starveilExtraColors.scrimStrong
+    val landed = landedTopColor()
+    val statusBarPx = with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toFloat() }
+    return drawBehind {
+        // 往状态栏方向多画一条：顶栏和状态栏必须是同一块底。分成两处画，
+        // 参数一旦不同步，顶部就是"上黑下白"两截（之前那条硬边的来源）。
+        val top = -statusBarPx
+        val fullHeight = size.height - top
+        val area = Size(size.width, fullHeight)
+        if (dim > 0f) {
+            drawRect(
+                brush = Brush.verticalGradient(
+                    0f to dark.copy(alpha = TOP_SCRIM_ALPHA * dim),
+                    TOP_SCRIM_HOLD to dark.copy(alpha = TOP_SCRIM_ALPHA * dim),
+                    1f to dark.copy(alpha = TOP_SCRIM_ALPHA * TOP_SCRIM_HANDOFF * dim),
+                    startY = top,
+                    endY = top + fullHeight,
+                ),
+                topLeft = Offset(0f, top),
+                size = area,
+            )
+        }
+        if (coverProgress > 0f) {
+            drawRect(
+                color = landed.copy(alpha = coverProgress),
+                topLeft = Offset(0f, top),
+                size = area,
+            )
+        }
+    }
 }
 
-/** 轮播滚完前一成开始变色：最后这点距离里字从白转深，滚到底正好读完。 */
-private const val TOP_BAR_FADE_START = 0.9f
+/**
+ * 顶栏落地以后的底色。
+ *
+ * 深色模式落比页面底色亮一档的容器色：黑遮罩 → #252525 只差一点，肉眼读不出
+ * "顶栏已经坐实了"，抬一档才有可辨的变化，也不用画分隔线。
+ */
+@Composable
+private fun landedTopColor(): Color {
+    val dark = MaterialTheme.colorScheme.background.luminance() < DARK_LUMINANCE
+    // 深色必须落在比页面底色亮足一档的卡片色上：surfaceElevated 只比 #252525 亮 5 个色阶，
+    // 遮罩退、落地进这两步叠出来的亮度几乎不变，看着就是"啪"一下过去了。
+    return if (dark) starveilExtraColors.surfaceCard else MaterialTheme.colorScheme.background
+}
+
+/**
+ * 轮播卡片顶部抠洞里的压暗：接着顶栏底边的残余浓度淡到 0。
+ *
+ * 落到页面底色之后（coverProgress=1）跟着退干净，否则卡片顶上会留一层白纱。
+ */
+@Composable
+internal fun holeScrimColor(coverProgress: Float): Color =
+    starveilExtraColors.scrimStrong.copy(
+        alpha = TOP_SCRIM_ALPHA * TOP_SCRIM_HANDOFF * (1f - coverProgress),
+    )
+
+/**
+ * 触发的滚动距离：滑过这么多就直接切到"落地"态。
+ *
+ * 不再跟着滚动比例连续变——那样手指停在中途，顶栏就一直停在半透明灰的中间态上。
+ * 现在是过阈值触发，剩下的交给动画，中间态只存在于那两百毫秒里。
+ */
+private val TOP_BAR_SOLID_THRESHOLD = Spacing.xxl
 
 /**
  * 顶栏从"压在轮播图上"到"落在页面底色上"的进度。
  *
- * 轮播图滚出视口后，顶栏底下只剩页面底色，白字会直接看不见（浅色模式就是这样）；
- * 这里按轮播卡的高度算出 0→1 的进度：0 是压在图上（白字 + 压暗），
- * 1 是落在底色上（深色字、去掉压暗）。中间不做跳变，进度跟着滚动走，
- * 外加速度弹簧一样的 tween 兜住快速滑动，浅色模式的过渡才不"啪"一下。
+ * 只有两个状态：压在图上（白字 + 压暗）和落在底色上（深色字）。滚动一越过
+ * [TOP_BAR_SOLID_THRESHOLD] 就往 1 走，回滚到阈值以上就往 0 走，中间由
+ * [Motion.MediumMs] 的 tween 补完——所以它是"直接切、切得顺"，不留中间态。
  */
 @Composable
-internal fun rememberTopBarCoverProgress(listState: LazyListState, scrollPx: Float): Float {
-    val bannerHeight = remember(listState) { mutableIntStateOf(0) }
-    LaunchedEffect(listState) {
-        // 轮播滚出视口后拿不到它的高度，所以只记住"看得见时"的那个值
-        snapshotFlow { listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == 0 }?.size ?: 0 }
-            .filter { it > 0 }
-            .collect { bannerHeight.intValue = it }
-    }
-    val height = bannerHeight.intValue
-    val target = if (height <= 0) {
-        0f
-    } else {
-        val start = height * TOP_BAR_FADE_START
-        val span = (height - start).coerceAtLeast(1f)
-        ((scrollPx - start) / span).coerceIn(0f, 1f)
-    }
+internal fun rememberTopBarCoverProgress(scrollPx: Float): Float {
+    val threshold = with(LocalDensity.current) { TOP_BAR_SOLID_THRESHOLD.toPx() }
     val progress by animateFloatAsState(
-        targetValue = target,
-        animationSpec = tween(Motion.MediumMs),
+        targetValue = if (scrollPx > threshold) 1f else 0f,
+        animationSpec = tween(Motion.MediumMs, easing = FastOutSlowInEasing),
         label = "top-bar-cover",
     )
     return progress
@@ -146,42 +196,46 @@ fun HomeTopBar(
     /** 0 = 压在轮播图上（白字 + 压暗），1 = 落在页面底色上（深色字）。 */
     coverProgress: Float = 0f,
 ) {
-    val scrim = topScrimBrush(coverProgress)
-    Column(
-        modifier = modifier
-            .fillMaxWidth()
-            .background(scrim)
-            // 分类行到轮播的距离：只收底部，顶部那 4dp 留着，搜索行不至于贴到状态栏。
-            .padding(
-                start = Spacing.lg,
-                end = Spacing.md,
-                top = Spacing.xs,
-                bottom = Spacing.xxs,
-            ),
-        verticalArrangement = Arrangement.spacedBy(Spacing.xs),
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            BrandLogo(coverProgress)
-            Spacer(Modifier.width(Spacing.sm))
-            SearchPill(
-                hotWord = hotWord,
-                onSearch = actions.onSearch,
-                coverProgress = coverProgress,
-                modifier = Modifier.weight(1f),
-            )
-            Spacer(Modifier.width(Spacing.sm))
-            FilterButton(onClick = actions.onFilter, coverProgress = coverProgress)
+    Column(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .topBarBackdrop(coverProgress)
+                // 分类行到轮播的距离：只收底部，顶部那 4dp 留着，搜索行不至于贴到状态栏。
+                .padding(
+                    start = Spacing.lg,
+                    end = Spacing.md,
+                    top = Spacing.xs,
+                    bottom = Spacing.xxs,
+                ),
+            verticalArrangement = Arrangement.spacedBy(Spacing.xs),
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                BrandLogo(coverProgress)
+                Spacer(Modifier.width(Spacing.sm))
+                SearchPill(
+                    hotWord = hotWord,
+                    onSearch = actions.onSearch,
+                    coverProgress = coverProgress,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(Spacing.sm))
+                FilterButton(onClick = actions.onFilter, coverProgress = coverProgress)
+            }
+            if (types.isNotEmpty()) {
+                CategoryChips(
+                    types = types,
+                    selectedTypeId = selectedTypeId,
+                    onSelect = actions.onSelectType,
+                    modifier = Modifier.fillMaxWidth(),
+                    leadingPadding = Spacing.xxs,
+                    coverProgress = coverProgress,
+                )
+            }
         }
-        if (types.isNotEmpty()) {
-            CategoryChips(
-                types = types,
-                selectedTypeId = selectedTypeId,
-                onSelect = actions.onSelectType,
-                modifier = Modifier.fillMaxWidth(),
-                leadingPadding = Spacing.xxs,
-                coverProgress = coverProgress,
-            )
-        }
+        // 落在页面底色上以后不画分隔线：那条 1dp 线在深色模式里比两侧都亮，
+        // 直接从顶上割出一道横线。深色的"坐实"靠落地色比页面底色亮一档，
+        // 浅色靠落到页面底色，两边都不需要线。
     }
 }
 
@@ -338,23 +392,3 @@ internal val SearchPillHeight = Spacing.xxl + Spacing.sm
 
 /** logo 占位方块边长，与搜索胶囊同高。 */
 internal val LogoSize = SearchPillHeight
-
-
-/**
- * 状态栏那一条的压暗。
- *
- * 顶栏从状态栏下面开始，只压顶栏会留下最上面一条亮边；这里用同一个颜色补上，
- * 两块连成一片，滚动时也不会变。
- */
-@Composable
-internal fun StatusBarScrim(modifier: Modifier = Modifier, coverProgress: Float = 0f) {
-    val dark = MaterialTheme.colorScheme.background.luminance() < DARK_LUMINANCE
-    val base = if (dark) TOP_SCRIM_ALPHA else TOP_SCRIM_ALPHA_LIGHT
-    val scrim = lerp(
-        starveilExtraColors.scrimStrong.copy(alpha = base),
-        MaterialTheme.colorScheme.background,
-        coverProgress,
-    )
-    val height = with(LocalDensity.current) { WindowInsets.statusBars.getTop(this).toDp() }
-    Box(modifier.fillMaxWidth().height(height).background(scrim))
-}

@@ -99,8 +99,13 @@ internal class VideoHttp(private val context: Context) {
     /**
      * 每集新建一个 Factory（要带该集的请求头），但底层 client、连接池与分片缓存是共享的。
      *
-     * 外面套一层 [CacheDataSource]：Media3 先查 [VideoCache]，未命中才走网络。
-     * 换集回看、拖动重播同一片都直接命中磁盘，不必重新下载。
+     * 外面套的两层各有分工：
+     * - [SplitDataSourceFactory] 先判资源类型：清单走裸上游（不缓存），分片走 [CacheDataSource]；
+     * - [CacheDataSource] 查 [VideoCache]，未命中才走网络，边播边写。
+     *
+     * 顺序不能反。缓存套在外面的后果是清单也被写进 SimpleCache，而 SimpleCache 不看
+     * HTTP 头，服务端设的 `Cache-Control: no-store` 对它无效，于是客户端会一直读到
+     * 过期的分片签名，表现为"这条线路被源站拒绝了"。
      */
     @androidx.annotation.OptIn(UnstableApi::class)
     fun dataSource(headers: Map<String, String>, userAgent: String?): DataSource.Factory {
@@ -115,14 +120,18 @@ internal class VideoHttp(private val context: Context) {
         val gated = DataSource.Factory {
             HongguoGateDataSource(upstream.createDataSource(), cfg, headers, client)
         }
-        return CacheDataSource.Factory()
+        val cached = CacheDataSource.Factory()
             .setCache(VideoCache.get(context))
             .setUpstreamDataSourceFactory(gated)
-            // 缓存键必须剥掉 CDN 签名参数：完整 URL 每次下发都不同（us 随机、t 滚 6 小时），
-            // 拿它当键等于同一集每次都是新资源，永远命中不了。名单与理由见 [videoCacheKey]。
-            .setCacheKeyFactory(CacheKeyFactory { spec -> videoCacheKey(spec.uri.toString()) })
+            // 键的规则见 [videoCacheKey]：分片按路径取键，query 全部丢弃。
+            .setCacheKeyFactory(CacheKeyFactory { spec -> videoCacheKey(spec.uri) })
             // 缓存读坏了就退回网络，不让一个坏分片把整集卡死
             .setFlags(CacheDataSource.FLAG_IGNORE_CACHE_ON_ERROR)
+
+        return SplitDataSourceFactory(
+            forSegment = cached,
+            forManifest = gated,
+        )
     }
 
     fun release() {

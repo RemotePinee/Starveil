@@ -11,6 +11,7 @@ import com.starveil.core.model.PlayerInfo
 import com.starveil.core.model.TrySeeGate
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,6 +61,7 @@ class VerticalPlayViewModel(
 
     internal val scope: CoroutineScope = deps.scope ?: viewModelScope
     internal val reporter = ProgressReporter(deps.clock, deps.progressSink, scope)
+    private var lastSavedSec = -1
     internal var pendingResumeMs: Long? = resumeMs.coerceAtLeast(0L)
     internal var loadJob: Job? = null
     internal val trySee = VerticalTrySeeContext(trySeeDefault)
@@ -221,6 +223,7 @@ class VerticalPlayViewModel(
         }
         if (applyGate(positionMs)) return
         reporter.onTick(isPlaying, VERTICAL_PLAY_SOURCE_INDEX, _state.value.currentIndex)
+        persistPosition(positionMs)
         danmuController.onPosition()
     }
 
@@ -243,7 +246,24 @@ class VerticalPlayViewModel(
     }
 
     /** 隐藏/后台期间不采样，也不能把这段墙钟时间算进观看时长。 */
-    fun onPlaybackSuspended() = reporter.onSeek()
+    fun onPlaybackSuspended() {
+        reporter.onSeek()
+        // 退后台/离页时立刻落一次进度：短剧之前只上报观看时长，从不写播放位置，
+        // 所以观看记录里永远没有短剧。
+        persistPosition(_state.value.positionMs, force = true)
+    }
+
+    /** 位置每前进 [VERTICAL_SAVE_STEP_SEC] 秒落一次库；force 用于暂停/离页。 */
+    private fun persistPosition(positionMs: Long, force: Boolean = false) {
+        if (vodId <= 0 || positionMs <= 0L) return
+        val seconds = (positionMs / 1000L).toInt()
+        if (!force && seconds - lastSavedSec < VERTICAL_SAVE_STEP_SEC) return
+        lastSavedSec = seconds
+        val index = _state.value.currentIndex
+        scope.launch {
+            deps.progressSink.savePosition(vodId, VERTICAL_PLAY_SOURCE_INDEX, index, seconds)
+        }
+    }
 
     fun onBufferingChanged(active: Boolean) = _state.update { it.copy(isBuffering = active) }
 
@@ -308,3 +328,6 @@ class VerticalPlayViewModel(
         }
     }
 }
+
+/** 短剧位置落库步长（秒）：与长剧同一口径。 */
+private const val VERTICAL_SAVE_STEP_SEC = 5

@@ -103,13 +103,16 @@ internal fun NavGraphBuilder.homeDestination(nav: NavHostController, container: 
 }
 
 private fun NavGraphBuilder.homeEntry(nav: NavHostController, container: AppContainer) {
-    composable("home") {
-        val context = LocalContext.current
-        val memberEnabled = LocalMemberEnabled.current
-        HomeRoute(
-            viewModel = homeViewModel(container),
-            actions = homeActions(nav, context, memberEnabled, container),
-        )
+    composable(HOME_ROUTE) {
+        // 首页是 tab：这一页自己让出 dock 的高度，dock 从页面底边下面露出来。
+        TabDockFrame(HOME_ROUTE) {
+            val context = LocalContext.current
+            val memberEnabled = LocalMemberEnabled.current
+            HomeRoute(
+                viewModel = homeViewModel(container),
+                actions = homeActions(nav, context, memberEnabled, container),
+            )
+        }
     }
 }
 
@@ -316,11 +319,16 @@ private fun NavGraphBuilder.payDestination(
                 payViewModel.syncSession()
             },
         )
-        PayScreen(
-            viewModel = payViewModel,
-            onBack = { nav.popBackStack() },
-            onOpenPayment = { url -> context.openPaymentUrl(url) },
-        )
+        // 会员是独立 tab 页：让出 dock 的高度，dock 才从页面底边露出来。
+        // 单集积分兑换是从播放页推进来的二级页，本来就该铺满整屏盖住 dock（route 传 null）。
+        val dockRoute = if (guestAllowed) null else PAY_ROUTE_PATTERN
+        TabDockFrame(dockRoute) {
+            PayScreen(
+                viewModel = payViewModel,
+                onBack = { nav.popBackStack() },
+                onOpenPayment = { url -> context.openPaymentUrl(url) },
+            )
+        }
     }
 }
 
@@ -334,13 +342,15 @@ internal fun NavGraphBuilder.catalogDestinations(nav: NavHostController, contain
 
 private fun NavGraphBuilder.topicDestinations(nav: NavHostController, container: AppContainer) {
     composable(TOPIC_LIST_ROUTE) {
-        TopicRoute(
-            viewModel = tabViewModel<TopicViewModel>(
-                nav = nav,
-                factory = TopicViewModel.factory(container.topicRepository),
-            ),
-            onTopicClick = { topicId -> nav.navigate(topicDetailRoute(topicId)) },
-        )
+        TabDockFrame(TOPIC_LIST_ROUTE) {
+            TopicRoute(
+                viewModel = tabViewModel<TopicViewModel>(
+                    nav = nav,
+                    factory = TopicViewModel.factory(container.topicRepository),
+                ),
+                onTopicClick = { topicId -> nav.navigate(topicDetailRoute(topicId)) },
+            )
+        }
     }
     composable(
         route = TOPIC_DETAIL_ROUTE_PATTERN,
@@ -362,26 +372,30 @@ private fun NavGraphBuilder.topicDestinations(nav: NavHostController, container:
 
 private fun NavGraphBuilder.liveDestination(nav: NavHostController, container: AppContainer) {
     composable(LIVE_ROUTE) {
-        LiveRoute(
-            // 直播列表是底栏根页面：切走再回来不重拉频道。
-            // 播放已改成点开全屏播放器（自带实例），不再需要页面级播放器 ViewModel。
-            listViewModel = tabViewModel<LiveViewModel>(
-                nav = nav,
-                factory = LiveViewModel.factory(container.liveRepository),
-            ),
-        )
+        TabDockFrame(LIVE_ROUTE) {
+            LiveRoute(
+                // 直播列表是底栏根页面：切走再回来不重拉频道。
+                // 播放已改成点开全屏播放器（自带实例），不再需要页面级播放器 ViewModel。
+                listViewModel = tabViewModel<LiveViewModel>(
+                    nav = nav,
+                    factory = LiveViewModel.factory(container.liveRepository),
+                ),
+            )
+        }
     }
 }
 
 private fun NavGraphBuilder.rankDestination(nav: NavHostController, container: AppContainer) {
     composable(RANK_ROUTE) {
-        RankRoute(
-            viewModel = tabViewModel<RankViewModel>(
-                nav = nav,
-                factory = RankViewModel.factory(container.rankRepository),
-            ),
-            onVodClick = { vodId -> nav.navigate(detailRoute(vodId)) },
-        )
+        TabDockFrame(RANK_ROUTE) {
+            RankRoute(
+                viewModel = tabViewModel<RankViewModel>(
+                    nav = nav,
+                    factory = RankViewModel.factory(container.rankRepository),
+                ),
+                onVodClick = { vodId -> nav.navigate(detailRoute(vodId)) },
+            )
+        }
     }
 }
 

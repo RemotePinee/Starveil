@@ -39,7 +39,9 @@ private fun rememberUserCenterVariant(container: AppContainer, localSkin: String
 /** 我的页目的地：从 [AppDestinations] 挪出来，避免那个文件顶到 400 行闸门。 */
 internal fun NavGraphBuilder.userCenterDestination(nav: NavHostController, container: AppContainer) {
     composable(UserNavigation.USER_CENTER_ROUTE) {
-        UserCenterRoute(nav = nav, container = container)
+        TabDockFrame(UserNavigation.USER_CENTER_ROUTE) {
+            UserCenterRoute(nav = nav, container = container)
+        }
     }
 }
 

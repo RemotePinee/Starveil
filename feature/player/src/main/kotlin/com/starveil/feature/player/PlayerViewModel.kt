@@ -141,7 +141,9 @@ class PlayerViewModel(
         lastSavedSec = positionSec
         val source = session.sourceIndex
         val episode = session.episodeIndex
-        scope.launch { deps.progressSink.savePosition(vod.id, source, episode, positionSec) }
+        scope.launch {
+            deps.progressSink.savePosition(vod.id, source, episode, positionSec, vod.name, vod.poster.orEmpty())
+        }
     }
 
     // ---- 生命周期 -----------------------------------------------------------

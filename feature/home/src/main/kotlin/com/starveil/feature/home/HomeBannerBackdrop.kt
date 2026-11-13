@@ -1,7 +1,5 @@
 package com.starveil.feature.home
 
-import androidx.compose.animation.Crossfade
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -19,12 +17,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.IntOffset
-import coil3.compose.AsyncImage
-import com.starveil.core.designsystem.component.blurredImageRequest
-import com.starveil.core.designsystem.token.Motion
+import com.starveil.core.designsystem.component.BlurredCoverBackdrop
 import com.starveil.core.model.HomeBanner
 import kotlin.math.roundToInt
 
@@ -35,6 +29,8 @@ import kotlin.math.roundToInt
  * 背景会比卡片早/晚一张。null 表示没人提供，轮播自己建。
  */
 internal val LocalHomeBannerPager = compositionLocalOf<PagerState?> { null }
+
+
 
 /**
  * 底色铺到屏幕高度的这个比例：覆盖状态栏与轮播卡片，再往下就不该有颜色了。
@@ -76,8 +72,8 @@ internal fun rememberBannerScrollPx(listState: LazyListState): Float {
 /**
  * 首页顶部轮播的同图底色。
  *
- * 取当前页那一张图，走 [blurredImageRequest] 拿小尺寸模糊图铺满顶部，切页淡入，
- * 顶部的颜色于是跟着轮播走。顶部的压暗不在这里：它由状态栏与顶栏那两层固定渐隐负责，
+ * 取当前页那一张图，走 [BlurredCoverBackdrop] 拿小尺寸模糊图铺满顶部，顶部的颜色于是跟着轮播走。
+ * 顶部的压暗不在这里：它由状态栏、顶栏与轮播抠洞那三层渐隐负责，
  * 这一层只负责"图后面那层颜色"，并跟着轮播卡一起上移。
  *
  * @param scrollOffsetPx 轮播已经滚出的像素：整层按它上移，和轮播卡保持同步
@@ -87,40 +83,23 @@ internal fun HomeBannerBackdrop(
     banners: List<HomeBanner>,
     pager: PagerState,
     modifier: Modifier = Modifier,
+    /** 轮播已经滚出的像素：这一层跟轮播卡同速上移，和卡片保持同一块画面。 */
     scrollOffsetPx: Float = 0f,
 ) {
-    val context = LocalContext.current
-    val pic = banners.getOrNull(pager.currentPage)?.pic.orEmpty()
-    val request = remember(context, pic) {
-        pic.takeIf { it.isNotBlank() }?.let { blurredImageRequest(context, it) }
+    if (banners.isEmpty()) {
+        return
     }
+    val pic = banners.getOrNull(pager.currentPage)?.pic?.takeIf(String::isNotBlank)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .fillMaxHeight(BACKDROP_HEIGHT_FRACTION)
             // 跟轮播卡同速退场：卡片是 LazyColumn 第一项，位移就是滚动像素
-            .offset { IntOffset(0, -scrollOffsetPx.roundToInt()) }
-            .background(MaterialTheme.colorScheme.background),
+            .offset { IntOffset(0, -scrollOffsetPx.roundToInt()) },
     ) {
-        Crossfade(
-            targetState = request,
-            animationSpec = tween(durationMillis = Motion.MediumMs),
-            label = "home-backdrop",
-        ) { target ->
-            // 垫底必须用页面底色，不能用 scrimStrong：
-            // 模糊图往下淡到透明后，露出的就是这层。深色下 #070809 和页面 #252525
-            // 差得不多看不出来，浅色下它就是一条纯黑的横带——底部那条"缝"就是它。
-            Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                if (target != null) {
-                    AsyncImage(
-                        model = target,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-        }
+        // 打底色交给 BlurredCoverBackdrop（它铺的是 scrimStrong）：糊图还没解出来的那一帧
+        // 宁可黑一帧，也不能漏页面底色——浅色主题下那就是白的，深色剧照顶上会横出一条白带。
+        BlurredCoverBackdrop(cover = pic, modifier = Modifier.fillMaxSize())
         Box(
             modifier = Modifier
                 .fillMaxSize()

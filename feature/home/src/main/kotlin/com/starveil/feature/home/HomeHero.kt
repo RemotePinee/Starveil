@@ -25,6 +25,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -33,6 +36,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.Motion
@@ -56,12 +62,16 @@ fun HomeHero(
     }
     val featured = items.take(MAX_FEATURED)
     val pagerState = rememberPagerState(pageCount = { featured.size })
+    // 轮播自动翻页动画被打断（切后台/被系统回收）时会停在两页之间，
+    // 回来就变成"半张旧图半张新图"。ON_RESUME 时吸附回最近的整页。
+    // 组合进来就立即吸附到最近的整页：分页偏移会被 saver 记住（切后台时被打断的
+    // 自动翻页会留下 0.4 这类偏移），恢复后就成了"半张旧图半张新图"。
+    LaunchedEffect(pagerState.currentPage) { pagerState.scrollToPage(pagerState.currentPage) }
 
     Column(modifier = modifier.fillMaxWidth()) {
         HorizontalPager(
             state = pagerState,
-            contentPadding = PaddingValues(horizontal = Spacing.xl),
-            pageSpacing = Spacing.md,
+            pageSpacing = Spacing.none,
         ) { page ->
             HeroCard(vod = featured[page], onClick = { onVodClick(featured[page]) })
         }
@@ -72,6 +82,7 @@ fun HomeHero(
 
 @Composable
 private fun HeroCard(vod: Vod, onClick: () -> Unit) {
+    LaunchedEffect(vod.poster) { HomeTiming.mark("hero-card-compose") }
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -91,11 +102,13 @@ private fun HeroCard(vod: Vod, onClick: () -> Unit) {
                 onClick = onClick,
             ),
     ) {
+        val heroStart = remember(vod.poster) { android.os.SystemClock.elapsedRealtime() }
         AsyncImage(
             model = vod.poster,
             contentDescription = vod.name,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().onGloballyPositioned { HomeTiming.since(heroStart, "hero-layout") },
+            onSuccess = { HomeTiming.since(heroStart, "hero-image-ok") },
         )
         Box(
             modifier = Modifier

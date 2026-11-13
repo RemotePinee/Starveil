@@ -2,6 +2,8 @@ package com.starveil.feature.user
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.remember
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,7 +45,13 @@ internal fun UserProfileBlock(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onLoginClick)
+            // 这块区域本身没有容器形状，默认 ripple 会画出一整块半透明矩形，
+            // 视觉上像"点出了个背景"。头像与文字自己足够表达可点，这里去掉指示层。
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onLoginClick,
+            )
             .padding(vertical = Spacing.xs),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.lg),

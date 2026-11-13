@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import com.starveil.app.cast.CastSessionService
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
@@ -115,6 +116,10 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun MainContent(container: AppContainer) {
         val context = LocalContext.current
+        // 投屏会话：连上就起前台服务，断开就撤通知
+        LaunchedEffect(container) {
+            container.castRepository.status.collect { CastSessionService.sync(context, it) }
+        }
         // 首帧就要拿对皮肤：初值取上次生效的那一号（同步读 SharedPreferences），
         // 不能从空串起步——空串等于默认皮肤，网络回来才切成 3，用户看到的就是
         // "先默认、再变我的"。冷启动第一帧必须已经是上次的样子。

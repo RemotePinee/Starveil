@@ -4,6 +4,9 @@ import androidx.activity.compose.LocalActivity
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -35,6 +39,7 @@ import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Alignment
@@ -62,6 +67,7 @@ import com.starveil.core.designsystem.token.Motion
 import com.starveil.core.designsystem.token.Spacing
 import com.starveil.core.designsystem.LocalLoginPrompt
 import com.starveil.core.designsystem.LoginReason
+import com.starveil.feature.player.PLAYER_ROUTE
 import com.starveil.feature.player.VERTICAL_PLAY_ROUTE
 import com.starveil.feature.shortplay.SHORT_PLAY_ROUTE
 import com.starveil.feature.user.UserNavigation
@@ -89,13 +95,10 @@ internal val LocalHostBottomInset = compositionLocalOf { Spacing.none }
  */
 @Composable
 internal fun AppScaffold(
-    navController: NavHostController,
     state: AppShellState,
     content: @Composable (PaddingValues) -> Unit,
 ) {
     AppSystemBars(state)
-    val presentation = LocalShortPlayPresentation.current
-    val inlineDock = state.currentRoute == SHORT_PLAY_ROUTE && state.isTabPage()
     // 横屏时系统导航栏贴在侧边：systemBars 的水平 inset 会把整棵内容子树往里推，
     // 左侧留出一条没人绘制的空白。页面只吃垂直方向的系统栏，侧边交由内容自己铺满。
     val contentInsets = if (state.fullscreen) {
@@ -103,27 +106,21 @@ internal fun AppScaffold(
     } else {
         ScaffoldDefaults.contentWindowInsets.only(WindowInsetsSides.Vertical)
     }
+    val systemBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Scaffold(
         modifier = if (state.locked) Modifier.blockPointers() else Modifier,
         contentWindowInsets = contentInsets,
-        // dock 始终由同一个 bottomBar 槽绘制：短剧页只是把它的位移交给展开进度。
-        // 换成"overlay + bottomBar"两套宿主时，切 tab 那一帧绘制者变了，
-        // dock 会整体上移一个导航栏高度，底下的页面就露出来一条。
-        bottomBar = {
-            if (inlineDock) {
-                InlineShortPlayBottomBar(navController, state, presentation.expansion)
-            } else {
-                AppBottomBar(navController, state)
-            }
-        },
+        // dock 不再占 bottomBar 槽：它和页面在同一层的前后两层里（见 StarveilNavHost），
+        // 页面自己让位它就露出来，页面铺满就被盖住——不需要它自己做显隐。
         content = { padding ->
-            // 切走时路由先变、页面还在转场：沿用上一帧的短剧前景占位，
-            // 否则入口条会先跳到底再被滑出，看起来像"那栏先消失"。
-            val foregroundPadding = rememberStableForegroundPadding(state, padding)
+            // 短剧前景的底槽按 dock 的真实高度给：dock 挪出 Scaffold 之后
+            // `padding.calculateBottomPadding()` 会变成 0，入口条会整体下移一截。
+            val foregroundPadding = rememberStableForegroundPadding(
+                state = state,
+                dockInset = dockHeight(state.showTabIcons, systemBottom),
+            )
             CompositionLocalProvider(
                 LocalAppContentPadding provides foregroundPadding,
-                // dock 浮在内容之上，把它的实际高度传下去，页面自己留出最后一条的位置
-                LocalDockInset provides padding.calculateBottomPadding(),
             ) {
                 Box(Modifier.fillMaxSize()) { content(padding) }
             }
@@ -132,17 +129,16 @@ internal fun AppScaffold(
 }
 
 /**
- * 短剧前景的底槽高度：dock 的实测高度，与宿主从 NavHost 扣掉的那条同源。
+ * 短剧前景的底槽高度：dock 的实际高度。
  *
- * 不用 `Spacing.tabBarHeight*` 令牌：dock 自己还带 `navigationBars` 内边距，令牌只是
- * 内容高度。两者不一致时，页面前景的底边与 dock 上沿会差出导航栏那一截——差一条就是
- * 入口条被 dock 压住，差多条就是在入口条下面留出一块纯色。切 tab 那一帧的突增由
- * [rememberStableForegroundPadding] 的沿用处理，所以这里读 Scaffold 的结果是安全的。
+ * dock 挪出 Scaffold 的 bottomBar 槽之后，`padding.calculateBottomPadding()` 变成 0，
+ * 短剧入口条会整体下移一个 dock 高度。这里显式喂 dock 高度，占位与挪之前一致：
+ * 页面前景底边与 dock 上沿同源，差一条就是入口条被压住，差多条就是下面留一块纯色。
  */
 @Composable
-private fun playerForegroundPadding(state: AppShellState, scaffold: PaddingValues): PaddingValues =
+private fun playerForegroundPadding(state: AppShellState, dockInset: Dp): PaddingValues =
     if (state.isShortPlayPage()) {
-        PaddingValues(bottom = scaffold.calculateBottomPadding())
+        PaddingValues(bottom = dockInset)
     } else {
         PaddingValues()
     }
@@ -154,9 +150,9 @@ private fun playerForegroundPadding(state: AppShellState, scaffold: PaddingValue
 @Composable
 private fun rememberStableForegroundPadding(
     state: AppShellState,
-    scaffold: PaddingValues,
+    dockInset: Dp,
 ): PaddingValues {
-    val current = playerForegroundPadding(state, scaffold)
+    val current = playerForegroundPadding(state, dockInset)
     val retained = remember { mutableStateOf(current) }
     if (state.isShortPlayPage()) retained.value = current
     return retained.value
@@ -178,28 +174,21 @@ private fun AppSystemBars(state: AppShellState) {
     }
 }
 
-/** 底栏连续收放；实测高度只推动短剧前景，不能重新缩放视频。 */
+/**
+ * 底栏本身。
+ *
+ * 它不做显隐：tab 页由页面自己让位、它在下面一层露出来；播放页与二级页铺满整屏，
+ * 直接把它盖住。所以进播放页看不到"dock 先消失"这一帧。
+ */
 @Composable
-private fun AppBottomBar(navController: NavHostController, state: AppShellState) {
+internal fun AppBottomBar(navController: NavHostController, state: AppShellState) {
     val presentation = LocalShortPlayPresentation.current
     if (state.currentRoute == SHORT_PLAY_ROUTE && presentation.store != null) {
         InlineShortPlayBottomBar(navController, state, presentation.expansion)
         return
     }
-    val animate = !state.locked && state.isVideoPage() && !state.fullscreen
-    val animation = tween<IntSize>(durationMillis = Motion.MediumMs, easing = Motion.standard)
-    AnimatedVisibility(
-        visible = state.isTabPage(),
-        enter = if (animate) {
-            expandVertically(animationSpec = animation, expandFrom = Alignment.Bottom)
-        } else EnterTransition.None,
-        exit = if (animate) {
-            shrinkVertically(animationSpec = animation, shrinkTowards = Alignment.Bottom)
-        } else ExitTransition.None,
-    ) {
-        val selectedRoute = if (state.isVerticalPlayer()) SHORT_PLAY_ROUTE else state.currentRoute
-        BottomBar(navController, selectedRoute, state.tabs, state.showTabIcons)
-    }
+    val selectedRoute = if (state.isVerticalPlayer()) SHORT_PLAY_ROUTE else state.currentRoute
+    BottomBar(navController, selectedRoute, state.tabs, state.showTabIcons)
 }
 
 /**
@@ -268,10 +257,11 @@ internal class AppShellState(
      *
      * 只认底栏自己那几栏：[isTabPage] 对历史、搜索、设置这些二级页也返回 true，
      * 而它们根本没有 dock——这类页面的底边仍要吃系统导航栏，否则最后一行贴着导航栏。
+     *
+     * 用 [currentRoute] 而不是 [settledRoute]：dock 属于页面本身，切到没有 dock 的页面
+     * 那一帧就不该画；等转场结束再收会变成"进去以后才消失"。
      */
-    // 只认 settledRoute：转场第一帧 currentRoute 已经是目标页，
-    // 拿它判断会让 dock 立刻消失、内容区高度跟着变，旧页面被顶上移、底部露黑。
-    fun hasDock(): Boolean = isTabPage() && tabs.any { it.selectedRoute == settledRoute }
+    fun hasDock(): Boolean = isTabPage() && tabs.any { it.selectedRoute == currentRoute }
 
     /**
      * NavHost 要扣掉的安全区。
@@ -295,15 +285,18 @@ internal class AppShellState(
         // 所以页面根永远铺满，避让交给各页面的**内容层**（首页/我的本来就这么做，
         // 其余页面用 `statusBarsPadding()`），这样背景跟着整页一起滑，不会断层。
         top = Spacing.none,
-        // dock 浮在内容之上：有它的页面底边一律不扣，页面铺到屏幕底，
-        // dock 的模糊底才录得到下面的内容；要留白的地方自己加 LocalDockInset。
-        bottom = if (hasDock() || isVerticalPlayer()) {
-            Spacing.none
-        } else {
-            // 二级页没有 dock，只吃掉系统导航栏那一条
-            systemBottom
-        },
+        // dock 与页面同层：有 dock 的页面底边一律不扣，页面铺到屏幕底，
+        // 由页面自己的 TabDockFrame 让位、dock 从下面露出来；
+        // 播放页与二级页不让位，铺满整屏直接把它盖住。
+        bottom = contentBottomInset(
+            currentRoute = currentRoute,
+            hasDock = hasDock(),
+            systemBottom = systemBottom,
+        ),
     )
+
+    /** dock 占的高度：内容高 + 系统导航栏那一条。 */
+    fun dockHeight(systemBottom: Dp): Dp = dockHeight(showTabIcons, systemBottom)
 
     /** 当前页是不是"该有底栏的 tab 页"。 */
     fun isTabPage(): Boolean =

@@ -51,6 +51,19 @@ data class PlayerUiState(
     /** 双流的音轨地址；单流平台为 null（B 站 DASH 直链才有）。 */
     val audioUrl: String? get() = (phase as? PlaybackPhase.Playing)?.audioUrl
 
+    /**
+     * 投屏目标：当前地址 + 标题 + 能不能投。
+     *
+     * 计算属性而不是字段：地址与标题本来就在状态里，红果加密判定是纯正则匹配，
+     * 多存一份只会带来"改了 url 忘了改 target"的隐患。竖屏短剧页面不读它。
+     */
+    val castTarget: CastTarget?
+        get() = castTargetOf(
+            url = url,
+            title = episodeTitle.ifBlank { sourceName },
+            needsClientDecryption = HongguoRuntime.config.matches(url),
+        )
+
     /** 命中 issethead 时的请求头（ParseRules.resolveHeaders），否则为空表。 */
     val headers: Map<String, String> get() = (phase as? PlaybackPhase.Playing)?.headers.orEmpty()
 

@@ -19,14 +19,14 @@ final class Banner
     /**
      * @return array<int,array{id:int,title:string,subtitle:string,pic:string,vod_id:int,url:string,style:string}>
      */
-    public function list(): array
+    public function list(int $typeId = 0): array
     {
         $limit = min(max(Setting::int('banner_limit', 6), 1), 10);
-        $rows = Db::table(Installer::prefix() . 'cuican_banner')
-            ->where('status', 1)
-            ->order('sort asc,id asc')
-            ->limit($limit)
-            ->select();
+        $rows = $this->rowsOf($typeId, $limit);
+        // 分类没配就回退全局（type_id = 0），与热度榜/编辑精选同一口径
+        if ($rows === [] && $typeId !== 0) {
+            $rows = $this->rowsOf(0, $limit);
+        }
 
         $vodIds = array_values(array_filter(array_map(
             static fn (array $row): int => (int)$row['vod_id'],
@@ -72,6 +72,17 @@ final class Banner
                 'style' => (string)$row['style'],
             ];
         }, $rows);
+    }
+
+    /** 按分类取一轮轮播；0 = 全局。 */
+    private function rowsOf(int $typeId, int $limit): array
+    {
+        return Db::table(Installer::prefix() . 'cuican_banner')
+            ->where('status', 1)
+            ->where('type_id', $typeId)
+            ->order('sort asc,id asc')
+            ->limit($limit)
+            ->select();
     }
 
     /**

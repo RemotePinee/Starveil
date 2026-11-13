@@ -145,6 +145,7 @@ private fun Vod.toShortPlay(): ShortPlay = ShortPlay(
     // 分类名来自插件按 type_id 批量查的 mac_type.type_name；后端不下发，空白一律当没有，
     // 不拿 remarks 顶替（那是猜，不是映射）。
     category = typeName?.takeIf { it.isNotBlank() },
+    categoryParent = typeParentName?.takeIf { it.isNotBlank() },
     blurb = blurb,
 )
 
@@ -164,6 +165,7 @@ private data class ShortPlayCacheDto(
     val episodeCount: Int = 0,
     val freeEpisodes: Int = 0,
     val category: String? = null,
+    val categoryParent: String? = null,
     val blurb: String? = null,
 )
 
@@ -175,6 +177,7 @@ private fun List<ShortPlay>.toCache(): List<ShortPlayCacheDto> = map { play ->
         episodeCount = play.episodeCount,
         freeEpisodes = play.freeEpisodes,
         category = play.category,
+        categoryParent = play.categoryParent,
         blurb = play.blurb,
     )
 }
@@ -186,5 +189,6 @@ private fun ShortPlayCacheDto.toDomain(): ShortPlay = ShortPlay(
     episodeCount = episodeCount,
     freeEpisodes = freeEpisodes,
     category = category,
+    categoryParent = categoryParent,
     blurb = blurb,
 )

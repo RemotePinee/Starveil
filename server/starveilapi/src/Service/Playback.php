@@ -346,6 +346,8 @@ final class Playback
         int $sourceIndex,
         int $episodeIndex,
         int $progressSec,
+        string $vodName = '',
+        string $vodPic = '',
     ): void {
         if ($userId <= 0 || $vodId <= 0) {
             return;
@@ -358,6 +360,14 @@ final class Playback
             'progress_sec' => max($progressSec, 0),
             'updated_at' => time(),
         ];
+        // 片名/封面在写入时就落库：短剧与外部源不保证还在 mac_vod 里，
+        // 历史列表若靠 join 取名字，这些记录会被整条丢掉。
+        if ($vodName !== '') {
+            $data['vod_name'] = mb_substr($vodName, 0, 255);
+        }
+        if ($vodPic !== '') {
+            $data['vod_pic'] = mb_substr($vodPic, 0, 255);
+        }
         if ($exists) {
             Db::table($table)->where('vlog_id', (int)$exists['vlog_id'])->update($data);
             return;

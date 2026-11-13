@@ -63,6 +63,8 @@ import com.starveil.core.model.ContinueWatchingRules
 internal fun UserCenterWatchHistory(input: WatchHistoryInput, modifier: Modifier = Modifier) {
     Column(modifier = modifier.fillMaxWidth()) {
         HistoryHeader(onSeeAll = input.onSeeAll)
+        // 与下方"常用工具"一致：标题到卡片留 Spacing.md
+        Spacer(Modifier.height(Spacing.md))
         if (input.items.isEmpty()) {
             EmptyHistoryCard(hint = input.emptyHint, onClick = input.onEmptyClick)
             return@Column
@@ -253,7 +255,7 @@ private fun EmptyHistoryCard(hint: String, onClick: () -> Unit) {
             )
             Text(
                 text = hint,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.titleMedium,
                 color = starveilExtraColors.textMuted,
                 modifier = Modifier.weight(WEIGHT_FULL),
             )

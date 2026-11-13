@@ -17,18 +17,26 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.ScrollState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.layout.Column
 import androidx.compose.animation.core.spring
@@ -47,6 +55,7 @@ import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
 
 /**
  * 分类行：搜索栏下方那一排胶囊。
@@ -72,6 +81,23 @@ fun CategoryChips(
     // 这一行叠在轮播图上，背景是随图变化的颜色，任何纯色蒙版都会露出一块斑。
     // 左侧只在能往回滚时才出现，静止时第一个分类是完整的。
     val edgePx = with(LocalDensity.current) { EDGE_FADE.toPx() }
+    // 页面滑到屏幕外的分类时，把选中项**最小幅度**滚进视口：
+    // 左侧被挡就从左边缘滑进来，右侧超出就只推到刚好露完；已在视口内则不动。
+    // 不做"总是居中"——那会让一次切页直接横跳。
+    val chipStart = remember { mutableStateMapOf<Int, Int>() }
+    val chipWidth = remember { mutableStateMapOf<Int, Int>() }
+    var viewportWidth by remember { mutableIntStateOf(0) }
+    LaunchedEffect(selectedTypeId, viewportWidth) {
+        anchorTarget(
+            AnchorInput(
+                start = chipStart[selectedTypeId] ?: -1,
+                width = chipWidth[selectedTypeId] ?: 0,
+                viewport = viewportWidth,
+                scrollValue = scrollState.value,
+                edge = edgePx.roundToInt(),
+            ),
+        )?.let { scrollState.animateScrollTo(it.coerceIn(0, scrollState.maxValue)) }
+    }
     val fadeStart by animateFloatAsState(
         targetValue = if (scrollState.canScrollBackward) 1f else 0f,
         animationSpec = tween(Motion.MediumMs),
@@ -86,34 +112,10 @@ fun CategoryChips(
     val fadeMask = starveilExtraColors.fadeMask
     Box(
         modifier = modifier
+            .onSizeChanged { viewportWidth = it.width }
             .height(CHIP_HEIGHT)
             .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-            .drawWithContent {
-                drawContent()
-                if (fadeStart > 0f) {
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            listOf(fadeMask.copy(alpha = fadeStart), Color.Transparent),
-                            startX = 0f,
-                            endX = edgePx,
-                        ),
-                        size = Size(edgePx, size.height),
-                        blendMode = BlendMode.DstOut,
-                    )
-                }
-                if (fadeEnd > 0f) {
-                    drawRect(
-                        brush = Brush.horizontalGradient(
-                            listOf(Color.Transparent, fadeMask.copy(alpha = fadeEnd)),
-                            startX = size.width - edgePx,
-                            endX = size.width,
-                        ),
-                        topLeft = Offset(size.width - edgePx, 0f),
-                        size = Size(edgePx, size.height),
-                        blendMode = BlendMode.DstOut,
-                    )
-                }
-            },
+            .edgeFades(fadeStart = fadeStart, fadeEnd = fadeEnd, edgePx = edgePx, mask = fadeMask)
     ) {
         // 用普通 Row + horizontalScroll 而不是 LazyRow：LazyRow 的视口必定填满约束，
         // 宽度无法「内容多宽就多宽」，调用方就没法把剩下的宽度让给搜索框。
@@ -131,6 +133,10 @@ fun CategoryChips(
                     selected = type.id == selectedTypeId,
                     coverProgress = coverProgress,
                     onClick = { onSelect(type.id) },
+                    modifier = Modifier.onGloballyPositioned { coords ->
+                        chipStart[type.id] = coords.positionInParent().x.roundToInt()
+                        chipWidth[type.id] = coords.size.width
+                    },
                 )
             }
         }
@@ -172,6 +178,7 @@ private fun CategoryChip(
     selected: Boolean,
     coverProgress: Float,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val scale by animateFloatAsState(
         targetValue = if (selected) SELECTED_SCALE else 1f,
@@ -194,7 +201,7 @@ private fun CategoryChip(
     )
     val interaction = remember { MutableInteractionSource() }
     Box(
-        modifier = Modifier
+        modifier = modifier
             .height(CHIP_HEIGHT)
             .clickable(interactionSource = interaction, indication = null, onClick = onClick)
             .padding(horizontal = Spacing.xs)
@@ -212,11 +219,63 @@ private fun CategoryChip(
     }
 }
 
-private val CHIP_HEIGHT = Spacing.xxl + Spacing.lg
+/**
+ * 计算"让选中项刚好露出来"的目标滚动值；已在视口内返回 null。
+ *
+ * 纯函数：不读 Compose 状态，方便把圈复杂度从 `CategoryChips` 里分离出去。
+ */
+private fun anchorTarget(input: AnchorInput): Int? = when {
+    input.start < 0 || input.viewport <= 0 -> null
+    input.start < input.scrollValue -> input.start - input.edge
+    input.start + input.width > input.scrollValue + input.viewport ->
+        input.start + input.width - input.viewport + input.edge
+
+    else -> null
+}
+
+
+/** 两端渐隐：用 BlendMode.DstOut 把已画内容擦成透明，透出底下轮播图本身的颜色。 */
+private fun Modifier.edgeFades(fadeStart: Float, fadeEnd: Float, edgePx: Float, mask: Color): Modifier =
+    drawWithContent {
+        drawContent()
+        if (fadeStart > 0f) {
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    listOf(mask.copy(alpha = fadeStart), Color.Transparent),
+                    startX = 0f,
+                    endX = edgePx,
+                ),
+                size = Size(edgePx, size.height),
+                blendMode = BlendMode.DstOut,
+            )
+        }
+        if (fadeEnd > 0f) {
+            drawRect(
+                brush = Brush.horizontalGradient(
+                    listOf(Color.Transparent, mask.copy(alpha = fadeEnd)),
+                    startX = size.width - edgePx,
+                    endX = size.width,
+                ),
+                topLeft = Offset(size.width - edgePx, 0f),
+                size = Size(edgePx, size.height),
+                blendMode = BlendMode.DstOut,
+            )
+        }
+    }
+/** 锚点计算入参：字段多，用持有者避免函数签名超 detekt 的 5 个参数。 */
+private data class AnchorInput(
+    val start: Int,
+    val width: Int,
+    val viewport: Int,
+    val scrollValue: Int,
+    val edge: Int,
+)
+
+/** 分类行高度：顶栏高度与列表让位都按它算，所以对模块内可见。 */
+internal val CHIP_HEIGHT = Spacing.xxl + Spacing.lg
 
 /** 选中放大倍数：优酷的量级，再大就挤到相邻项。 */
 private const val SELECTED_SCALE = 1.16f
-
 
 /** 渐隐宽度：约一个胶囊的高，够提示又不遮文字。 */
 private val FADE_WIDTH = Spacing.xxl

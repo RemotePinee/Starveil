@@ -152,7 +152,11 @@ private fun SeriesSummary(stage: VerticalPlayStage, modifier: Modifier = Modifie
         VerticalPlaybackStatus(stage)
         SeriesTitle(stage)
         if (stage.state.category.isNotBlank()) {
-            CategoryTags(category = stage.state.category, parent = stage.state.categoryParent)
+            CategoryTags(
+                vodId = stage.state.vodId,
+                category = stage.state.category,
+                parent = stage.state.categoryParent,
+            )
         }
         if (stage.state.description.isNotBlank()) {
             SynopsisLine(stage)
@@ -180,12 +184,12 @@ private fun SeriesSummary(stage: VerticalPlayStage, modifier: Modifier = Modifie
  * 不会把剧名 / 简介挤出列宽。
  */
 @Composable
-private fun CategoryTags(category: String, parent: String) {
-    // 切剧那一瞬 categoryParent 是空（新剧详情还没回来），父药丸整个不画、
-    // 子药丸顶到它的位置；数据回来父药丸又插回去，把子药丸挤到右边——
-    // 用户看到的就是「一级分类消失又出现、把二级分类挤过去」。
-    // 记住上一个非空值：换父分类时最多一瞬间显示旧名，比整行跳动好得多。
-    var lastParent by remember { mutableStateOf("") }
+private fun CategoryTags(vodId: Int, category: String, parent: String) {
+    // 父分类必须跟着剧走：切剧 / 切分类那一瞬新剧的父分类还没回来，父药丸整个不画、
+    // 子药丸顶到它的位置，数据回来父药丸又插回去，把子药丸挤到右边。
+    // 同一部剧内记住上一个非空值（详情晚于首帧的那一拍），但**不能跨剧复用**：
+    // 跨剧复用会让新分类的剧挂着上一部剧的父分类名。
+    var lastParent by remember(vodId) { mutableStateOf("") }
     if (parent.isNotBlank()) lastParent = parent
     val shownParent = parent.ifBlank { lastParent }
     Row(

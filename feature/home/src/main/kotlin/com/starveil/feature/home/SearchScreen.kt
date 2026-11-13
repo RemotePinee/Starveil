@@ -22,6 +22,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,7 +44,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.starveil.core.designsystem.component.PosterImage
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -71,6 +78,7 @@ fun SearchRoute(
         state = state,
         actions = SearchActions(
             onQueryChange = viewModel::onQueryChange,
+            onSubmit = viewModel::onSubmit,
             onRetry = viewModel::retry,
             onVodClick = onVodClick,
             onBack = onBack,
@@ -96,7 +104,12 @@ fun SearchScreen(
             .statusBarsPadding(),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            SearchHeader(query = state.query, onQueryChange = actions.onQueryChange, onBack = actions.onBack)
+            SearchHeader(
+                query = state.query,
+                onQueryChange = actions.onQueryChange,
+                onSubmit = actions.onSubmit,
+                onBack = actions.onBack,
+            )
             when {
                 state.isLoading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator()
@@ -136,9 +149,22 @@ fun SearchScreen(
 }
 
 @Composable
-private fun SearchHeader(query: String, onQueryChange: (String) -> Unit, onBack: () -> Unit) {
+private fun SearchHeader(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+    onBack: () -> Unit,
+) {
     val focusRequester = remember { FocusRequester() }
     val keyboard = LocalSoftwareKeyboardController.current
+    // 输入法还在组字（拼音没上屏）时不算一次输入：既不搜，也不往历史里写。
+    // 用 TextFieldValue 才拿得到 composition，String 版本拿不到。
+    var field by remember { mutableStateOf(TextFieldValue(query)) }
+    LaunchedEffect(query) {
+        if (field.text != query && field.composition == null) {
+            field = TextFieldValue(query, TextRange(query.length))
+        }
+    }
     // 等整页撑着的那段动画走完再弹键盘：同步弹会让缩放动画卡一下
     LaunchedEffect(Unit) {
         delay(Motion.LongMs.toLong())
@@ -189,9 +215,20 @@ private fun SearchHeader(query: String, onQueryChange: (String) -> Unit, onBack:
                 )
                 Spacer(Modifier.width(Spacing.sm))
                 BasicTextField(
-                    value = query,
-                    onValueChange = onQueryChange,
+                    value = field,
+                    onValueChange = { value ->
+                        field = value
+                        // 拼音上屏（composition 清空）才算一次真实输入
+                        if (value.composition == null) onQueryChange(value.text)
+                    },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            keyboard?.hide()
+                            onSubmit()
+                        },
+                    ),
                     textStyle = TextStyle(
                         color = MaterialTheme.colorScheme.onBackground,
                         fontSize = MaterialTheme.typography.bodyMedium.fontSize,
@@ -200,7 +237,7 @@ private fun SearchHeader(query: String, onQueryChange: (String) -> Unit, onBack:
                     cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                     modifier = Modifier.weight(1f).focusRequester(focusRequester),
                     decorationBox = { inner ->
-                        if (query.isEmpty()) {
+                        if (field.text.isEmpty()) {
                             Text(
                                 text = "搜索影片、演员",
                                 // 与首页搜索胶囊同字号：占位文字不该比输入文字小一号。

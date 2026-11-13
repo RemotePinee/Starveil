@@ -74,10 +74,9 @@ class HomeViewModel(
     private var types: List<VodType> = emptyList()
     private var selectedTypeId: Int = 0
     private var layoutLoaded = false
-    private var banners: List<HomeBanner> = emptyList()
     private var blocks: List<HomeBlock> = emptyList()
     private var links: List<HomeLink> = emptyList()
-    private var featured: HomeSpotlight = HomeSpotlight()
+    private val castFeatured = HomeFeaturedState()
     private var hot: HomeSpotlight = HomeSpotlight()
     private var guess: HomeSpotlight = HomeSpotlight()
     /** 封面预热队列：分类数据和卡片位一落地就把海报排进去，切 Tab 时不用再从网络取。 */
@@ -92,6 +91,8 @@ class HomeViewModel(
     private val feedCache = HomeFeedCache(viewModelScope, coverWarmup::add) { typeId ->
         repository.list(type = typeId)
     }
+    /** 切分类的并发取数（列表 + 两个卡片位 + 编辑精选）。 */
+    private val categoryLoader = HomeCategoryLoader(feedCache, spotlights, repository)
     /** 等当前分类结果的句柄：切换时取消的是"等待"，在飞的请求留给缓存用。 */
     private var itemsJob: Job? = null
     private var topics: List<Topic> = emptyList()
@@ -135,9 +136,11 @@ class HomeViewModel(
         val cached = feedCache.cached(typeId)
         val spots = spotlights[typeId]
         if (cached != null && spots != null) {
-            hot = spots.first
-            guess = spots.second
+            hot = spots.first; guess = spots.second
+            castFeatured.restore(typeId)
             _state.value = contentOf(cached)
+                .withKeptBanners(categoryLoader.cachedBanners(typeId), current.banners)
+            itemsJob = viewModelScope.launch { loadCategory(typeId) }
         } else {
             // 缺数据：整块进切换态（等高占位），别把上一个分类的榜留在屏上
             _state.value = current.copy(
@@ -210,11 +213,12 @@ class HomeViewModel(
 
     /** 首页内容位：轮播/专区/快捷入口/三个卡片位/专题/直播/继续观看，任一失败只降级该模块。 */
     private suspend fun loadContent() {
-        banners = (repository.banners() as? AppResult.Success)?.value.orEmpty()
+        categoryLoader.rememberBanners(0, (repository.banners(0) as? AppResult.Success)?.value.orEmpty())
         blocks = (repository.blocks() as? AppResult.Success)?.value.orEmpty()
         links = (repository.links() as? AppResult.Success)?.value.orEmpty()
         // 失败/未配置都落成空配置：UI 据此回退到列表切片，不让整块卡片位消失
-        featured = (repository.featured() as? AppResult.Success)?.value ?: HomeSpotlight()
+        castFeatured.setGlobal((repository.featured() as? AppResult.Success)?.value ?: HomeSpotlight())
+        coverWarmup.add(castFeatured.current.items)
         hot = (repository.hot() as? AppResult.Success)?.value ?: HomeSpotlight()
         guess = (repository.guess() as? AppResult.Success)?.value ?: HomeSpotlight()
         pushCount = repository.homePushCount(pushEnabled)
@@ -223,6 +227,13 @@ class HomeViewModel(
         topics = topicRepository.homeTopics(modules)
         lives = liveRepository.homeLives(modules)
         continueWatching = continueWatchingRepository.homeContinueWatching(modules)
+    }
+
+    private fun applyListFailure(typeId: Int, message: String) {
+        if (typeId != selectedTypeId) return
+        _state.update { it.withItemsFailure(message) }
+        if (_state.value is HomeUiState.Loading) return
+        onReady()
     }
 
     private suspend fun loadItems(typeId: Int = selectedTypeId) {
@@ -238,15 +249,12 @@ class HomeViewModel(
      * 分两路各写一次状态的话，先回来的那路会把界面推到半成品——
      * 先是空、再是上一个分类的榜、最后才轮到本分类。
      */
-    private suspend fun loadCategory(typeId: Int) = coroutineScope {
-        val items = async { feedCache.load(typeId) }
-        val spots = async { spotlights.load(typeId) }
-        val list = items.await()
-        val pair = spots.await()
-        if (typeId != selectedTypeId) return@coroutineScope
-        hot = pair.first
-        guess = pair.second
-        when (list) {
+    private suspend fun loadCategory(typeId: Int) {
+        val snapshot = categoryLoader.snapshot(typeId)
+        if (typeId != selectedTypeId) return
+        hot = snapshot.hot; guess = snapshot.guess
+        castFeatured.apply(typeId, snapshot.hero)
+        when (val list = snapshot.list) {
             is AppResult.Success ->
                 _state.value = contentOf(list.value).copy(isSwitching = false, isRefreshing = false)
 
@@ -282,13 +290,6 @@ class HomeViewModel(
     }
 
     /** 请求失败：骨架要退掉，否则用户停在骨架上看不到"失败了"。 */
-    private fun applyListFailure(typeId: Int, message: String) {
-        if (typeId != selectedTypeId) return
-        _state.update { it.withItemsFailure(message) }
-        // 失败也是一种最终画面，同样放行启动层
-        if (_state.value !is HomeUiState.Loading) onReady()
-    }
-
     /** 用当前配置拼一个 Content：只有列表是变量，其余沿用已加载好的值。 */
     private fun contentOf(items: List<Vod>): HomeUiState.Content = HomeUiState.Content(
         items = items,
@@ -296,12 +297,12 @@ class HomeViewModel(
         columns = columns,
         types = types,
         selectedTypeId = selectedTypeId,
-        banners = banners,
+        banners = categoryLoader.cachedBanners(selectedTypeId),
         blocks = blocks,
         links = links,
         modules = modules,
         continueWatching = continueWatching,
-        featured = featured,
+        featured = castFeatured.current,
         hot = hot,
         guess = guess,
         topics = topics,
@@ -312,12 +313,7 @@ class HomeViewModel(
     )
 }
 
-/**
- * 首页 ViewModel 的工厂。
- *
- * 从 `HomeViewModel.companion` 搬出来：类已经贴着 detekt 的 `LargeClass` 阈值，
- * 工厂只是装配参数，放在类外更好读。
- */
+    /** 分类切换：列表与两个卡片位并发取，全到齐才提交一次，避免半成品。 */
 fun homeViewModelFactory(
     repository: VodRepository,
     startupRepository: StartupRepository,
@@ -375,7 +371,6 @@ private fun homeInitialState(snapshot: HomeSnapshotStore?, cachedStartup: Startu
         links = cached.links(),
         modules = cachedStartup.moduleOrder(),
         continueWatching = emptyList(),
-        featured = cached.featured() ?: HomeSpotlight(),
         hot = cached.hot() ?: HomeSpotlight(),
         guess = cached.guess() ?: HomeSpotlight(),
         pushCount = 0,
@@ -384,12 +379,7 @@ private fun homeInitialState(snapshot: HomeSnapshotStore?, cachedStartup: Startu
     )
 }
 
-/**
- * 首页列表请求失败时的状态收敛。
- *
- * 快照已经铺出内容时不要整页换成错误页：网断了也应该继续看上次的首页，
- * 下拉刷新本身有 toast/进度条作为反馈。放在类外是为了压住 detekt 的类体积与函数长度。
- */
+    /** 首页列表请求失败时的状态收敛。 */
 private fun HomeUiState.withItemsFailure(message: String): HomeUiState =
     if (this is HomeUiState.Content) copy(isRefreshing = false, isSwitching = false) else HomeUiState.Error(message)
 
@@ -402,12 +392,7 @@ private data class HomeLayout(
     val pushEnabled: Boolean,
 )
 
-/**
- * 把启动配置写回当前状态。
- *
- * 只改配置、不动内容：网络回来的新列数 / 模块顺序要立刻体现在已经铺出来的首页上，
- * 否则界面会一直用快照里的旧配置，必须再冷启动一次（从快照重读）才生效。
- */
+    /** 把启动配置写回当前状态。 */
 private fun HomeUiState.withLayout(layout: HomeLayout): HomeUiState = when (this) {
     is HomeUiState.Loading -> HomeUiState.Loading(searchHot = layout.searchHot, modules = layout.modules)
     is HomeUiState.Content -> copy(
@@ -420,3 +405,4 @@ private fun HomeUiState.withLayout(layout: HomeLayout): HomeUiState = when (this
 
     else -> this
 }
+

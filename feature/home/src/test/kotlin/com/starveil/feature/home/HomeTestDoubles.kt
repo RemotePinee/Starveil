@@ -98,7 +98,7 @@ internal class FakeVodRepository(
 
     override suspend fun detail(vodId: Int) = AppResult.Failure(AppError.Unknown(null))
 
-    override suspend fun featured() = featuredResult
+    override suspend fun featured(typeId: Int) = featuredResult
 
     override suspend fun hot() = hotResult
 

@@ -38,7 +38,8 @@ internal fun verticalInitialState(
     cover = preview?.cover ?: cached?.poster,
     description = preview?.blurb ?: cached?.blurb.orEmpty(),
     category = preview?.category ?: cached?.typeName.orEmpty(),
-    categoryParent = cached?.typeParentName.orEmpty(),
+    // 父分类也走首帧预览：详情没回来之前药丸就得是对的，否则会先显示上一部剧的父分类。
+    categoryParent = preview?.categoryParent ?: cached?.typeParentName.orEmpty(),
     typeId = cached?.typeId ?: 0,
     episodeCountHint = preview?.episodeCount
         ?: cached?.playSources?.getOrNull(VERTICAL_PLAY_SOURCE_INDEX)?.episodes?.size ?: 0,

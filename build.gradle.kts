@@ -189,6 +189,8 @@ val verifySecurityBaseline by tasks.registering {
         "android.permission.ACCESS_NETWORK_STATE",
         // 聚合广告 SDK（TopOn / TradPlus）判定网络类型用
         "android.permission.ACCESS_WIFI_STATE",
+        // 投屏：SSDP 组播发现需要 MulticastLock（见 app 的 manifest 注释）
+        "android.permission.CHANGE_WIFI_MULTICAST_STATE",
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",

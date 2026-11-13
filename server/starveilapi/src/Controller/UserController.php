@@ -181,14 +181,17 @@ final class UserController extends BaseController
         $user = $this->requireLogin();
         $rows = Db::table(Installer::prefix() . 'cuican_vlog')
             ->alias('v')
-            ->join(Installer::prefix() . 'vod w', 'w.vod_id = v.vod_id')
+            // LEFT JOIN：短剧与外部片源的 vod_id 不保证在 mac_vod 里，INNER JOIN
+            // 会把它们的观看记录整条丢掉。片名/封面优先用写入时落库的那份。
+            ->join(Installer::prefix() . 'vod w', 'w.vod_id = v.vod_id', 'LEFT')
             // 带类型名：客户端据此分流（短剧 → 竖屏播放器，普通影片 → 详情页）
             ->join(Installer::prefix() . 'type t', 't.type_id = w.type_id', 'LEFT')
             ->where('v.user_id', (int)$user['user_id'])
-            ->where('w.vod_status', 1)
             ->field(
                 'v.vod_id,v.source_index,v.episode_index,v.progress_sec,v.updated_at,'
-                . 'w.vod_name,w.vod_pic,w.vod_class,t.type_name'
+                . "COALESCE(NULLIF(w.vod_name,''), v.vod_name) AS vod_name,"
+                . "COALESCE(NULLIF(w.vod_pic,''), v.vod_pic) AS vod_pic,"
+                . 'w.vod_class,t.type_name'
             )
             ->order('v.updated_at desc')
             ->limit(self::CONTINUE_LIMIT)

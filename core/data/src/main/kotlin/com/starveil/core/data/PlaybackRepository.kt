@@ -26,6 +26,8 @@ interface PlaybackRepository {
         sourceIndex: Int,
         episodeIndex: Int,
         positionSec: Int,
+        vodName: String = "",
+        vodPic: String = "",
     ): AppResult<Unit>
 
     /** 读某部影片的断点；没看过时返回全 0。 */
@@ -47,10 +49,12 @@ class DefaultPlaybackRepository(
         sourceIndex: Int,
         episodeIndex: Int,
         positionSec: Int,
+        vodName: String,
+        vodPic: String,
     ): AppResult<Unit> {
         if (vodId <= 0 || positionSec < 0) return AppResult.Success(Unit)
         return apiCall {
-            progressApi.saveProgress(vodId, sourceIndex, episodeIndex, positionSec)
+            progressApi.saveProgress(vodId, sourceIndex, episodeIndex, positionSec, vodName, vodPic)
         }.requireSuccess()
     }
 

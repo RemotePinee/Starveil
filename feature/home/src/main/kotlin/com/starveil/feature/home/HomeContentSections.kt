@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
@@ -25,31 +27,39 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import coil3.compose.AsyncImagePainter
+import coil3.SingletonImageLoader
 import coil3.compose.SubcomposeAsyncImage
 import coil3.compose.SubcomposeAsyncImageContent
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Regular
 import com.adamglin.phosphoricons.regular.FilmStrip
+import com.starveil.core.designsystem.component.prefetchBlurredCover
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.token.AppShape
 import com.starveil.core.designsystem.token.IconSize
@@ -62,6 +72,8 @@ import com.starveil.core.model.HomeLink
 fun BannerHero(
     banners: List<HomeBanner>,
     onClick: (HomeBanner) -> Unit,
+    /** 0 = 压在轮播图上，1 = 已经滚到页面底色上；抠洞里的压暗跟它一起退。 */
+    coverProgress: Float = 0f,
 ) {
     val pages = banners
     if (pages.isEmpty()) {
@@ -88,14 +100,33 @@ fun BannerHero(
     }
     // 贴边：两套模式同一套结构。标题、圆点都画在这一层——
     // 这里高度由 aspectRatio 定死，`fillMaxHeight` 才算得出真实像素。
-    // 顶部抠洞做在图里：背后是模糊底色，抠开才露得出来；范围只到卡片顶部 12%。
+    // 顶部抠洞做在图里：洞里透出来的是屏幕级那层模糊底，抠开才露得出来。
     val mask = starveilExtraColors.fadeMask
+    val holeScrim = holeScrimColor(coverProgress)
+    PrefetchBannerBlur(pages)
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .aspectRatio(BANNER_RATIO)
             .clipToBounds(),
     ) {
+        // 抠洞背后**不铺自己那层模糊**：露出来的必须是屏幕级那层 [HomeBannerBackdrop]，
+        // 它和顶栏底下是同一块图、同一次裁切。各铺各的会把同一张图裁成两个比例，
+        // 接缝处颜色对不上，那条线怎么调浓度都消不掉。
+        // 顶栏那条渐隐从洞顶接着往下淡：前半段降得快（别在边界处留一块暗），
+        // 后半段慢慢收到 0，和下面清晰的剧照之间没有台阶。
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(BANNER_TOP_FADE)
+                .background(
+                    Brush.verticalGradient(
+                        0f to holeScrim,
+                        0.45f to holeScrim.copy(alpha = holeScrim.alpha * 0.45f),
+                        1f to Color.Transparent,
+                    ),
+                ),
+        )
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -116,28 +147,44 @@ fun BannerHero(
                 .padding(Spacing.lg),
         )
         // 指示器直接压在剧照上，不再增加胶囊底。
-        Row(
-            modifier = Modifier.align(Alignment.BottomEnd).padding(Spacing.lg),
-            horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
-        ) {
-            repeat(pages.size) { index ->
-                val active = index == pager.currentPage
-                val dotColor = MaterialTheme.colorScheme.onBackground
-                Box(
-                    modifier = Modifier
-                        .height(Spacing.xs)
-                        .width(if (active) Spacing.lg else Spacing.xs)
-                        .clip(AppShape.full)
-                        .background(
-                            if (active) dotColor else dotColor.copy(alpha = DOTS_INACTIVE_ALPHA),
-                        ),
-                )
-            }
-        }
+        BannerDots(count = pages.size, current = pager.currentPage)
     }
 }
 
+/** 每页的模糊版先解好：切页那一瞬间抠洞里不能先黑一下再亮起来。 */
+@Composable
+private fun PrefetchBannerBlur(banners: List<HomeBanner>) {
+    val pics = remember(banners) { banners.mapNotNull { it.pic.takeIf(String::isNotBlank) } }
+    val context = LocalContext.current
+    LaunchedEffect(pics) {
+        val loader = SingletonImageLoader.get(context)
+        pics.forEach { loader.prefetchBlurredCover(context, it) }
+    }
+}
 
+/** 轮播指示器：直接压在剧照上，不增加胶囊底。 */
+@Composable
+private fun BannerDots(count: Int, current: Int) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(Spacing.lg),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.xs, Alignment.End),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(count) { index ->
+            val active = index == current
+            val dotColor = MaterialTheme.colorScheme.onBackground
+            Box(
+                modifier = Modifier
+                    .height(Spacing.xs)
+                    .width(if (active) Spacing.lg else Spacing.xs)
+                    .clip(AppShape.full)
+                    .background(
+                        if (active) dotColor else dotColor.copy(alpha = DOTS_INACTIVE_ALPHA),
+                    ),
+            )
+        }
+    }
+}
 
 /** 唯一的轮播空态：占位卡与图片加载失败都复用它，避免出现两套文案/排版。 */
 @Composable
@@ -320,11 +367,11 @@ private const val LINK_SCRIM_END = 1f
 /** 轮播卡片与轮播占位共用的比例：16:9 传统横向大图 */
 internal const val BANNER_RATIO = 16f / 9f
 
-/** 顶部抠洞到哪里为止：卡片顶部 12%，再长就把剧照上半截也吃掉了。 */
-private const val BANNER_TOP_FADE = 0.12f
+/** 顶部抠洞到哪里为止：卡片顶部 30%，洞够深，顶栏的深色才有地方淡出去。 */
+private const val BANNER_TOP_FADE = 0.30f
 
 /**
- * 顶部抠洞：卡片按 [BANNER_TOP_FADE] 淡出，露出背后那层模糊底色。
+ * 顶部抠洞：卡片按 [BANNER_TOP_FADE] 淡出，露出背后的模糊底。
  *
  * 必须用 DstIn 真抠：背后是模糊图，盖一层纯色永远对不上色，
  * 看上去就是"一条遮罩"而不是图淡出去。

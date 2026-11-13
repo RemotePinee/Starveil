@@ -275,6 +275,7 @@ private fun InlinePlayerRoute(
             viewModel = viewModel,
             modifier = Modifier.fillMaxSize(),
             engine = engine,
+            cast = container.castRepository,
             unlock = load.gate?.unlockOptions(container.adGateway.isReady(AdSlot.REWARD))
                 ?: UnlockOptions(),
             // 看完广告重查闸门，放不放行由服务端说了算；

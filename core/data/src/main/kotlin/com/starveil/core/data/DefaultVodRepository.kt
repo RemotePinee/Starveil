@@ -63,9 +63,9 @@ class DefaultVodRepository(
         filterSnapshot?.saveItems(list)
     }
 
-    override suspend fun banners(): AppResult<List<HomeBanner>> {
+    override suspend fun banners(typeId: Int): AppResult<List<HomeBanner>> {
         val client = homeApi ?: return AppResult.Success(emptyList())
-        return apiCall { client.banners() }.flatMap { envelope ->
+        return apiCall { client.banners(typeId) }.flatMap { envelope ->
             envelope.data?.let { data ->
                 snapshot?.saveBanners(data.list)
                 AppResult.Success(data.list.map { dto -> dto.toDomain() })
@@ -96,9 +96,9 @@ class DefaultVodRepository(
         }
     }
 
-    override suspend fun featured(): AppResult<HomeSpotlight> {
+    override suspend fun featured(typeId: Int): AppResult<HomeSpotlight> {
         val client = homeApi ?: return AppResult.Success(HomeSpotlight())
-        return apiCall { client.featured() }.flatMap { envelope ->
+        return apiCall { client.featured(typeId) }.flatMap { envelope ->
             envelope.data?.let { data ->
                 snapshot?.saveFeatured(data)
                 AppResult.Success(data.toDomain())

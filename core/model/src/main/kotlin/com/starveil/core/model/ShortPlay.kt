@@ -16,6 +16,8 @@ package com.starveil.core.model
  * @property category 分类名，取自 `Vod.typeName`（后端 `mac_type.type_name`）。
  *   后端不下发 `type_name`、或下发了空白时仍为 null；不拿 `remarks`
  *   （"更新至 80 集"之类的文案）顶替——那是猜，不是映射。
+ * @property categoryParent 父分类名，取自 `Vod.typeParentName`（后端 `type_parent_name`）；
+ *   空白一律当没有。首帧药丸靠它：详情没回来之前也能显示对的那一级分类。
  * @property blurb 简介，对应 `Vod.blurb`。
  */
 data class ShortPlay(
@@ -26,4 +28,5 @@ data class ShortPlay(
     val freeEpisodes: Int,
     val category: String?,
     val blurb: String?,
+    val categoryParent: String? = null,
 )

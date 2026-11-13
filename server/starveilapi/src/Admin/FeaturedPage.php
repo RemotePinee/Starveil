@@ -64,7 +64,12 @@ final class FeaturedPage extends BasePage
     /** 是否按分类配置：编辑精选为首页专属，只有热度榜/猜你喜欢需要。 */
     private function hasTypeDimension(): bool
     {
-        return $this->position !== Featured::POSITION;
+        // 三个位置都按分类配：编辑精选也支持分类（之前只有热度榜/猜你喜欢有）
+        return in_array($this->position, [
+            Featured::POSITION,
+            Featured::POSITION_HOT,
+            Featured::POSITION_GUESS,
+        ], true);
     }
 
     public function mutate(array $post): void

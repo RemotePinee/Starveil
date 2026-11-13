@@ -78,3 +78,11 @@ sealed interface HomeUiState {
 
     data class Error(val message: String) : HomeUiState
 }
+
+/** 只换轮播，其它字段保持不动：分类切换命中缓存时用。 */
+internal fun HomeUiState.withBanners(banners: List<HomeBanner>): HomeUiState =
+    if (this is HomeUiState.Content) copy(banners = banners) else this
+
+/** 新分类的轮播还没取到时沿用上一组，避免头图先消失再出现的跳动。 */
+internal fun HomeUiState.withKeptBanners(cached: List<HomeBanner>, previous: List<HomeBanner>): HomeUiState =
+    if (cached.isEmpty()) withBanners(previous) else this

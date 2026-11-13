@@ -54,6 +54,13 @@ class SearchViewModel(
         loadRecommendations()
     }
 
+    /**
+     * 输入即搜：防抖到点只去取结果，**不写历史**。
+     *
+     * 历史必须等用户真的提交（软键盘搜索键 / 点历史词）。之前这里直接走 [submit]，
+     * 输入法打拼音的中间态（"xie tiao"、"w" 这种）停顿超过防抖时间就被当成一次搜索
+     * 记进「最近搜索」，历史里全是拼音串。
+     */
     fun onQueryChange(value: String) {
         _state.update { it.copy(query = value) }
         job?.cancel()
@@ -63,8 +70,16 @@ class SearchViewModel(
         }
         job = viewModelScope.launch {
             delay(DEBOUNCE_MS)
-            submit(value)
+            load(value)
         }
+    }
+
+    /** 软键盘上的搜索键 / 提交动作：这一刻才写历史。 */
+    fun onSubmit() {
+        val word = _state.value.query.trim()
+        if (word.isEmpty()) return
+        job?.cancel()
+        job = viewModelScope.launch { submit(word) }
     }
 
     /** 点历史词：打断去抖，立刻走同一条「写历史 + 搜索」的路径。 */

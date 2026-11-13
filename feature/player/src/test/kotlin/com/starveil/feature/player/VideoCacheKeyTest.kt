@@ -1,62 +1,55 @@
 package com.starveil.feature.player
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Test
 
 /**
- * 缓存键规范化（[videoCacheKey]）。
+ * 缓存键规范化（[videoCacheKey]）与资源类型判定（[classifyPlaybackResource]）。
  *
- * 两条边界是这次 CDN 签名改动引出来的，都必须钉住：
- * - 签名参数每次下发都变 → 必须剥掉，否则同一集永远命中不了缓存；
- * - 其它 query 是源站的资源标识 → 必须留下，否则不同分片会被并成同一份缓存。
+ * 这两条规则决定"什么进 SimpleCache、进缓存时叫什么名字"，错了的代价不对等：
+ * - 清单误进缓存 → 客户端拿着过期签名请求分片，源站 403；
+ * - 分片键不稳定 → 缓存永远命不中，300MB 的 LRU 白写白淘汰。
+ *
+ * 只测字符串重载：本模块单测跑纯 JVM（不引 Robolectric），造不出 `android.net.Uri`；
+ * `videoCacheKey(Uri)` 只是 `toString()` 转给它，没有额外逻辑。
  */
 class VideoCacheKeyTest {
 
     @Test
-    fun `signature params are stripped so the same episode maps to one key`() {
-        val first = "https://cdn.example.com/vod/1/2/index.m3u8" +
-            "?t=1750000000&exper=1&rlimit=3&us=abc&sign=deadbeef"
-        val second = "https://cdn.example.com/vod/1/2/index.m3u8" +
-            "?t=1750021600&exper=1&rlimit=3&us=xyz&sign=cafebabe"
+    fun `segment key is the path, every query param dropped`() {
+        val first = "https://cdn.example.com/vod/1/2/c5c47bf5.ts?sign=deadbeef&timestamp=1794498739"
+        val second = "https://cdn.example.com/vod/1/2/c5c47bf5.ts?sign=cafebabe&timestamp=1794499999"
+        val other = "https://cdn.example.com/vod/1/2/77ad10e3.ts?sign=deadbeef"
 
-        assertEquals("https://cdn.example.com/vod/1/2/index.m3u8", videoCacheKey(first))
+        assertEquals("https://cdn.example.com/vod/1/2/c5c47bf5.ts", videoCacheKey(first))
         assertEquals(videoCacheKey(first), videoCacheKey(second))
+        assertNotEquals(videoCacheKey(first), videoCacheKey(other))
     }
 
     @Test
-    fun `origin query params survive because they identify the file`() {
-        val url = "https://cdn.example.com/hls/seg-3.ts?id=88&t=1750000000&sign=abc"
+    fun `non segment key keeps no query until a param is whitelisted`() {
+        val url = "https://cdn.example.com/hls/index.m3u8?t=1750000000&us=abc&sign=deadbeef"
 
-        assertEquals("https://cdn.example.com/hls/seg-3.ts?id=88", videoCacheKey(url))
+        assertEquals("https://cdn.example.com/hls/index.m3u8", videoCacheKey(url))
     }
 
     @Test
-    fun `url without query is returned unchanged`() {
-        val url = "https://cdn.example.com/vod/1.mp4"
-
-        assertEquals(url, videoCacheKey(url))
-    }
-
-    @Test
-    fun `empty query leaves no dangling question mark`() {
-        assertEquals("https://cdn.example.com/a.m3u8", videoCacheKey("https://cdn.example.com/a.m3u8?"))
-        assertEquals("https://cdn.example.com/a.m3u8", videoCacheKey("https://cdn.example.com/a.m3u8?us=&t="))
-    }
-
-    @Test
-    fun `fragment is kept and does not leak into the query scan`() {
+    fun `url without query is returned unchanged and fragment never joins the key`() {
+        assertEquals("https://cdn.example.com/vod/1.mp4", videoCacheKey("https://cdn.example.com/vod/1.mp4"))
         assertEquals(
-            "https://cdn.example.com/a.m3u8#chapter=2",
+            "https://cdn.example.com/a.m3u8",
             videoCacheKey("https://cdn.example.com/a.m3u8?us=abc#chapter=2"),
         )
     }
 
     @Test
-    fun `param names are matched case sensitively so lookalikes are not dropped`() {
-        // `T` / `Sign` 不是 CDN 的签名参数：误剥就是把两份内容并成一份缓存，那比不命中严重
-        val url = "https://cdn.example.com/a.m3u8?T=1&Sign=2"
-
-        assertEquals(url, videoCacheKey(url))
+    fun `resource kind decides who reaches the cache`() {
+        assertEquals(ResourceKind.MANIFEST, classifyPlaybackResource("https://c.example.com/a/index.m3u8?t=1"))
+        assertEquals(ResourceKind.MANIFEST, classifyPlaybackResource("https://c.example.com/live/playlist?t=1"))
+        assertEquals(ResourceKind.SEGMENT, classifyPlaybackResource("https://c.example.com/a/seg-1.m4s?sign=1"))
+        // 认不出来的一律不缓存：少缓存只是没提速，多缓存是死数据
+        assertEquals(ResourceKind.UNKNOWN, classifyPlaybackResource("https://c.example.com/a/stream?id=1"))
     }
 
     @Test

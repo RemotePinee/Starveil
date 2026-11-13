@@ -171,6 +171,7 @@ private fun PlayerLoaded(
     PlayerRoute(
         viewModel = viewModel,
         modifier = modifier,
+        cast = container.castRepository,
         // 能力位来自服务端 checkVodTrySee：会员关闭时 canVip=0，浮层只剩积分（与广告）。
         // 广告还要叠加网关 ready——后台配了素材才为真。
         unlock = load.gate?.unlockOptions(container.adGateway.isReady(AdSlot.REWARD))

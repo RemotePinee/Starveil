@@ -37,7 +37,7 @@ final class MainController extends BaseController
     /** 首页轮播。 */
     public function getBanner(): void
     {
-        Json::ok(['list' => (new Banner())->list()]);
+        Json::ok(['list' => (new Banner())->list($this->typeIdOfRequest())]);
     }
 
     /**

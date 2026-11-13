@@ -161,10 +161,11 @@ class ShortPlayViewModel(
         if (!isSelectable(typeId)) return
         selectedTypeId = typeId
         searchKeyword = ""
-        // 不把新分类的本地快照先铺成 Content：快照是上一轮的列表，分类如今可能已经空了，
-        // 铺出来会先组合一屏 feed——右栏、入口条、标题、进度条跟着出现——再被空态撤掉，
-        // 用户看到的就是"闪一下"。落页到结果回来这一段由占位层（只有分类名）兜。
-        // 也不打回整屏 Loading：那会让切分类先闪一屏转圈。
+        // 新分类的本地快照先铺上：切过去第一帧就是那一类的内容——模糊封面、剧名、
+        // 分类药丸立刻在屏上，视频由那一页自己加载。没有快照才落到占位层（只有底色）。
+        // 代价是快照过期时（这一分类如今空了）会先闪一屏 feed 再跳空态；
+        // 切分类先露黑底比这个更难看，按"先给内容"取舍。
+        seedFromSnapshot()
         loadFirstPage(resetPosition = false)
     }
 

@@ -70,6 +70,8 @@ interface ProgressSink {
         sourceIndex: Int,
         episodeIndex: Int,
         positionSec: Int,
+        vodName: String = "",
+        vodPic: String = "",
     ): AppResult<Unit> = AppResult.Success(Unit)
 }
 

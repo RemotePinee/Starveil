@@ -124,6 +124,8 @@ final class HomePage extends BasePage
     private function banner(): string
     {
         $editId = (int)($_GET['edit'] ?? 0);
+        // 列表按选中的分类过滤：下拉选了什么，下面就必须只剩那一类的轮播
+        $typeFilter = (int)($_GET['type_id'] ?? 0);
         $row = $editId > 0
             ? Db::table(Installer::prefix() . 'cuican_banner')->where('id', $editId)->find()
             : null;
@@ -133,6 +135,7 @@ final class HomePage extends BasePage
             '<form method="post">' . $this->csrfField()
             . '<input type="hidden" name="op" value="save">'
             . ($row ? '<input type="hidden" name="id" value="' . $editId . '">' : '')
+            . '<input type="hidden" name="type_id" value="' . (int)($row['type_id'] ?? $typeFilter) . '">'
             . '<div class="sv-grid">'
             . $this->field('标题', 'title', (string)($row['title'] ?? ''), '留空自动用影片名')
             . $this->field('副标题', 'subtitle', (string)($row['subtitle'] ?? ''))
@@ -141,16 +144,21 @@ final class HomePage extends BasePage
             . $this->field('外链', 'url', (string)($row['url'] ?? ''))
             . $this->field('排序', 'sort', (string)($row['sort'] ?? '0'), '越小越前')
             . $this->selectField('状态', 'status', ['1' => '启用', '0' => '停用'], (string)($row['status'] ?? '1'))
-            . '</div><div class="sv-actions"><button class="sv-btn" type="submit">保存</button>'
-            . ($row ? '<a class="sv-btn ghost" href="?a=banner">取消编辑</a>' : '')
+            . '</div><div class="sv-actions">'
+            . '<button class="sv-btn" type="submit">保存</button>'
+            . ($row ? '<a class="sv-btn ghost" href="?a=banner&type_id=' . (int)$typeFilter . '">取消编辑</a>' : '')
             . '</div></form>'
         );
 
-        $rows = Db::table(Installer::prefix() . 'cuican_banner')->order('sort asc,id asc')->select();
+        $rows = Db::table(Installer::prefix() . 'cuican_banner')
+            ->where('type_id', $typeFilter)
+            ->order('sort asc,id asc')
+            ->select();
         $body = '';
         foreach ($rows as $item) {
             $body .= '<tr><td>' . (int)$item['id'] . '</td>'
                 . '<td>' . View::e($item['title']) . '<br><small>' . View::e($item['subtitle']) . '</small></td>'
+                . '<td>' . View::e($this->typeOptions()[(string)(int)$item['type_id']] ?? '—') . '</td>'
                 . '<td>' . $this->targetOf($item) . '</td>'
                 . '<td>' . (int)$item['sort'] . '</td>'
                 . '<td>' . ((int)$item['status'] === 1
@@ -162,7 +170,31 @@ final class HomePage extends BasePage
                 . '</td></tr>';
         }
 
-        return $form . $this->table(['id', '标题', '指向', '排序', '状态', ''], $body, 6);
+        // 与热度榜/猜你喜欢完全一致：同一张"配置分类"卡片、同一个 GET 表单、
+        // 同样的「切换分类」按钮，不另造一套"查看分类 + 筛选"。
+        $filter = $this->card(
+            '配置分类',
+            '<form method="get" data-plain>'
+            . '<input type="hidden" name="a" value="banner">'
+            . '<div class="sv-grid">'
+            . $this->selectField('分类', 'type_id', $this->typeOptions(), (string)$typeFilter)
+            . '</div><div class="sv-actions"><button class="sv-btn" type="submit">切换分类</button></div></form>'
+            . '<p class="sv-hint">首页 = 只在首页显示；分类页没单独配时，客户端回退首页这套。当前：'
+            . View::e($this->typeOptions()[(string)$typeFilter] ?? '首页') . '</p>'
+        );
+
+        return $form . $filter . $this->table(['id', '标题', '分类', '指向', '排序', '状态', ''], $body, 7);
+    }
+
+    /** 轮播的分类下拉：0 = 首页（全局），其余取 macCMS 的一级分类。 */
+    private function typeOptions(): array
+    {
+        $out = ['0' => '首页（全部）'];
+        $rows = Db::name('type')->where('type_pid', 0)->field('type_id,type_name')->order('type_id asc')->select();
+        foreach ($rows as $row) {
+            $out[(string)(int)$row['type_id']] = (string)$row['type_name'];
+        }
+        return $out;
     }
 
     private function bannerAction(array $post): void
@@ -184,6 +216,7 @@ final class HomePage extends BasePage
                 'vod_id' => max((int)($post['vod_id'] ?? 0), 0),
                 'url' => (string)($post['url'] ?? ''),
                 'sort' => (int)($post['sort'] ?? 0),
+                'type_id' => max((int)($post['type_id'] ?? 0), 0),
                 'status' => (int)($post['status'] ?? 1) === 1 ? 1 : 0,
             ];
             $id = (int)($post['id'] ?? 0);

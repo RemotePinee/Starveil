@@ -230,6 +230,9 @@ final class VodController extends BaseController
             $this->input->int('source_index'),
             $this->input->int('episode_index'),
             $this->input->int('progress'),
+            // 老客户端不带这两个字段：留空，历史列表回落到 mac_vod。
+            (string)$this->input->str('vod_name'),
+            (string)$this->input->str('vod_pic'),
         );
         Json::ok(null, '已记录');
     }

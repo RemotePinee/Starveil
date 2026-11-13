@@ -79,7 +79,7 @@ interface VodRepository {
     ): AppResult<List<Vod>> = AppResult.Success(emptyList())
 
     /** 首页轮播（插件后台配置）。 */
-    suspend fun banners(): AppResult<List<HomeBanner>> = AppResult.Success(emptyList())
+    suspend fun banners(typeId: Int = 0): AppResult<List<HomeBanner>> = AppResult.Success(emptyList())
 
     /** 首页专区（含影片）。 */
     suspend fun blocks(): AppResult<List<HomeBlock>> = AppResult.Success(emptyList())
@@ -91,7 +91,7 @@ interface VodRepository {
      * 首页「编辑精选」。默认实现返回空配置（不回退内容），这样其它 feature 的
      * 测试 fake 不必为一个首页专属区块补实现；回退到列表切片由 UI 决定。
      */
-    suspend fun featured(): AppResult<HomeSpotlight> = AppResult.Success(HomeSpotlight())
+    suspend fun featured(typeId: Int = 0): AppResult<HomeSpotlight> = AppResult.Success(HomeSpotlight())
 
     /**
      * 首页「热度榜」。与 [featured] 同样给空配置默认实现：

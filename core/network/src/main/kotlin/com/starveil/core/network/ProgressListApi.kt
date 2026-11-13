@@ -41,5 +41,7 @@ interface ProgressListApi {
         @Field("source_index") sourceIndex: Int,
         @Field("episode_index") episodeIndex: Int,
         @Field("progress") positionSec: Int,
+        @Field("vod_name") vodName: String = "",
+        @Field("vod_pic") vodPic: String = "",
     ): ApiEnvelopeDto<String>
 }

@@ -8,6 +8,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.translate
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.res.painterResource
 
 /**
@@ -27,6 +28,9 @@ internal fun Modifier.fogBackdrop(): Modifier {
     val painter = painterResource(R.drawable.feature_user_backdrop)
     val base = MaterialTheme.colorScheme.surface
     return drawBehind {
+        // 必须裁到自身边界：drawBehind 默认不裁，Crop 放大后的插画会画到容器外，
+        // 转场时就能看到"我的页面的图溢出到旁边"。
+        clipRect {
         val pw = painter.intrinsicSize.width
         val ph = painter.intrinsicSize.height
         if (pw > 0f && ph > 0f) {
@@ -50,6 +54,7 @@ internal fun Modifier.fogBackdrop(): Modifier {
             ),
             size = size,
         )
+        }
     }
 }
 

@@ -6,24 +6,24 @@ import com.starveil.core.model.ShortPlayType
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
 /**
- * 切分类那一拍的状态：空分类不能被过期快照冒充成"有内容"，也不该闪一屏转圈。
+ * 切分类那一拍的状态：先给内容，不给黑底。
  *
- * 为什么要单独立一组：短剧页的浮层（右栏 / 入口条 / 标题 / 进度）只活在 feed 里，
- * 只要 state 在这一拍是 `Content`，屏幕上就会先画出一整套浮层，再被真正的空态撤掉。
- * 所以"当前分类有没有短剧"必须由 state 一处决定——这里锁住的就是那条状态序列。
+ * 背景：占位层只有一层底色，切过去到新分类数据回来这一段屏幕上什么都不像，
+ * 用户看到的就是一下黑屏。现在 [ShortPlayViewModel.selectType] 先把新分类的本地快照
+ * 铺成 Content——模糊封面、剧名、分类药丸第一帧就在屏上，视频自己慢慢加载。
+ * 代价是快照过期时（这一分类如今空了）会先闪一屏 feed 再跳空态，这里一并钉住。
  */
 class ShortPlayCategorySwitchTest {
     @get:Rule
     val dispatcherRule = MainDispatcherRule()
 
     @Test
-    fun `category switch never paints the new category snapshot as content`() = runTest {
+    fun `category switch paints the new category snapshot before the network`() = runTest {
         val pending = CompletableDeferred<AppResult<List<ShortPlay>>>()
         val repository = ShortPlayTestRepository(
             snapshots = mapOf(22 to listOf(shortPlay(7))),
@@ -31,8 +31,12 @@ class ShortPlayCategorySwitchTest {
         )
         val viewModel = stableShortPlayViewModel(repository, switchTypes)
         viewModel.selectType(22)
-        // 快照不再冒充内容：这个分类其实已经空了，屏幕上不会先组合一屏 feed。
-        assertFalse(viewModel.state.value is ShortPlayUiState.Content)
+        // 切过去第一帧就是新分类的内容：不等网络，也不经过占位层的纯底色。
+        val seeded = viewModel.state.value
+        assertTrue(seeded is ShortPlayUiState.Content)
+        assertEquals(22, seeded.selectedTypeId)
+        assertEquals(listOf(7), (seeded as ShortPlayUiState.Content).plays.map { it.id })
+        // 网络回来发现这一分类其实空了，才落到空态。
         pending.complete(AppResult.Success(emptyList()))
         assertTrue(viewModel.state.value is ShortPlayUiState.Empty)
     }

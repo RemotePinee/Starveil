@@ -16,7 +16,7 @@ import retrofit2.http.Query
 interface HomeContentApi {
 
     @GET(ApiPaths.BANNER)
-    suspend fun banners(): ApiEnvelopeDto<HomeBannerListDto>
+    suspend fun banners(@Query("type_id") typeId: Int = 0): ApiEnvelopeDto<HomeBannerListDto>
 
     @GET(ApiPaths.CATEGORY)
     suspend fun blocks(@Query("need_vod") needVod: Int = 1): ApiEnvelopeDto<HomeBlockListDto>
@@ -26,7 +26,7 @@ interface HomeContentApi {
 
     /** 首页「编辑精选」：单对象壳，不是 list。 */
     @GET(ApiPaths.FEATURED)
-    suspend fun featured(): ApiEnvelopeDto<HomeSpotlightDto>
+    suspend fun featured(@Query("type_id") typeId: Int = 0): ApiEnvelopeDto<HomeSpotlightDto>
 
     /** 首页「热度榜」：`type_id` 区分分类，0 = 全局。 */
     @GET(ApiPaths.HOT)

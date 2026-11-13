@@ -48,7 +48,7 @@ class SearchViewModelTest {
     }
 
     @Test
-    fun `one valid search records history once`() = runTest(dispatcher.scheduler) {
+    fun `typing never records history, submit does`() = runTest(dispatcher.scheduler) {
         val repository = FakeSearchRepository()
         val viewModel = SearchViewModel(repository, history, FakeRankRepository())
 
@@ -57,9 +57,29 @@ class SearchViewModelTest {
         viewModel.onQueryChange("仙剑奇")
         dispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals(listOf("仙剑奇"), history.added)
+        // 打字到防抖结束也只去取结果：历史要等用户真提交（输入法打拼音时，
+        // "xie tiao" 这类中间态会停顿超过防抖时间，不能算一次搜索）
+        assertEquals(emptyList<String>(), history.added)
         assertEquals(listOf("仙剑奇"), repository.queries)
+
+        viewModel.onSubmit()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(listOf("仙剑奇"), history.added)
         assertEquals(listOf("仙剑奇"), viewModel.state.value.history)
+    }
+
+    @Test
+    fun `submit with blank query writes nothing`() = runTest(dispatcher.scheduler) {
+        val repository = FakeSearchRepository()
+        val viewModel = SearchViewModel(repository, history, FakeRankRepository())
+
+        viewModel.onQueryChange("   ")
+        viewModel.onSubmit()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(emptyList<String>(), history.added)
+        assertEquals(emptyList<String>(), repository.queries)
     }
 
     @Test

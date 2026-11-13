@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.Dp
 import com.adamglin.PhosphorIcons
 import com.adamglin.phosphoricons.Bold
 import com.adamglin.phosphoricons.bold.ArrowLeft
+import com.adamglin.phosphoricons.bold.Airplay
 import com.adamglin.phosphoricons.bold.Subtitles
 import com.adamglin.phosphoricons.bold.SubtitlesSlash
 import com.starveil.core.designsystem.mirrorIconInRtl
@@ -54,6 +55,10 @@ private val ToggleHeight: Dp = Spacing.xxl + Spacing.xs
 internal class TopActions(
     val danmuEnabled: Boolean,
     val onToggleDanmu: () -> Unit,
+    /** 投屏胶囊：与弹幕胶囊同高同底色，排在它左边。 */
+    val castAvailable: Boolean = false,
+    val castConnected: Boolean = false,
+    val onCastClick: () -> Unit = {},
 )
 
 /**
@@ -105,6 +110,10 @@ internal fun PlayerTopBar(
                 modifier = Modifier.weight(1f),
             )
             Spacer(Modifier.width(Spacing.sm))
+            if (actions.castAvailable) {
+                CastToggleChip(actions = actions)
+                Spacer(Modifier.width(Spacing.sm))
+            }
             DanmuToggleChip(actions = actions)
             // 选集入口只在底栏保留：顶部重复一个既占地方又容易误触
         }
@@ -135,6 +144,39 @@ private fun TitleBlock(title: String, subtitle: String, modifier: Modifier = Mod
     }
 }
 
+
+/** 投屏：与弹幕开关同一枚胶囊（同高、同底色、同字阶），连上电视后整颗提到主色。 */
+@Composable
+private fun CastToggleChip(actions: TopActions, modifier: Modifier = Modifier) {
+    val tint = if (actions.castConnected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        starveilExtraColors.textMuted
+    }
+    Row(
+        modifier = modifier
+            .height(ToggleHeight)
+            .clip(AppShape.full)
+            .background(MaterialTheme.colorScheme.scrim.copy(alpha = CHROME_GLASS_ALPHA))
+            .clickable(onClick = actions.onCastClick)
+            .padding(horizontal = Spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = PhosphorIcons.Bold.Airplay,
+            contentDescription = null,
+            tint = tint,
+            modifier = Modifier.size(IconSize.item),
+        )
+        Spacer(Modifier.width(Spacing.xs))
+        Text(
+            text = if (actions.castConnected) "投屏中" else "投屏",
+            style = playerChromeLabelStyle(),
+            color = tint,
+            maxLines = 1,
+        )
+    }
+}
 /** 弹幕开关：开启时用皮肤主色，关闭时整颗降到弱化色，一眼能看出当前状态。 */
 @Composable
 private fun DanmuToggleChip(actions: TopActions, modifier: Modifier = Modifier) {

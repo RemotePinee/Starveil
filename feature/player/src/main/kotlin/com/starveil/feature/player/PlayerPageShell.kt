@@ -71,6 +71,11 @@ internal data class ChromeExtras(
     val immersive: Boolean,
     /** 已生效的全屏态：全屏图标与倍速胶囊跟它走（见 [rememberSettledFullscreen]）。 */
     val fullscreen: Boolean,
+    /** 顶栏投屏胶囊是否出现。 */
+    val castAvailable: Boolean = false,
+    /** 已连上电视时胶囊高亮。 */
+    val castConnected: Boolean = false,
+    val onCastClick: () -> Unit = {},
 )
 
 /**
@@ -93,6 +98,8 @@ internal fun PlayerChrome(
         shown,
         extras.immersive,
         extras.fullscreen,
+        extras.castAvailable,
+        extras.castConnected,
         danmuPrefs.enabled,
         actions,
         page.chrome,
@@ -108,6 +115,9 @@ internal fun PlayerChrome(
             onOpenSheet = { page.sheet = it },
             // 倍速不再开弹层：点一下切下一档，按钮上直接显示当前档位
             onCycleSpeed = { actions.onSpeedSelected(PlayerSpeeds.next(state.speed)) },
+            castAvailable = extras.castAvailable,
+            castConnected = extras.castConnected,
+            onCastClick = extras.onCastClick,
         )
     }
     CompositionLocalProvider(LocalSeekPreview provides page.seekPreview) {

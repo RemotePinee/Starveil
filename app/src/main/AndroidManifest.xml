@@ -9,9 +9,15 @@
          TopOn core-taku 的 manifest 也会合并同一项，这里显式声明是为了让
          "我们申请了什么"和闸门白名单一一对应。 -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <!-- 后台播放的通知与前台服务权限暂不声明：全仓没有 Service 子类、
-         NotificationChannel 与 startForeground，播放只在前台，声明了也是空壳。
-         真做后台播放时，连同 docs/security.md 第 6 节的白名单一起加回来。 -->
+    <!-- 投屏：SSDP 组播搜索要持有 MulticastLock，否则多数国产 ROM 收不到电视回包。
+         只影响局域网发现，不涉及位置与个人信息；白名单同步见根 build.gradle.kts。 -->
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+    <!-- 投屏会话的前台服务：缺了 FOREGROUND_SERVICE（以及 API 34 起要求的类型权限），
+         startForeground 会抛 SecurityException——表现就是"点投屏、连上、立刻闪退"。
+         通知权限缺了只是通知不显示，不影响服务运行。 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Google 广告 ID：境外广告源必需，缺了会直接关掉个性化出价。
          它与 android.permission.* 不同命名空间，verifySecurityBaseline 的正则
          匹配不到（见 docs/security.md 第 6 节），因此不进白名单。 -->
@@ -63,6 +69,13 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+        <service
+            android:name=".cast.CastSessionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+        <receiver
+            android:name=".cast.CastActionReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

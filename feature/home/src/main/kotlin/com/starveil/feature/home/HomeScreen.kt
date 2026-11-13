@@ -24,6 +24,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -93,12 +94,13 @@ fun HomeScreen(
 ) {
     // 轮播 pager 提到外层：切页时列表与顶部栏共用同一个状态。
     val banners = (state as? HomeUiState.Content)?.banners.orEmpty()
+    LaunchedEffect(Unit) { HomeTiming.mark("home-compose") }
     val bannerPager = rememberPagerState(pageCount = { banners.size.coerceAtLeast(1) })
     val listState = rememberLazyListState()
     // 模糊底与轮播卡同速上移：一个走一个钉着，抠开的位置就会错开
     val bannerScrollPx = rememberBannerScrollPx(listState)
     // 顶栏压在轮播图上（白字）到落在页面底色上（深字）的过渡进度，跟着滚动走
-    val topBarCover = rememberTopBarCoverProgress(listState, bannerScrollPx)
+    val topBarCover = rememberTopBarCoverProgress(bannerScrollPx)
     // 状态栏图标与顶栏同进同退：压在剧照上是浅色，落到页面底色上换深色。
     // 开屏还盖着的时候不插嘴——那一屏的底色归开屏，图标由它自己设。
     if (!LocalSplashCovering.current) SyncStatusBarIcons(topBarCover)
@@ -112,34 +114,34 @@ fun HomeScreen(
             pager = bannerPager,
             scrollOffsetPx = bannerScrollPx,
         )
-        // 状态栏那一条与顶栏用同一档压暗：两个区域连成一片，不出现"上面亮、下面暗"
-        StatusBarScrim(coverProgress = topBarCover)
+        // 状态栏那一条由顶栏自己往上多画一截（见 HomeTopBar.topBarBackdrop）：
+        // 只有一处画，才不会出现"上黑下白"的两截。
         CompositionLocalProvider(LocalHomeBannerPager provides bannerPager) {
             Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
-                    when (state) {
-                        is HomeUiState.Loading -> StarveilLoadingScreen()
+                when (state) {
+                    is HomeUiState.Loading -> StarveilLoadingScreen()
 
-                        is HomeUiState.Error -> Centered {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(text = state.message, color = starveilExtraColors.textMuted)
-                                Button(
-                                    onClick = actions.onRetry,
-                                    modifier = Modifier.height(Spacing.xxl),
-                                ) {
-                                    Text("重试")
-                                }
+                    is HomeUiState.Error -> Centered {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(text = state.message, color = starveilExtraColors.textMuted)
+                            Button(
+                                onClick = actions.onRetry,
+                                modifier = Modifier.height(Spacing.xxl),
+                            ) {
+                                Text("重试")
                             }
                         }
-
-                        is HomeUiState.Empty -> EmptyFeed(state = state, actions = actions)
-
-                        is HomeUiState.Content -> HomeFeed(
-                            state = state,
-                            actions = actions,
-                            listState = listState,
-                            coverProgress = topBarCover,
-                        )
                     }
+
+                    is HomeUiState.Empty -> EmptyFeed(state = state, actions = actions)
+
+                    is HomeUiState.Content -> HomeFeed(
+                        state = state,
+                        actions = actions,
+                        listState = listState,
+                        coverProgress = topBarCover,
+                    )
+                }
             }
         }
     }
@@ -170,7 +172,12 @@ private fun HomeFeed(
             modifier = Modifier.weight(1f),
         ) {
             Box(modifier = Modifier.fillMaxSize().then(categorySwitch.contentModifier())) {
-                HomeFeedList(state = state, actions = feedActions, listState = listState)
+                HomeFeedList(
+                    state = state,
+                    actions = feedActions,
+                    listState = listState,
+                    coverProgress = coverProgress,
+                )
             }
         }
     }
@@ -186,6 +193,7 @@ private fun HomeFeedList(
     state: HomeUiState.Content,
     actions: HomeActions,
     listState: LazyListState,
+    coverProgress: Float,
 ) {
     val banner = LocalAdPlacements.current.banner
     val categoryIds = remember(state.types) { listOf(0) + state.types.map { it.id } }
@@ -202,11 +210,10 @@ private fun HomeFeedList(
             // dock 铺在列表之上：底部留住它的高度，最后一条才滚得出来。
             contentPadding = PaddingValues(bottom = LocalDockInset.current),
         ) {
-            homeSections(state, actions, banner)
+            homeSections(state, actions, banner, coverProgress)
         }
     }
 }
-
 
 /** 切分类时的骨架：轮播 + 两组「标题 + 三张竖卡」，形状与真实首页对齐。 */
 @Composable
@@ -261,8 +268,9 @@ private fun androidx.compose.foundation.lazy.LazyListScope.homeSections(
     state: HomeUiState.Content,
     actions: HomeActions,
     banner: AdPlacement,
+    coverProgress: Float,
 ) {
-    state.modules.forEach { module -> homeModuleSection(module, state, actions) }
+    state.modules.forEach { module -> homeModuleSection(module, state, actions, coverProgress) }
     item { Spacer(Modifier.height(Spacing.xl)) }
     if (banner.drawable) {
         item { HomeBannerAd(creative = banner) }
@@ -274,10 +282,11 @@ private fun androidx.compose.foundation.lazy.LazyListScope.homeModuleSection(
     module: HomeModule,
     state: HomeUiState.Content,
     actions: HomeActions,
+    coverProgress: Float,
 ) {
     when (module) {
         HomeModule.BANNER -> if (state.banners.isNotEmpty()) {
-            item { BannerHero(banners = state.banners, onClick = actions.onBannerClick) }
+            item { BannerHero(state.banners, actions.onBannerClick, coverProgress) }
             item { Spacer(Modifier.height(Spacing.xs)) }
         }
 

@@ -27,7 +27,10 @@ import androidx.compose.runtime.setValue
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
 import com.starveil.feature.user.LoginChoices
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -48,6 +51,7 @@ import com.starveil.core.common.AppResult
 import com.starveil.core.common.ad.AdPlacements
 import com.starveil.core.common.ad.AdPlacement
 import com.starveil.core.common.DetailSections
+import com.starveil.core.designsystem.LocalDockInset
 import com.starveil.core.designsystem.starveilExtraColors
 import com.starveil.core.designsystem.LocalMemberEnabled
 import com.starveil.core.designsystem.LocalPolicyLinks
@@ -171,6 +175,8 @@ fun StarveilNavHost(container: AppContainer) {
     val tabs = remember(startup) { bottomTabSpecs(startup) }
     // 底栏顺序：tab 之间滑动的方向按它在底栏里的位置决定
     val tabOrder = remember(tabs) { tabs.map { it.selectedRoute } }
+    // tab 路由集合：destination 用它判断自己要不要给 dock 让位
+    val tabRoutes = remember(tabs) { tabs.map { it.selectedRoute }.toSet() }
     // 会员关闭只隐藏售卖入口；历史会员权益由服务端按到期时间放行，客户端不参与判断
     val memberEnabled = startup?.memberEnabled ?: true
     // 广告位来自启动配置：五个位一起下发，任一为空就是"不展示"，页面不需要再判开关。
@@ -239,7 +245,6 @@ fun StarveilNavHost(container: AppContainer) {
                     onOpenAuthForm = openAuthForm,
                 ) {
                     AppScaffold(
-                        navController = navController,
                         state = shellState,
                     ) { padding ->
                         val direction = LocalLayoutDirection.current
@@ -249,17 +254,54 @@ fun StarveilNavHost(container: AppContainer) {
                         val contentPadding = shellState.contentPadding(padding, direction, systemBottom)
                         CompositionLocalProvider(
                             LocalHostBottomInset provides contentPadding.calculateBottomPadding(),
+                            // tab 页按这两个值自己让位：让位跟着页面走，不挂在共享的 padding 上，
+                            // 否则点击那一帧就按新路由重算，滑出的旧页立刻铺满、盖住 dock。
+                            LocalTabDockHeight provides shellState.dockHeight(systemBottom),
+                            LocalTabRoutes provides tabRoutes,
+                            // 页面内部的 dock 占位：短剧页保持原样（铺到底 + 自己留最后一项），
+                            // 已经让过位的 tab 页由 TabDockFrame 覆盖成 0，二级页与播放页也是 0。
+                            LocalDockInset provides pageDockInset(
+                                route = shellState.currentRoute,
+                                tabRoutes = tabRoutes,
+                                dockInset = shellState.dockHeight(systemBottom),
+                            ),
                         ) {
-                            Box(
-                                modifier = Modifier.padding(contentPadding).consumeWindowInsets(contentPadding),
-                            ) {
-                                AppNavGraph(
-                                    navController = navController,
-                                    container = container,
-                                    tabOrder = tabOrder,
-                                    openAuthForm = openAuthForm,
-                                )
+                            // dock 与被转场的页面放在同一层：
+                            // - 普通页面：dock 在下面一层，铺满整屏的二级页会直接把它盖住；
+                            // - 短剧页：视频要铺到 dock 后面，dock 压在上面。
+                            // 两种情况 dock 都不需要自己消失/出现，也就没有"先看到它消失"那一帧。
+                            val pages: @Composable () -> Unit = {
+                                Box(
+                                    // 裁掉转场中滑出画面的旧页：否则它在右边缘会留下一条残影
+                                    // （从「我的」切回首页时最明显）
+                                    modifier = Modifier
+                                        .padding(contentPadding)
+                                        .consumeWindowInsets(contentPadding)
+                                        .clipToBounds(),
+                                ) {
+                                    AppNavGraph(
+                                        navController = navController,
+                                        container = container,
+                                        tabOrder = tabOrder,
+                                        openAuthForm = openAuthForm,
+                                    )
+                                }
                             }
+                            ShellLayers(
+                                // 短剧视频要压在 dock 后面；两端一起判，回程不能让退场视频盖住 dock
+                                dockOnTop = dockOnTopFor(shellState.currentRoute, shellState.settledRoute, tabRoutes),
+                                pages = pages,
+                                dock = {
+                                    DockLayer(
+                                        navController = navController,
+                                        state = shellState,
+                                        // 转场途中一直画着，让新页面自己盖住它；
+                                        // 转场结束、确认这页没有 dock 了才停手——这样
+                                        // 永远看不到"dock 自己先消失"。
+                                        visible = shouldDrawDock(shellState),
+                                    )
+                                },
+                            )
                         }
                     }
                 }
@@ -308,9 +350,8 @@ fun StarveilNavHost(container: AppContainer) {
     }
 }
 
-
 /**
- * 冷启动预热剧场：第一页写进快照，首个短剧的详情也一起拉好。
+ * 冷启动预热剧场：顶部每个分类的第一页都写进快照，首个短剧的详情也一起拉好。
  *
  * 用户点短剧 tab 时列表与详情都已在本地，页面首帧直接铺内容、不必先转圈；
  * 预热的分类与进页默认分类同源（[defaultShortPlayTypeId]），否则快照对不上、首帧还得转圈。
@@ -319,8 +360,9 @@ fun StarveilNavHost(container: AppContainer) {
 private suspend fun prefetchShortPlay(container: AppContainer, startup: StartupConfig?) {
     if (startup == null) return
     val typeId = defaultShortPlayTypeId(startup.shortplayTabs, startup.shortplayTypes)
-    val feed = container.shortPlayRepository.feed(typeId = typeId.takeIf { it > 0 })
-        as? AppResult.Success ?: return
+    // 顶部每个分类都预热第一页：切分类时直接铺快照，不会先露一层占位底色。
+    startup.shortplayTabs.forEach { tab -> container.shortPlayRepository.feed(tab.id.takeIf { it > 0 }) }
+    val feed = container.shortPlayRepository.feed(typeId = typeId.takeIf { it > 0 }) as? AppResult.Success ?: return
     feed.value.firstOrNull()?.let { play -> container.vodRepository.detail(play.id) }
 }
 @Composable
@@ -364,4 +406,44 @@ internal fun Context.showPlayerEvent(event: PlayerEvent) {
 
 /** dock 与内容区底边等多久再跟着新路由走：一档转场动画的长度。 */
 private const val DOCK_SETTLE_MS = 300L
+
+/**
+ * 页面层与 dock 的叠放顺序。
+ *
+ * 普通页面：dock 在下面一层，铺满整屏的二级页会把它盖住——dock 不需要自己做显隐。
+ * 短剧页：视频要铺到 dock 后面，dock 压在上面。
+ */
+@Composable
+private fun ShellLayers(
+    dockOnTop: Boolean,
+    pages: @Composable () -> Unit,
+    dock: @Composable () -> Unit,
+) {
+    Box(Modifier.fillMaxSize()) {
+        if (dockOnTop) {
+            pages()
+            dock()
+        } else {
+            dock()
+            pages()
+        }
+    }
+}
+
+/** dock 层：贴屏幕底，按需绘制；不需要它的页面根本不进这一层的绘制。 */
+@Composable
+private fun DockLayer(navController: NavHostController, state: AppShellState, visible: Boolean) {
+    if (!visible) return
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+        AppBottomBar(navController, state)
+    }
+}
+
+/**
+ * 这一帧要不要画 dock：转场途中一直画着，让新页面自己盖住它；
+ * 转场结束、确认目标页没有 dock 了才停止绘制。
+ */
+private fun shouldDrawDock(state: AppShellState): Boolean =
+    state.hasDock() || state.currentRoute != state.settledRoute
+
 

@@ -32,4 +32,9 @@ internal data class ChromeConfig(
     val onOpenSheet: (PlayerSheetKind) -> Unit,
     /** 点倍速胶囊：切下一档并显示在按钮上，不再弹选择层。 */
     val onCycleSpeed: () -> Unit = {},
+    /** 顶栏是否出现投屏胶囊：只有可投的源 + 有会话时才出现。 */
+    val castAvailable: Boolean = false,
+    /** 已连上电视：胶囊高亮（与弹幕"开"的强调色同一套）。 */
+    val castConnected: Boolean = false,
+    val onCastClick: () -> Unit = {},
 )

@@ -141,5 +141,7 @@ private class FakeProgressApi(
         sourceIndex: Int,
         episodeIndex: Int,
         positionSec: Int,
+        vodName: String,
+        vodPic: String,
     ): ApiEnvelopeDto<String> = ApiEnvelopeDto(code = 200, msg = "ok", data = null)
 }

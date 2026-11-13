@@ -45,6 +45,9 @@ internal fun PlayerChromeOverlay(
                 actions = TopActions(
                     danmuEnabled = config.danmuEnabled,
                     onToggleDanmu = config.onToggleDanmu,
+                    castAvailable = config.castAvailable,
+                    castConnected = config.castConnected,
+                    onCastClick = config.onCastClick,
                 ),
                 onBack = { dispatcher?.onBackPressed() },
                 // 横屏全屏才让 inset：转屏那几帧不让，按钮就不会先往下掉再弹回去

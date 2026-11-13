@@ -5,6 +5,8 @@ import com.starveil.core.model.Vod
 /** 搜索页的对外动作。参数超过 5 个会被 detekt 拒，所以收成一个对象（全部带默认值，老调用点不必改）。 */
 data class SearchActions(
     val onQueryChange: (String) -> Unit = {},
+    /** 提交搜索：软键盘搜索键。历史只在这一刻写。 */
+    val onSubmit: () -> Unit = {},
     val onRetry: () -> Unit = {},
     val onVodClick: (Vod) -> Unit = {},
     val onBack: () -> Unit = {},

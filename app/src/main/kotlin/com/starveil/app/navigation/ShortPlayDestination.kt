@@ -47,6 +47,7 @@ internal fun NavGraphBuilder.shortPlayDestination(
     nav: NavHostController,
     container: AppContainer,
 ) {
+    // 短剧页不动：它自己的 dock 前景、视频铺底、点进剧后的沉浸都在页面内部处理。
     composable(SHORT_PLAY_ROUTE) { entry -> ShortPlayEntry(container, nav, entry) }
     composable(
         // 分类页是独立一页：顶部分类条 + 卡片网格，取代原来的剧场页侧边抽屉。
